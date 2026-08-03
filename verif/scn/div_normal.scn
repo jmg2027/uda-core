@@ -1,0 +1,9 @@
+# Multi-cycle division under instruction fetch pressure: 20/3 = 6. Exercises the iterative
+# divide stall interacting with prefetch (a classic desync spot on the main line).
+@name div-normal-20-3
+@verifies funcNonRestoringAlgorithm funcSignCorrection
+@maxcycles 4000
+li x5, 20
+li x6, 3
+div x7, x5, x6
+check x7 == 6

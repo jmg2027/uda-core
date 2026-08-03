@@ -1,0 +1,11 @@
+# Control-flow seed: a jal reached sequentially (no redirect in front of it) must transfer.
+@name jal-sequential-control
+@verifies funcPcResolution
+addi x9, x0, 0x11
+addi x0, x0, 0
+addi x0, x0, 0
+jal x0, good
+addi x9, x0, 0xFE
+jal x0, store
+good: addi x9, x0, 0x77
+store: check x9 == 0x77

@@ -1,0 +1,61 @@
+# spec-check-allow.txt - PROPERTY vals not yet paired with an
+# @LocalSpec design assert (ADR-015 D-15.2 check 2). Each name
+# here is a KNOWN interim gap that keeps the check green while
+# locking the door: no NEW unpaired PROPERTY may appear without
+# either a paired assert or an explicit line added here.
+# One val name per line. Remove a name once its design assert lands.
+propCommitInOrder
+propCommittedEntryEpochExempt
+propCommittedSurvivesKill
+propCsrLegalizeTotal
+propDCacheCommittedOnly
+propDCacheFunctionTransparent
+propDCachePermissionSound
+propDCacheProbeLiveness
+propDisabledExtensionTraps
+propEpochDistribution
+propEpochVertexEnumeration
+propEpochWrapBound
+propFreeListConservation
+propGraphConsistency
+propICacheEpochBlind
+propICacheFunctionTransparent
+propICacheReadOnly
+propInOrderDrain
+propIssueQueueLiveness
+propLoadForwardExact
+propLoadNoOrderingGate
+propLoadUseBudget
+propLocalSpecCoverage
+propN1FoldsOoO
+propN1ForbiddenStructures
+propN1MapDegenerate
+propN1PpaBar
+propNEquivalence
+propNextPcEpoch
+propNoOrphanResponse
+propNoSpeculativeCsrWrite
+propNoSpeculativeWrite
+propOutstandingBound
+propPreciseCommit
+propPredictToFetchBudget
+propPrfPortsVsN
+propPrfReadToExecBudget
+propPropertyToAssertion
+propPublishToWakeupBudget
+propRawTopWiringOnly
+propRedirectAtCommit
+propRedirectToFetchBudget
+propRegQueueTagged
+propRetireNonBlocking
+propRsEagerFilter
+propSingleDrain
+propSingleIncrementPerRedirect
+propSingleRedirectPerEpoch
+propSplitExclusive
+propStoreBufferLiveness
+propTLChannelPriority
+propTagUniqueness
+propTrapSingleWriter
+propWakeupEpochQualified
+propWakeupSelectBudget

@@ -1,0 +1,9 @@
+@name add-and-sub
+@verifies funcComputeAlu
+li x1 0x12345678
+li x2 12
+add x3, x1, x2
+check x3 == 0x12345684
+sub x4, x1, x2
+check x4 == 0x1234566c
+expect done

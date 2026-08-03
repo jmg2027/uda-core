@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# UDACore pre-commit gate. Activated by: git config core.hooksPath .githooks
+# (the .claude session-start hook sets this automatically).
+#
+# Two checks, both scoped to the STAGED files so pre-existing debt in untouched
+# files never blocks an unrelated commit:
+#   1. ASCII-only (style rule: specs/docs/code are English ASCII; Korean lives in
+#      commit MESSAGES, which this hook does not inspect). Known debt files are
+#      listed in .githooks/ascii-allow.txt - touching one means cleaning it.
+#   2. spec-check (ADR-015 interim checker) when any src/main/scala file is
+#      staged - spec/design consistency is a commit gate, not a suggestion.
+set -uo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# 1. ASCII check on staged text sources
+allow="$ROOT/.githooks/ascii-allow.txt"
+bad=""
+while IFS= read -r f; do
+  case "$f" in
+    *.scala|*.md|*.sh|*.txt|*.sbt|*.scn|*.tcl|*.sdc|*.awk|*.py) ;;
+    *) continue ;;
+  esac
+  [ -f "$f" ] || continue
+  grep -qxF "$f" "$allow" 2>/dev/null && continue
+  if LC_ALL=C grep -nP '[^\x00-\x7F]' "$f" >/dev/null 2>&1; then
+    bad+="$f"$'\n'
+  fi
+done <<< "$staged"
+if [ -n "$bad" ]; then
+  echo "pre-commit: non-ASCII in staged files (style rule: English ASCII in files):" >&2
+  printf '%s' "$bad" | sed 's/^/  /' >&2
+  echo "  locate:  LC_ALL=C grep -nP '[^\\x00-\\x7F]' <file>" >&2
+  echo "  known pre-existing debt is grandfathered in .githooks/ascii-allow.txt" >&2
+  exit 1
+fi
+
+# 2. spec-check when Scala sources are staged
+if printf '%s\n' "$staged" | grep -q '^src/main/scala/.*\.scala$'; then
+  if ! python3 "$ROOT/tools/spec-check.py" >/tmp/spec-check-precommit.log 2>&1; then
+    echo "pre-commit: tools/spec-check.py FAILED (ADR-015 gate):" >&2
+    tail -20 /tmp/spec-check-precommit.log >&2
+    exit 1
+  fi
+fi
+
+exit 0

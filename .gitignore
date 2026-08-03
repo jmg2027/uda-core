@@ -1,0 +1,71 @@
+# === SCALA / CHISEL / SBT ===
+target/
+project/target/
+project/project/
+.metals/
+.bloop/
+.worksheet
+.idea/
+*.iml
+.bsp/
+
+
+# === SBT Caches ===
+.cache/
+.sbt.ivy/
+.sbtboot/
+
+# === Metals ===
+project/metals.sbt
+
+# === CACHED FILES ===
+*.class
+*.log
+*.out
+*.bak
+*.swp
+*~
+
+# === OS-LEVEL JUNK ===
+.DS_Store
+Thumbs.db
+
+# === ARCHIVE ===
+*.zip
+*.tar.gz
+*.tar
+*.tgz
+*.gz
+*.rar
+*.7z
+
+# === GENERATED FILES ===
+*.fir
+*.vcd
+*.fst
+*.dump
+
+# === VSCode ===
+.vscode/
+
+# === BACKUPS ===
+*~
+*.orig
+
+# === MACOS Spotlight ===
+.AppleDouble
+.LSOverride
+
+# === TEST DIRECTORY ===
+test_run_dir/
+
+# MkDocs build output
+/site/
+.mypy_cache/
+__pycache__/
+*.pyc
+
+# IDE/Editor
+.vscode/
+.idea/
+*.log
