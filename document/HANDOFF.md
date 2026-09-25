@@ -356,6 +356,22 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     mutants red after strengthening (event-cycle acceptance into an empty stage, a
     fetch-faulted branch, Debug Mode ECALL); the explicit 16-bit check is equivalent (no
     table row has bits[1:0] != 11). spec-check-allow 40 -> 38.
+27. RTL block 16 - BackendTop (rawTop, wiring only): every vertex instantiated and every edge of
+    the BackendTop graph connected (RecoveryEvent to all twelve holders and the boundary;
+    usingRvvi retire stream and commit PRF read as Options; BitAluUnit absent in v0).
+    9 end-to-end L1 programs through the whole backend (verif/suites/spectest/BackendTopSpecTests.scala: a
+    two-pass assembler, a sequential no-prediction frontend recovered by RecoveryEvents, a
+    Bare DTLB, a RAM D-cache written only through StoreBuffer drains, an MMIO uncached port):
+    arith, loop (every taken CFI recovered), memory (SQ/SB/memory forwarding with byte/half
+    extension), M extension (incl. divide-by-zero and overflow), calls (x1/x5 links), traps
+    (ECALL + illegal, MRET, mstatus after two returns), interrupt (timer interrupt into a spin
+    loop, MMIO store/load at head exactly once), debugDret (halt request -> code at
+    debugEntryAddr -> DRET -> resume at dpc), fences (FENCE / FENCE.I / WFI). Red: 9 PENDING on
+    a typed-IO BackendTop without vertices. 8 wiring mutants (Rename without wakeup, LSQ
+    without RecoveryEvent, DecodePrivView tied to zero, interrupt lines / debug request /
+    CommitGrant cut, StoreBufferEmpty forced true, RobStatus to the LSQ cut) all red; the
+    StoreBufferEmpty mutant first survived and the interrupt program now checks, with slow
+    drains, that the MMIO store waits for an older committed store to reach memory.
 
 ## Validation status (run this session)
 
@@ -366,7 +382,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 101/101 PASS after ADR-019E (94/94 after RTL block 12 (adds 1 CommitUnit
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 136/136 PASS after RTL block 16 (101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
@@ -461,8 +477,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
    ADR-019D order: CommitUnit serialize-head sampling fix, CsrController, TrapController,
-   CSR/Trap integration, ADR-019E (all done) -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
-   during implementation are reported to the owner, not fixed in the frozen spec.
+   CSR/Trap integration, ADR-019E, LSQ, StoreBuffer, DecodeUnit, BackendTop wiring - all
+   done; the whole backend runs RV32IM_Zicsr programs end to end in L1. Next: the frontend
+   (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer), the MMU (ITLB/DTLB/PTW), the VIPT
+   caches and bus adapters, then CoreTop wiring and the CoreHarness binding so the ADR-019
+   .scn tests leave harness-not-ready. Spec ambiguities found during implementation are
+   reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
    binding) -> RS/Dispatch/PublishMux/PRF/FU wrappers -> LSQ/StoreBuffer -> DataCache +

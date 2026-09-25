@@ -56,9 +56,11 @@ protected-file waivers, RV64 decode scheduling. Record them in
 
 ## Current State (calibrate before promising results)
 
-- **ADR-019 spec phase**: the new architecture exists as spec DSL contracts; CoreTop and
-  every ADR-019 vertex are design shells (`???` placeholders, deliberately). DUT-facing
-  verif commands answer `harness-not-ready` (exit 3) - the designed PENDING color of the
+- **ADR-019 RTL phase**: the spec DSL contracts (242feaf + errata ADR-019A..E) are law. The
+  whole backend (BackendTop and every backend vertex) is implemented and runs RV32IM_Zicsr
+  programs end to end in L1 SpecTests; the frontend, MMU, caches, bus adapters, and CoreTop
+  are still design shells (`???` placeholders, deliberately). DUT-facing verif commands
+  answer `harness-not-ready` (exit 3) until CoreTop lands - the designed PENDING color of the
   ADR-019 `.scn` red tests, not a failure. The RTL fill-in order is in `document/HANDOFF.md`.
 - **Implemented and elaborating today**: the external functional units (Alu, Multiplier,
   Divider, BitAlu), BootSequencer, the CSR decorator library (`common/system/csr`),
