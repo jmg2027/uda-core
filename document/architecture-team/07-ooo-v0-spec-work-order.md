@@ -269,6 +269,12 @@ Branch:
 - mismatch detection against prediction metadata;
 - execute-time RecoveryEvent generation.
 
+Recovery merge:
+- an older commit-head architectural redirect (trap/interrupt/xRET/debug/system
+  serialization as applicable) wins over a same-cycle execute branch recovery;
+- v0 selects at most one branch RecoveryEvent producer per cycle;
+- every consumer sees the same selected recovery identity.
+
 Commit:
 - in-order architectural update;
 - rRAT update and old-PRD free;
@@ -379,6 +385,7 @@ The spec authoring change must remove normative references that claim:
 - branch redirect waits for commit head;
 - global epoch mismatch is the universal speculative kill condition;
 - no ROB exists;
+- N=1 degeneracy is a product requirement for the new core;
 - D-cache presence necessarily enables TL-C;
 - the base L1 cache is PIPT.
 
