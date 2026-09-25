@@ -73,6 +73,8 @@ object CommitUnitSpecTests {
       tok: Option[Tok], prfReq: Option[Int]
   ) {
     def anyProjection: Boolean = rcV || scV || ftqV || grantV
+    /** A view actually transferred (CommitGrant has no ready: its valid is its transfer). */
+    def anyViewFire: Boolean = rcF || scF || ftqF || grantV
     def excSource: Int = exc._1
   }
 
@@ -148,7 +150,7 @@ object CommitUnitSpecTests {
         val prd = q.bits.prd.peek().litValue.toInt
         if (qv) prfReq = Some(prd)
         a.valid.poke(qv.B)
-        a.bits.data.poke((if (qv) prf(prd) else 0L).U)
+        a.bits.data.poke((if (qv) prf(prd) else 0xbad0bad0L).U)
         io.retireStreamOut.get.ready.poke(tokenReady.B)
       }
       def b(x: Bool) = x.peek().litToBoolean
@@ -314,6 +316,8 @@ object CommitUnitSpecTests {
           "CsrWrite: RenameCommit, CommitGrant, retire token, and ExceptionOut{SysOp, CsrWrite} in one cycle", s"$fin"),
         chk(held.forall(o => !o.headFire && !o.anyProjection && !o.excV), "after the hand-off nothing commits (trapPending)", s"$held"),
         chk(after.headFire && after.headS.contains(1), "the matching ArchRedirect releases the hold", s"$after"),
+        chk(!mret.grantV && !sret.grantV && !pf.grantV && !w(0).grantV && fin.grantV,
+          "CommitGrant accompanies only CSR uops (not xRET, WFI, or predictionFault)", s"$mret $sret $pf ${w(0)}"),
         chk(mret.headFire && mret.excF && mret.excSource == SYSOP && mret.exc._3 == code(SysOp.Mret) && mret.tok.exists(_.priv == 3),
           "MRET retires with ExceptionOut{SysOp, Mret}; its token carries the pre-xRET privilege", s"$mret"),
         chk(sret.headFire && sret.excF && sret.exc._3 == code(SysOp.Sret) && sret.tok.exists(_.priv == 0),
@@ -352,6 +356,7 @@ object CommitUnitSpecTests {
       val sDrainResp = first(s, _.drRespF); val sFlush = first(s, _.sfF); val sRet = first(s, _.headFire)
       Seq(
         chk(f1.count(_.drF) == 1 && !f1.exists(_.headFire), "FENCE requests one drain and waits for its completion", s"$f1"),
+        chk(!(f ++ i ++ s).exists(_.grantV), "no CommitGrant for FENCE, FENCE.I, or SFENCE.VMA", ""),
         chk(f2.exists(o => o.headFire && o.headS.contains(0) && !o.excV) && f2.exists(_.headS.contains(1)),
           "after the drain FENCE retires without a redirect and the next head follows", s"$f2"),
         chk(iDrain >= 0 && iDrain < iDrainResp && iDrainResp <= iClean && iClean < iCleanResp && iCleanResp <= iInv && iInv <= iRet,
@@ -500,8 +505,9 @@ object CommitUnitSpecTests {
   val retireStream = new SpecTest("commit.retireStream", Seq("funcRetireStreamEmit")) {
     def run(): Seq[TCheck] = {
       val live = withDrv(this) { d =>
-        d.prf = p => 0x5000L + p
-        d.rob ++= Seq(HE(0, pc = 0x100, insn = 0x00a00293, rd = 5, newPrd = 32, oldPrd = 5), HE(1, pc = 0x104), HE(2, pc = 0x108, rd = 0),
+        d.prf = p => 0x5000L + 3 * p
+        d.rob ++= Seq(HE(0, pc = 0x100, insn = 0x00a00293, rd = 5, newPrd = 32, oldPrd = 5), HE(1, pc = 0x104, newPrd = 37),
+          HE(2, pc = 0x108, rd = 0, newPrd = 38),
           HE(3, pc = 0x10c, rd = 6, newPrd = 33, oldPrd = 6).withExc(2))
         d.priv = 1
         val os = d.run(4)
@@ -513,14 +519,14 @@ object CommitUnitSpecTests {
         val toks = (os ++ Seq(it, last)).flatMap(_.tok)
         Seq(
           chk(toks.map(_.order) == (0L until toks.size.toLong), "order increases by one per observation event", s"${toks.map(_.order)}"),
-          chk(os(0).prfReq.contains(32) && os(0).tok.exists(t => t.wen && t.wdata == 0x5020 && t.rd == 5 && t.insn == 0x00a00293 && t.priv == 1),
+          chk(os(0).prfReq.contains(32) && os(0).tok.exists(t => t.wen && t.wdata == 0x5060 && t.rd == 5 && t.insn == 0x00a00293 && t.priv == 1),
             "a retirement reads its newPrd in the retire cycle; wdata, rd, insn, priv", s"${os(0)}"),
           chk(os(1).prfReq.isEmpty && os(1).tok.exists(t => !t.wen && t.wdata == 0) && os(2).tok.exists(t => !t.wen && t.wdata == 0),
             "no read and wdata 0 without a destination (wen = 0)", s"${os(1)} ${os(2)}"),
           chk(os(3).prfReq.isEmpty && os(3).tok.exists(t => t.trap && !t.wen && t.source == SYNC && t.pc == 0x10c),
             "a trap entry is an event without a register write", s"${os(3)}"),
           chk(it.tok.exists(t => t.trap && t.source == INTR && t.priv == 3), "interrupt entry is an event", s"$it"),
-          chk(last.tok.exists(t => t.pc == 0x200 && !t.trap && t.wdata == 0x5023), "the re-executed head retires normally", s"$last")
+          chk(last.tok.exists(t => t.pc == 0x200 && !t.trap && t.wdata == 0x5000 + 3 * 35), "the re-executed head retires normally", s"$last")
         )
       }
       // Structure: at usingRvvi = false no port, read, mux, register, or counter exists.
@@ -597,11 +603,12 @@ object CommitUnitSpecTests {
       }
       if (o.mgF) { grants += 1; d.rob.headOption.foreach(h => pendingDone += ((h, 1 + rnd.nextInt(3), rnd.nextInt(4) == 0))) }
       if (held && (o.headFire || o.anyProjection || o.excV || o.mgV)) bad :+= s"step $step: activity during hold $o"
-      if (o.anyProjection && !(o.headFire && o.headS.nonEmpty)) bad :+= s"step $step: view without retirement $o"
+      if (o.anyViewFire && !(o.headFire && o.headS.nonEmpty)) bad :+= s"step $step: view without retirement $o"
       if (o.headFire) {
         val s = o.headS.get
         if (s != expect) bad :+= s"step $step: retired/handed s$s expected s$expect"
         if (o.excF && o.excSource == SYNC) { traps += 1; if (o.anyProjection) bad :+= s"step $step: views on a trap $o" }
+        else if (!o.rcF) bad :+= s"step $step: retirement without RenameCommit $o"
         else { retired += 1; expect = s + 1 }
       }
       if (o.excF) {

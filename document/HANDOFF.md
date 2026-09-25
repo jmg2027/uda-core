@@ -144,6 +144,22 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
      a collision (ArchRedirectWins); plus request-cause legality.
    - Mutation controls (7) all red; four of them stopped by the property asserts, and the
      registered-publish mutant too once the asserts read the output port.
+11. ADR-019B (v0 Erratum 02, owner ruling) on top of 242feaf + ADR-019A: RecoveryCause.Debug
+    (7); v0 WFI is a serializing NOP; usingRvvi-only CommitPrfReadReq/Resp between the
+    CommitUnit and the PRF (new BackendTop edges); RetireToken.priv is the executing
+    privilege (InterruptCtrl.priv); trap-entry tokens are observation events, not
+    retirements; retiring redirects are atomic with their ExceptionOut.
+12. RTL block 4 - CommitUnit:
+   - L1 SpecTests `verif/suites/spectest/CommitUnitSpecTests.scala` (13 tests) bind every
+     CommitUnit FUNCTION (incl. funcRetireStreamEmit) and propCommitInOrder,
+     propNoCommitPastException, propTrapHoldUntilRedirect, propRetireNonBlocking;
+     PENDING x13 against the typed-IO shell (commit 2dcbb40).
+   - RTL: priority interrupt/debug (latched once offered) > precise trap hand-off >
+     HeadMemGrant > maintenance step > atomic retirement; FENCE/FENCE.I/SFENCE.VMA
+     sequencer; trapPending released only by the matching ArchRedirect; retire stream,
+     commit PRF read, and the 64-bit order counter exist only when usingRvvi.
+   - CSR uops are recognized as serialize && sysOp in {None, CsrWrite} (the ROB entry has
+     no fuType); SfenceVma operands are not available at commit (TlbFlush valid bits 0).
 
 ## Validation status (run this session)
 
@@ -154,20 +170,24 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 31/31 PASS (6 pre-existing + 2 params +
-  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController) after RTL block 3.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 44/44 PASS (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 13 CommitUnit)
+  after RTL block 4.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 54 names (funcRobOlder bound by rob.order, propArchRedirectWins by rc.archWins) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 52 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
+  propRetireNonBlocking, funcHeadMemGrant) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
 - spec-check-allow: 63 PROPERTYs (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
-  propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins; now 61) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
+  propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
+  propRetireNonBlocking; now 57) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -206,8 +226,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-1. Spec frozen at 242feaf + ADR-019A; RenameUnit, ReorderBuffer, RecoveryController RTL
-   are green. Next: CommitUnit, red-first. RenameUnit spec ambiguities found
+1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
+   RecoveryController, CommitUnit RTL are green. Next (HANDOFF step 2 order): RS /
+   Dispatch / PublishMux / PRF / FU wrappers, then TrapController/CsrController so the
+   commit path closes, each red-first. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

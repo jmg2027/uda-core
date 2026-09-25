@@ -37,18 +37,14 @@ propPredictFromPcOnly
 propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
-propTrapHoldUntilRedirect
 propBranchCompletesOnce
 propCheckpointRestoreExact
-propCommitInOrder
 propDisabledExtensionTraps
-propNoCommitPastException
 propNoCompressedDecode
 propNoSpeculativeCsrWrite
 propPreciseCommit
 propPrfPortsFixed
 propRecoveryOnlyOnMispredict
-propRetireNonBlocking
 propRobTagConsecutive
 propRsIssueOnlyReady
 propRsRecoveryKeepsOlder
