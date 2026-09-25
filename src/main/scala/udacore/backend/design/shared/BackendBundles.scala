@@ -66,24 +66,24 @@ object FuType {
 }
 
 /** Unit-local operation code carried opaquely from DecodeUnit to the unit named
-  * by fuType; RenameUnit never interprets it. For fuType System the "unit" is the
-  * commit head, and op carries the SysOp code (see SysOp). */
+  * by fuType; RenameUnit and the ROB never interpret it, and it never carries
+  * commit-time semantics (ADR-019A E-2). */
 object UopOp {
   val width = 5
 }
 
-/** Commit-head system behavior recorded in the ROB entry (bndRobEntry.sysOp). DecodeUnit
-  * sets it (funcSerializingTag); it travels in DecodedUop.op for fuType System uops, and
-  * every fuType Csr uop is Csr (the commit-side refetch rule for CSR writes applies). */
+/** Commit-time system semantics (bndDecodedUop.sysOp / bndRobEntry.sysOp, ADR-019A E-2),
+  * classified by DecodeUnit (SystemOpDecode) and carried unchanged to the ROB entry. */
 object SysOp {
   val width     = 3
   val None      = 0.U(width.W)
-  val XRet      = 1.U(width.W)
-  val Fence     = 2.U(width.W)
-  val FenceI    = 3.U(width.W)
-  val SfenceVma = 4.U(width.W)
-  val Wfi       = 5.U(width.W)
-  val Csr       = 6.U(width.W)
+  val Fence     = 1.U(width.W)
+  val FenceI    = 2.U(width.W)
+  val SfenceVma = 3.U(width.W)
+  val Wfi       = 4.U(width.W)
+  val Mret      = 5.U(width.W)
+  val Sret      = 6.U(width.W)
+  val CsrWrite  = 7.U(width.W)
 }
 
 // ---- Ordering and recovery identity ----------------------------------------
@@ -179,6 +179,7 @@ class DecodedUop(val params: BackendParams) extends BackendBundle {
   val isLoad          = Bool()
   val isStore         = Bool()
   val serialize       = Bool()
+  val sysOp           = UInt(SysOp.width.W)
   val prediction      = new PredictionView(params)
   val predictionFault = Bool()
   val exception       = new ExceptionInfo(params)

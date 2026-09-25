@@ -27,6 +27,11 @@ VIPT L1 caches, and Sv32 ITLB/DTLB/PTW.
 ADR-011 remains historical rationale for why the old single-global-epoch machine
 required commit-head redirect. Do not apply that constraint to ADR-019 work.
 
+ADR-019 is amended by **ADR-019A (v0 Erratum 01)**: RS allocation only for uops that need
+execution, an explicit `sysOp` in the decoded uop, RobStatus timing, the domain of
+`funcRobOlder`, and same-cycle commit/ArchRedirect ordering. The `242feaf` freeze is the
+baseline; ADR-019A is applied on top of it.
+
 ### ADR-019 spec migration record (Work Order 07)
 
 - The position papers and critiques these ADRs were synthesized from
@@ -85,6 +90,7 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
 | [017](ADR-017-extension-contribution.md) | Extension contribution convention (Feature pattern re-based on UDA) | accepted | owner directive 2026-07-06; imports main xxxFeature lessons |
 | [018](ADR-018-spec-tdd.md) | Spec-TDD: every spec object bound to a test, red before green | accepted | owner directive 2026-07-06; extends ADR-015 enforcement |
 | [019](ADR-019-conventional-ooo-root-architecture.md) | Conventional OoO root architecture | **accepted (current root)** | owner directive 2026-09-25; supersedes epoch/predecode/ROB-less base where stated |
+| [019A](ADR-019A-v0-erratum-01.md) | ADR-019 v0 erratum 01 (RS allocation set, sysOp, recovery ordering) | **accepted** | owner ruling 2026-09-25; amends 019 on top of the 242feaf freeze |
 
 ## Status of pre-ADR-019 proposed experiments
 

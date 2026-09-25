@@ -31,9 +31,11 @@ class FreeListPtr(slots: Int) extends Bundle {
   * funcBranchRecoveryRestore and funcArchRecoveryRestore below; rRAT, archHead,
   * and the tail are committed state and survive every RecoveryEvent.
   *
-  * Fork (funcAllocateAtomic): each output's valid is the conjunction of the
-  * rename condition and the OTHER outputs' ready, never its own, so all offered
-  * tokens fire in the same cycle and no output fires alone.
+  * Fork (funcAllocateAtomic, ADR-019A E-1): the required set is the ROB always, the RS
+  * when needsRs, the LSQ when needsLsq. Each required output's valid is the conjunction
+  * of the rename condition and the OTHER required outputs' ready, never its own, so all
+  * required tokens fire in the same cycle; an output that is not required never raises
+  * valid and its ready is ignored.
   */
 @LocalSpec(contRenameUnit)
 class RenameUnit(val params: BackendParams) extends BackendModule {
@@ -136,13 +138,19 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   private val canGo =
     laneValid && (!hasDest || !freeEmpty) && (!uop.isCfi || ckAvail) && serializeGate && !ev.valid
 
+  // ADR-019A E-1: the required destination set. Execution-free uops (a fetch/decode
+  // exception, or fuType System) are ROB-only.
+  private val needsRs  = !uop.exception.valid && uop.fuType =/= FuType.System
+  private val needsLsq = needsRs && isMem
+
   @LocalSpec(funcAllocateAtomic)
   val allocateAtomic: Bool = {
-    val lsqOk = !isMem || io.lsqAllocOut.ready
-    io.robAllocOut.valid := canGo && io.rsAllocOut.ready && lsqOk
-    io.rsAllocOut.valid  := canGo && io.robAllocOut.ready && lsqOk
-    io.lsqAllocOut.valid := canGo && isMem && io.robAllocOut.ready && io.rsAllocOut.ready
-    canGo && io.robAllocOut.ready && io.rsAllocOut.ready && lsqOk
+    val rsOk  = !needsRs || io.rsAllocOut.ready
+    val lsqOk = !needsLsq || io.lsqAllocOut.ready
+    io.robAllocOut.valid := canGo && rsOk && lsqOk
+    io.rsAllocOut.valid  := canGo && needsRs && io.robAllocOut.ready && lsqOk
+    io.lsqAllocOut.valid := canGo && needsLsq && io.robAllocOut.ready && rsOk
+    canGo && io.robAllocOut.ready && rsOk && lsqOk
   }
   private val fire = allocateAtomic
 

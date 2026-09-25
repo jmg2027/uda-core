@@ -204,11 +204,12 @@ object CommitUnitSpecs {
     FUNCTION("CommitHead")
       .desc(
         "A presented head that is done (never one with headExecute && !done), with no " +
-        "exception, no pending interrupt, no sysOp, and no predictionFault retires when all of its views are ready in the same cycle: " +
+        "exception, no pending interrupt, sysOp None, and no predictionFault retires when all of its views are ready in the same cycle: " +
         "RenameCommit always; StoreCommit if isStore; FtqCommit if blockEnd; CommitGrant if a " +
         "CSR uop; the retire token when usingRvvi. Otherwise the head waits."
       )
       .uses(intfRobHeadIn, intfRenameCommitOut, intfStoreCommitOut, intfFtqCommitOut, intfCommitGrantOut)
+      .note("ADR-019A E-2: a read-only CSR uop has sysOp None and retires here with its CommitGrant; a CsrWrite follows SystemOpSequencing.")
       .build()
   }
 
@@ -291,12 +292,13 @@ object CommitUnitSpecs {
         "For a head with sysOp: FENCE drains the StoreBuffer, then retires. FENCE.I drains the " +
         "StoreBuffer, cleans the D-cache, invalidates the I-cache, retires, and sends " +
         "Exception{SysOp, Refetch}. SFENCE.VMA drains the StoreBuffer, sends the TLB flush, " +
-        "retires, and sends Refetch. A retiring CSR write, and a predictionFault uop, retire " +
-        "and send Refetch. MRET/SRET retire and send XRet. WFI retires and waits for a pending " +
+        "retires, and sends Refetch. A retiring CsrWrite, and a predictionFault uop, retire " +
+        "and send Refetch. Mret/Sret retire and send XRet. WFI retires and waits for a pending " +
         "interrupt (or debug request) before the next head is offered."
       )
       .uses(intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfICacheInvalidateOut,
             intfDCacheCleanReqOut, intfDCacheCleanRespIn, intfSfenceVmaOut, intfExceptionOut)
+      .note("ADR-019A E-2/E-5: sysOp names Mret/Sret/CsrWrite; each of these retiring redirects commits before (or in the cycle of) its ArchRedirect.")
       .note("SFENCE.VMA drains committed stores first so a page-table store is visible to the next walk; v0 flushes every TLB entry for every encoding (ADR-019 D-19.6).")
       .build()
   }

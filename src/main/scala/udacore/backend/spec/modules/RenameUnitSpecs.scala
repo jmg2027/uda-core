@@ -81,7 +81,7 @@ object RenameUnitSpecs {
 
   val intfRsAllocOut = spec {
     INTERFACE("RsAllocOut")
-      .desc("Allocation token to the ReservationStation; not ready when the RS is full.")
+      .desc("Allocation token to the ReservationStation for uops that need execution (needsRs, ADR-019A E-1); not ready when the RS is full.")
       .uses(bndRenameAllocation)
       .is(rawReadyValidIntf)
       .build()
@@ -89,7 +89,7 @@ object RenameUnitSpecs {
 
   val intfLsqAllocOut = spec {
     INTERFACE("LsqAllocOut")
-      .desc("LQ/SQ allocation to the LoadStoreQueue for loads and stores; not ready when the target queue is full.")
+      .desc("LQ/SQ allocation to the LoadStoreQueue for loads and stores that need execution (needsLsq, ADR-019A E-1); not ready when the target queue is full.")
       .uses(bndLsqAllocation)
       .is(rawReadyValidIntf)
       .build()
@@ -97,7 +97,7 @@ object RenameUnitSpecs {
 
   val intfRenameCommitIn = spec {
     INTERFACE("RenameCommitIn")
-      .desc("RenameCommit view of the commit broadcast: {archRd, newPrd, oldPrd, hasDest, checkpointId} in program order.")
+      .desc("RenameCommit view of the commit broadcast: {archRd, newPrd, oldPrd, hasDest} in program order.")
       .uses(bndCommitBroadcast)
       .is(rawReadyValidIntf)
       .build()
@@ -202,11 +202,15 @@ object RenameUnitSpecs {
   val funcAllocateAtomic = spec {
     FUNCTION("AllocateAtomic")
       .desc(
-        "A uop is renamed only in a cycle where RobAllocOut, RsAllocOut, and (for memory uops) " +
-        "LsqAllocOut are all ready and a destination and (for CFIs) a checkpoint are " +
-        "available; then all its allocations happen in that cycle and all offered tokens fire " +
-        "together. Otherwise nothing is allocated."
+        "A uop's required destination set is RobAllocOut always, RsAllocOut when needsRs = " +
+        "!exception.valid && fuType != System, and LsqAllocOut when needsLsq = needsRs && " +
+        "(isLoad || isStore). A uop is renamed only in a cycle where every required output is " +
+        "ready and a destination and (for CFIs) a checkpoint are available; then all its " +
+        "allocations happen in that cycle and all required tokens fire together. An output " +
+        "that is not required never raises valid and its ready never blocks rename. " +
+        "Otherwise nothing is allocated."
       )
+      .note("ADR-019A E-1: execution-free uops (fetch/decode exception, fuType System) are ROB-only; predictionFault uops execute normally.")
       .uses(intfRobAllocOut, intfRsAllocOut, intfLsqAllocOut)
       .build()
   }
@@ -252,6 +256,12 @@ object RenameUnitSpecs {
       )
       .uses(intfRecoveryEventIn)
       .note("ADR-019 D-19.8: the architectural full-recovery source is the rRAT (ADR-001 retained for this case only).")
+      .note(
+        "ADR-019A E-5: a retiring redirect (XRET, FENCE.I/SFENCE.VMA/CsrWrite/predictionFault " +
+        "Refetch) commits first - the restore uses the rRAT and architectural head including a " +
+        "same-cycle RenameCommit. A non-retiring redirect (trap, interrupt, debug) has no " +
+        "RenameCommit for the head and restores from the committed rRAT and head."
+      )
       .build()
   }
 

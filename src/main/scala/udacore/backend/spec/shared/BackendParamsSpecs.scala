@@ -195,6 +195,12 @@ object BackendParamsSpecs {
         "than every live uop by construction and need no age compare) or when a RecoveryEvent " +
         "kills it. A naive unsigned '<' on tags is forbidden."
       )
+      .note(
+        "Domain (ADR-019A E-4): both arguments are live tags inside one live window of at most " +
+        "RobDepth entries. robOlder is never applied to a tail sentinel or used for " +
+        "full-window membership; those use the head-relative modular distance of the " +
+        "{wrap, idx} counter: (t - head) mod 2*RobDepth < (tail - head) mod 2*RobDepth."
+      )
       .build()
   }
 

@@ -3,7 +3,7 @@ package verif.spectest
 import chisel3._
 import chisel3.simulator.CachedSimulator._
 import udacore.backend.design.modules.RenameUnit
-import udacore.backend.design.shared.{BackendParams, FuType, RecoveryKind}
+import udacore.backend.design.shared.{BackendParams, FuType, RecoveryKind, SysOp}
 
 /** L1 SpecTests for the ADR-019 RenameUnit (ADR-018 Spec-TDD; frozen spec 242feaf).
   *
@@ -36,7 +36,12 @@ object RenameUnitSpecTests {
       load: Boolean = false,
       store: Boolean = false,
       serialize: Boolean = false,
-      insn: Long = 0x13L
+      insn: Long = 0x13L,
+      system: Boolean = false,          // fuType System (execution-free, ADR-019A E-1)
+      csr: Boolean = false,             // fuType Csr (executes through the RS)
+      exc: Boolean = false,             // fetch/decode exception (execution-free)
+      predFault: Boolean = false,       // not an exception: executes normally
+      sysOp: UInt = SysOp.None
   )
 
   /** One observed allocation token (RobAllocOut payload). */
@@ -48,7 +53,8 @@ object RenameUnitSpecTests {
       hasDest: Boolean,
       newPrd: Int,
       oldPrd: Int,
-      ckpt: Int
+      ckpt: Int,
+      prs1Ready: Boolean = true
   ) {
     def tag: (Boolean, Int) = (wrap, idx)
   }
@@ -75,7 +81,9 @@ object RenameUnitSpecTests {
       b.valid.poke(true.B)
       b.uop.pc.poke((0x1000 + 4 * l).U)
       b.uop.insn.poke(u.insn.U)
-      val fu = if (u.cfi) FuType.Branch else if (u.load || u.store) FuType.Mem else FuType.Alu
+      val fu =
+        if (u.system) FuType.System else if (u.csr) FuType.Csr else if (u.cfi) FuType.Branch
+        else if (u.load || u.store) FuType.Mem else FuType.Alu
       b.uop.fuType.poke(fu)
       b.uop.op.poke(0.U)
       b.uop.rd.poke(u.rd.U)
@@ -86,8 +94,10 @@ object RenameUnitSpecTests {
       b.uop.isLoad.poke(u.load.B)
       b.uop.isStore.poke(u.store.B)
       b.uop.serialize.poke(u.serialize.B)
-      b.uop.predictionFault.poke(false.B)
-      b.uop.exception.valid.poke(false.B)
+      b.uop.sysOp.poke(u.sysOp)
+      b.uop.predictionFault.poke(u.predFault.B)
+      b.uop.exception.valid.poke(u.exc.B)
+      b.uop.exception.cause.poke((if (u.exc) 2 else 0).U)
     }
 
     /** Read the RobAllocOut token of this cycle (valid && ready = fired). */
@@ -103,7 +113,8 @@ object RenameUnitSpecTests {
           b.hasDest.peek().litToBoolean,
           b.newPrd.peek().litValue.toInt,
           b.oldPrd.peek().litValue.toInt,
-          b.checkpointId.id.peek().litValue.toInt
+          b.checkpointId.id.peek().litValue.toInt,
+          b.prs1Ready.peek().litToBoolean
         ))
       } else None
     }
@@ -187,6 +198,44 @@ object RenameUnitSpecTests {
       event(RecoveryKind.ArchRedirect, 0, tag)
       dut.clock.step()
       idle()
+    }
+
+    /** A retiring redirect: the head's RenameCommit and its ArchRedirect in one cycle. */
+    def archRedirectWithCommit(tag: (Boolean, Int), archRd: Int, newPrd: Int, oldPrd: Int): Unit = {
+      io.renameCommitIn.valid.poke(true.B)
+      io.renameCommitIn.bits.archRd.poke(archRd.U)
+      io.renameCommitIn.bits.newPrd.poke(newPrd.U)
+      io.renameCommitIn.bits.oldPrd.poke(oldPrd.U)
+      io.renameCommitIn.bits.hasDest.poke(true.B)
+      event(RecoveryKind.ArchRedirect, 0, tag)
+      dut.clock.step()
+      idle()
+    }
+
+    /** Per-cycle fork observation: (RobAllocOut fired, RsAllocOut.valid, LsqAllocOut.valid). */
+    case class Fork(rob: Boolean, rsValid: Boolean, lsqValid: Boolean, robValid: Boolean)
+
+    /** Offer one uop with the given sink readiness; observe the fork every cycle. */
+    def offerFork(u: U, robReady: Boolean, rsReady: Boolean, lsqReady: Boolean, maxCycles: Int = 3): (Seq[Fork], Boolean) = {
+      io.decodedPacketIn.valid.poke(true.B)
+      pokeLane(0, u)
+      for (l <- 1 until p.decodeWidth) io.decodedPacketIn.bits.lanes(l).valid.poke(false.B)
+      io.robAllocOut.ready.poke(robReady.B)
+      io.rsAllocOut.ready.poke(rsReady.B)
+      io.lsqAllocOut.ready.poke(lsqReady.B)
+      var obs      = Seq.empty[Fork]
+      var consumed = false
+      var n        = 0
+      while (!consumed && n < maxCycles) {
+        val rv = io.robAllocOut.valid.peek().litToBoolean
+        obs :+= Fork(rv && robReady, io.rsAllocOut.valid.peek().litToBoolean,
+          io.lsqAllocOut.valid.peek().litToBoolean, rv)
+        consumed = io.decodedPacketIn.ready.peek().litToBoolean
+        dut.clock.step()
+        n += 1
+      }
+      idle()
+      (obs, consumed)
     }
   }
 
@@ -348,6 +397,84 @@ object RenameUnitSpecTests {
     }
   }
 
+  // ---- funcAllocateAtomic (ADR-019A E-1) ---------------------------------------
+
+  val allocateAtomic = new SpecTest("rename.allocateAtomic", Seq("funcAllocateAtomic")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      // Execution-free uops, repeated past the RS depth, with the RS and LSQ never ready.
+      val free = Seq(
+        U(system = true, serialize = true, sysOp = SysOp.Fence),
+        U(exc = true, rd = 3),
+        U(exc = true, load = true, rd = 4),
+        U(system = true, serialize = true, sysOp = SysOp.Mret)
+      )
+      val runs = (0 until 3 * p.tuning.integerRsEntries).map(i => d.offerFork(free(i % free.size), true, false, false))
+      // Uops that need the RS (including CSR and predictionFault) wait for it.
+      val alu  = d.offerFork(U(rd = 5), true, false, true)
+      val csr  = d.offerFork(U(csr = true, serialize = true, sysOp = SysOp.CsrWrite), true, false, true)
+      val pf   = d.offerFork(U(rd = 6, predFault = true), true, false, true)
+      // A memory uop needs the LSQ too; with it not ready nothing fires (no partial fork).
+      val ld   = d.offerFork(U(rd = 7, load = true), true, true, false)
+      val ldGo = d.offerFork(U(rd = 7, load = true), true, true, true)
+      // The ROB is always required.
+      val noRob = d.offerFork(U(system = true, serialize = true, sysOp = SysOp.Wfi), false, true, true)
+      val (free2, _) = d.offerFork(U(system = true, serialize = true, sysOp = SysOp.Wfi), true, true, true)
+      val allObs = runs.flatMap(_._1)
+      def blocked(r: (Seq[d.Fork], Boolean)) = !r._2 && r._1.forall(f => !f.rob && !f.robValid)
+      Seq(
+        chk(runs.forall(_._2) && runs.forall(_._1.exists(_.rob)),
+          "execution-free uops (System, fetch/decode exception) rename with the RS and LSQ not ready",
+          s"${runs.map(_._2)}"),
+        chk(!allObs.exists(f => f.rsValid || f.lsqValid),
+          "an execution-free uop never raises RsAllocOut or LsqAllocOut valid", s"${allObs.filter(f => f.rsValid || f.lsqValid)}"),
+        chk(blocked(alu) && !alu._1.exists(_.lsqValid), "an ALU uop waits for the RS; nothing fires", s"$alu"),
+        chk(blocked(csr), "a CSR uop needs the RS (it executes there)", s"$csr"),
+        chk(blocked(pf), "a predictionFault uop is not execution-free: it needs the RS", s"$pf"),
+        chk(blocked(ld) && !ld._1.exists(_.rsValid), "a load waits for the LSQ; RS valid stays low (no partial fork)", s"$ld"),
+        chk(ldGo._2 && ldGo._1.last.rob && ldGo._1.last.rsValid && ldGo._1.last.lsqValid,
+          "with all three ready a load fires ROB, RS, and LSQ together", s"$ldGo"),
+        // RobAllocOut.valid may stay high while the ROB is not ready (valid never depends on
+        // its own ready); what matters is that nothing transfers.
+        chk(!noRob._2 && !noRob._1.exists(f => f.rob || f.rsValid || f.lsqValid),
+          "the ROB is always required", s"$noRob"),
+        chk(free2.exists(f => f.rob && !f.rsValid && !f.lsqValid),
+          "an execution-free uop offers no RS/LSQ token even when they are ready", s"$free2")
+      )
+    }
+  }
+
+  // ---- funcArchRecoveryRestore (ADR-019A E-5) -----------------------------------
+
+  val archRecovery = new SpecTest("rename.archRecovery", Seq("funcArchRecoveryRestore")) {
+    def run(): Seq[TCheck] = {
+      val retiring = withDrv(this) { d =>
+        // x5 -> p32 by a uop that retires and redirects in the same cycle (e.g. a CsrWrite).
+        val a = d.renameAll(Seq(U(rd = 5))).head
+        d.renameAll(Seq(U(rd = 5))) // wrong-path younger writer, discarded
+        d.archRedirectWithCommit(a.tag, 5, a.newPrd, a.oldPrd)
+        val r = d.renameAll(Seq(U(rd = 6, rs1 = 5))).head
+        Seq(
+          chk(r.prs1 == a.newPrd, "a retiring redirect restores sRAT from rRAT including its same-cycle commit", s"$r a=$a"),
+          chk(r.prs1Ready, "every prd the restored map names is ready (its producer never woke it)", s"$r"),
+          chk(r.newPrd == a.newPrd + 1, "the speculative head restores to the architectural head after the commit", s"$r"),
+          chk(r.idx == (a.idx + 1) % p.robDepth, "the next robTag is e.robTag + 1", s"$r")
+        )
+      }
+      val trapping = withDrv(this) { d =>
+        val a = d.renameAll(Seq(U(rd = 5))).head
+        val b = d.renameAll(Seq(U(rd = 6))).head
+        d.commitOf(a, 5)
+        d.archRedirect(b.tag) // b traps: no RenameCommit for it
+        val r = d.renameAll(Seq(U(rd = 7, rs1 = 5, rs2 = 6))).head
+        Seq(
+          chk(r.prs1 == a.newPrd && r.prs2 == 6, "a non-retiring redirect restores the committed rRAT only", s"$r a=$a b=$b"),
+          chk(r.newPrd == b.newPrd, "the trapping head's destination returns to the free list", s"$r b=$b")
+        )
+      }
+      retiring ++ trapping
+    }
+  }
+
   // ---- propPhysRegConservation ------------------------------------------------
 
   /** Randomized legal history: renames, in-order commits, releases, branch and
@@ -490,5 +617,6 @@ object RenameUnitSpecTests {
   }
 
   val all: Seq[SpecTest] =
-    Seq(renameMap, freeList, checkpoint, checkpointSnapshot, branchRecovery, conservation, checkpointOnce)
+    Seq(renameMap, freeList, checkpoint, checkpointSnapshot, branchRecovery, allocateAtomic, archRecovery,
+      conservation, checkpointOnce)
 }

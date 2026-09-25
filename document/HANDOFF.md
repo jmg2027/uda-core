@@ -123,6 +123,15 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    - Mutation controls (10): 9 turned tests red; the same-cycle-killed-completion filter
      mutant is equivalent (a killed entry's done bit is unobservable and reallocation
      re-initializes the entry).
+9. ADR-019A (v0 Erratum 01, owner ruling) applied on top of the 242feaf freeze:
+   RS/LSQ allocation only for uops that need execution (needsRs = !exception &&
+   fuType != System); explicit DecodedUop.sysOp (None/Fence/FenceI/SfenceVma/Wfi/Mret/
+   Sret/CsrWrite) carried to the ROB; RobStatus is the registered occupancy view;
+   funcRobOlder's domain excludes the tail sentinel; a retiring ArchRedirect restores
+   from rRATNext/archHeadNext, a non-retiring one from the committed state. DSL changes
+   cite ADR-019A. New L1: rename.allocateAtomic, rename.archRecovery, rob.allocate.sysOp,
+   decode.sysOpClassify (SystemOpDecode pins the table ahead of the DecodeUnit RTL);
+   13 mutants all red.
 
 ## Validation status (run this session)
 
@@ -133,8 +142,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 23/23 PASS (6 pre-existing + 2 params +
-  7 RenameUnit + 8 ReorderBuffer) after RTL block 2.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 27/27 PASS (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode) after ADR-019A.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
@@ -166,19 +175,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
-- RenameUnit implementation assumptions awaiting a spec ruling (reported, frozen spec
-  untouched): RobStatus.empty is a same-cycle view that already includes the previous
-  cycle's allocation; a CheckpointRelease whose owner the same-cycle RecoveryEvent kills
-  is ignored; an ArchRedirect restores sRAT from the rRAT including a same-cycle commit;
-  LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings are fixed in
+- Resolved by ADR-019A: RS allocation set, sysOp, RobStatus timing, robOlder domain,
+  commit/ArchRedirect ordering. Still implementation choices (not contradictions):
+  a CheckpointRelease whose owner the same-cycle RecoveryEvent kills is ignored;
+  LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings live in
   BackendBundles.scala; the AllocateAtomic fork needs ROB/RS/LSQ ready independent of valid.
-- ReorderBuffer findings awaiting a spec ruling: bndDecodedUop has no sysOp field although
-  funcSerializingTag sets it and funcRobAllocate copies it (carried in op for System uops);
-  "needs no execution" is not enumerated (implemented as decode exception or fuType
-  System); such uops still receive an RS allocation (funcAllocateAtomic forks every uop)
-  but no execution unit accepts fuType System, so a FENCE would hold an RS entry forever
-  (8 FENCEs deadlock rename) - to be ruled before the RS/Dispatch block.
-
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
 - DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.

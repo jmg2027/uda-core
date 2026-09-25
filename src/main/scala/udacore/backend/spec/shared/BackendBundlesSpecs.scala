@@ -110,12 +110,13 @@ object BackendBundlesSpecs {
           List("pc", "UInt(vAddrWidth)", "Instruction PC (4-byte aligned)."),
           List("insn", "UInt(32)", "Instruction word (retire stream / tval)."),
           List("fuType", "FuType", "Alu | Mul | Div | Branch | Mem | Csr | System."),
-          List("op", "UopOp", "Unit-local operation (ALU/MUL/DIV/branch/load/store/CSR control)."),
+          List("op", "UopOp", "Unit-local operation (ALU/MUL/DIV/branch/load/store/CSR control); never carries commit-time semantics (sysOp does, ADR-019A E-2)."),
           List("rd, rs1, rs2", "UInt(5)", "Architectural registers; rd==x0 means no destination."),
           List("imm", "UInt(XLen)", "Sign-extended immediate."),
           List("isCfi", "Bool", "Control-flow uop: allocates a branch checkpoint at rename."),
           List("isLoad, isStore", "Bool", "Allocates an LQ or SQ entry at rename."),
           List("serialize", "Bool", "CSR/system uop: renamed only into an empty ROB, blocks younger rename until it retires (ADR-004 D-4.2 re-based)."),
+          List("sysOp", "SysOp", "Commit-time system semantics (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite. None for a uop with a fetch/decode exception and for a read-only CSR instruction."),
           List("prediction", "PredictionView", "Frontend prediction for this slot: predictedTaken, predictedTarget, ftqIdx, slot, blockEnd."),
           List("predictionFault", "Bool", "The frontend predicted a taken CFI at this slot but it decodes as a non-CFI."),
           List("exception", "ExceptionInfo", "Fetch-time fault (instruction page/access fault) or illegal instruction, raised precisely at commit.")
@@ -161,7 +162,7 @@ object BackendBundlesSpecs {
           List("ftqIdx, blockEnd", "FtqIdx, Bool", "FTQ reference; blockEnd marks the last committed instruction of its fetch block."),
           List("isLoad, isStore", "Bool", "Memory ordering metadata (SQ commit handoff for stores)."),
           List("headExecute", "Bool", "Uncacheable load/store reported by the LSQ: not done until CommitUnit grants its execution at the head (HeadMemGrant) and the LSQ completes it."),
-          List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior: none | xRET | fence | fence.i | sfence.vma | wfi | csr-with-side-effect."),
+          List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior, copied from uop.sysOp (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite."),
           List("predictionFault", "Bool", "Commit triggers an ArchRedirect(Refetch) to pc+4.")
         )
       )
@@ -202,6 +203,7 @@ object BackendBundlesSpecs {
   val bndRobStatus = spec {
     BUNDLE("RobStatus")
       .desc("Committed-state view of the ROB published every cycle (rawNoDecoupled class 4).")
+      .note("ADR-019A E-3: the current-cycle registered occupancy - an allocation or retirement in cycle t is reflected from cycle t + 1, with no same-cycle lookahead; the one-cycle bubble at a serialization boundary is accepted in v0.")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(

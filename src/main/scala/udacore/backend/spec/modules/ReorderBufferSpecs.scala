@@ -89,9 +89,10 @@ object ReorderBufferSpecs {
     FUNCTION("RobAllocate")
       .desc(
         "Write the entry at robTag.idx from the RenameAllocation: valid, done = false (true " +
-        "for uops that need no execution, e.g. a decode-time exception or FENCE), pc, insn, " +
+        "exactly for execution-free uops: exception.valid || fuType == System, ADR-019A E-1; " +
+        "a predictionFault uop is not execution-free), pc, insn, " +
         "archRd, newPrd, oldPrd, exception from decode, isCfi, checkpointId, ftqIdx, blockEnd, " +
-        "isLoad, isStore, serialize, sysOp, predictionFault. The allocation robTag must equal the tail."
+        "isLoad, isStore, serialize, sysOp (= uop.sysOp), predictionFault. The allocation robTag must equal the tail."
       )
       .uses(intfRobAllocIn)
       .build()

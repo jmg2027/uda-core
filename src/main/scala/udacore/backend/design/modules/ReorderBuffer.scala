@@ -85,8 +85,8 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
     when(al.fire) {
       val u = al.bits.uop
       val e = entriesNext(al.bits.robTag.idx)
-      // Uops that need no execution are done at allocation: a decode-time exception, and
-      // every fuType System uop (performed by CommitUnit at the head).
+      // Execution-free uops (ADR-019A E-1) are done at allocation: a fetch/decode exception,
+      // and every fuType System uop (performed by CommitUnit at the head).
       e.done            := u.exception.valid || u.fuType === FuType.System
       e.pc              := u.pc
       e.insn            := u.insn
@@ -104,8 +104,7 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
       e.isStore         := u.isStore
       e.headExecute     := false.B
       e.serialize       := u.serialize
-      e.sysOp           := Mux(u.fuType === FuType.System, u.op(SysOp.width - 1, 0),
-                             Mux(u.fuType === FuType.Csr, SysOp.Csr, SysOp.None))
+      e.sysOp           := u.sysOp // ADR-019A E-2: explicit, never derived from op
       e.predictionFault := u.predictionFault
       e.valid           := true.B
       validNext(al.bits.robTag.idx) := true.B

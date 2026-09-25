@@ -100,10 +100,15 @@ object DecodeUnitSpecs {
   val funcSerializingTag = spec {
     FUNCTION("SerializingTag")
       .desc(
-        "Set serialize and sysOp for every CSR instruction, MRET, SRET, WFI, FENCE, FENCE.I, " +
-        "and SFENCE.VMA. RenameUnit renames a serialize uop only into an empty ROB and renames " +
+        "Set serialize for every CSR instruction, MRET, SRET, WFI, FENCE, FENCE.I, and " +
+        "SFENCE.VMA, and classify sysOp: Mret, Sret, Wfi, Fence, FenceI, SfenceVma for those " +
+        "(fuType System); CsrWrite for CSRRW/CSRRWI, for CSRRS/CSRRC with rs1 != x0, and for " +
+        "CSRRSI/CSRRCI with zimm != 0 (fuType Csr); None for read-only CSR instructions (which " +
+        "keep serialize), for every other instruction, and for any uop carrying a fetch or " +
+        "decode exception. RenameUnit renames a serialize uop only into an empty ROB and renames " +
         "nothing after it until the ROB is empty again (ADR-004 D-4.2, re-based on the ROB)."
       )
+      .note("ADR-019A E-2: sysOp is an explicit DecodedUop field; op never carries commit semantics.")
       .uses(intfDecodedPacketOut)
       .build()
   }

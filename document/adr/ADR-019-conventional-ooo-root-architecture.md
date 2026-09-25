@@ -1,6 +1,7 @@
 # ADR-019: Conventional OoO Root Architecture
 
 Status: **accepted** (owner directive, 2026-09-25).
+Amended by: ADR-019A (v0 Erratum 01, applied on top of the 242feaf spec freeze).
 
 Supersedes or amends: ADR-001, ADR-002, ADR-003, ADR-005, ADR-006, ADR-007,
 ADR-008, ADR-009, ADR-011, ADR-012, ADR-013, ADR-016. ADR-015/017/018 remain

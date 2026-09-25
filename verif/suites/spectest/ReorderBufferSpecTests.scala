@@ -44,7 +44,8 @@ object ReorderBufferSpecTests {
       predFault: Boolean = false,
       exc: Option[Int] = None,
       ftqIdx: Int = 0,
-      blockEnd: Boolean = false
+      blockEnd: Boolean = false,
+      sysOp: UInt = SysOp.None
   )
 
   /** The observed head (RobHeadOut payload). */
@@ -104,6 +105,7 @@ object ReorderBufferSpecTests {
       a.uop.isLoad.poke(e.load.B)
       a.uop.isStore.poke(e.store.B)
       a.uop.serialize.poke(e.serialize.B)
+      a.uop.sysOp.poke(e.sysOp)
       a.uop.prediction.predictedTaken.poke(false.B)
       a.uop.prediction.predictedTarget.poke(0.U)
       a.uop.prediction.ftqIdx.poke(e.ftqIdx.U)
@@ -243,7 +245,7 @@ object ReorderBufferSpecTests {
       val main = withDrv(this) { d =>
         val st0 = d.status()
         val e0 = E(pc = 0x100, insn = 0x00300193, rd = 3, newPrd = 32, oldPrd = 3, ftqIdx = 5)
-        val e1 = E(pc = 0x104, insn = 0x0ff0000f, fu = FuType.System, op = 2, serialize = true)
+        val e1 = E(pc = 0x104, insn = 0x0ff0000f, fu = FuType.System, serialize = true, sysOp = SysOp.Fence)
         val e2 = E(pc = 0x108, insn = 0x00112023, fu = FuType.Mem, store = true, ftqIdx = 6)
         val e3 = E(pc = 0x10c, insn = 0x0080006f, rd = 1, newPrd = 33, oldPrd = 1, fu = FuType.Branch,
           cfi = true, ckpt = 2, ftqIdx = 6, blockEnd = true, predFault = false)
@@ -288,6 +290,35 @@ object ReorderBufferSpecTests {
         "RobAllocate: allocation robTag is not the tail") { d =>
         d.alloc(0); d.alloc(2)
       }
+    }
+  }
+
+  /** ADR-019A E-1/E-2: sysOp comes from uop.sysOp (never from op), and only exception or
+    * fuType System uops are execution-free. */
+  val allocateSysOp = new SpecTest("rob.allocate.sysOp", Seq("funcRobAllocate")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.alloc(0, E(fu = FuType.Csr, op = 7, serialize = true, sysOp = SysOp.None))     // read-only CSR
+      d.alloc(1, E(fu = FuType.Csr, op = 3, serialize = true, sysOp = SysOp.CsrWrite)) // CSR write
+      d.alloc(2, E(fu = FuType.System, op = 5, serialize = true, sysOp = SysOp.Mret))
+      d.alloc(3, E(rd = 4, predFault = true))
+      d.alloc(4, E(fu = FuType.Mem, load = true, rd = 5, exc = Some(12)))
+      val w0 = d.head(); d.complete(0); val h0 = d.retire()
+      val w1 = d.head(); d.complete(1); val h1 = d.retire()
+      val h2 = d.retire()
+      val w3 = d.head(); d.complete(3); val h3 = d.retire()
+      val h4 = d.head()
+      def code(u: UInt) = u.litValue.toInt
+      Seq(
+        chk(w0.isEmpty && h0.exists(h => h.sysOp == code(SysOp.None) && h.serialize),
+          "a read-only CSR executes (not done at allocation), sysOp None, serialize kept", s"$w0 $h0"),
+        chk(w1.isEmpty && h1.exists(_.sysOp == code(SysOp.CsrWrite)),
+          "a CSR write executes and records sysOp CsrWrite", s"$w1 $h1"),
+        chk(h2.exists(h => h.done && h.sysOp == code(SysOp.Mret)),
+          "a System uop is done at allocation and records its sysOp (not its op)", s"$h2"),
+        chk(w3.isEmpty && h3.exists(_.predFault), "a predictionFault uop is not execution-free", s"$w3 $h3"),
+        chk(h4.exists(h => h.done && h.exc.contains(12) && h.isLoad && h.sysOp == code(SysOp.None)),
+          "a uop with an exception is done at allocation", s"$h4")
+      )
     }
   }
 
@@ -470,7 +501,7 @@ object ReorderBufferSpecTests {
         val pre  = kind == 8 // decode exception: done at allocation
         val sys  = kind == 9 // FENCE: done at allocation
         val e = E(fu = if (cfi) FuType.Branch else if (mem) FuType.Mem else if (sys) FuType.System else FuType.Alu,
-          op = if (sys) 2 else 0, cfi = cfi, load = mem, exc = if (pre) Some(2) else None, serialize = sys)
+          sysOp = if (sys) SysOp.Fence else SysOp.None, cfi = cfi, load = mem, exc = if (pre) Some(2) else None, serialize = sys)
         if (!d.alloc(tail, e)) bad :+= s"step $step: allocation s$tail refused with ${win.size} live"
         win += W(tail, cfi, mem, pre || sys, false, pre)
         tail += 1
@@ -600,5 +631,5 @@ object ReorderBufferSpecTests {
   }
 
   val all: Seq[SpecTest] =
-    Seq(allocate, complete, headOffer, recovery, order, retireInOrder, olderSurvives, completionLive)
+    Seq(allocate, allocateSysOp, complete, headOffer, recovery, order, retireInOrder, olderSurvives, completionLive)
 }
