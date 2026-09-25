@@ -163,3 +163,14 @@ class UncachedStoreResp(sqIdxWidth: Int) extends Bundle {
   val sqIdx       = UInt(sqIdxWidth.W)
   val accessFault = Bool()
 }
+
+@LocalSpec(bndStoreDrainReq)
+class StoreDrainReq(pAddrWidth: Int, dataWidth: Int) extends Bundle {
+  val paddr = UInt(pAddrWidth.W)
+  val data  = UInt(dataWidth.W)
+  val mask  = UInt((dataWidth / 8).W)
+}
+
+/** bndStoreDrainResp carries no fields: the handshake itself is the completion. */
+@LocalSpec(bndStoreDrainResp)
+class StoreDrainResp extends Bundle

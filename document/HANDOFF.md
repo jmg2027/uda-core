@@ -333,6 +333,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       exception still reports).
     - Allowlists: spec-test-allow 48 -> 46 (funcUncacheableAtHead, propUncachedPerformedOnce),
       spec-check-allow 49 -> 43 (six LSQ properties now asserted).
+25. RTL block 14 - StoreBuffer (ADR-003/ADR-019 D-19.12): FIFO of committed cacheable stores;
+    the head is offered whenever no drain is outstanding and freed only by StoreDrainResp
+    (so a draining entry still forwards and StoreBufferEmpty stays low); forwarding answers in
+    the query cycle, youngest entry per byte (partial never raised in v0: entries are aligned
+    words with masks); drain fence answered when empty, a store during a pending fence
+    asserts; asserts InOrderDrain, CommittedSurvivesRecovery (occupancy monitor),
+    StoreBufferLiveness. 5 L1 tests (red: 5 PENDING); 9 mutants all red (the empty-while-
+    draining mutant first survived; the test now checks StoreBufferEmpty during the last
+    drain). Allowlists: spec-test-allow 46 -> 45, spec-check-allow 43 -> 40. The LSQ+SB
+    forwarding contract is exercised end to end in the BackendTop integration block.
 
 ## Validation status (run this session)
 

@@ -11,8 +11,6 @@
 funcIntegrateExternalBitAlu
 
 
-# WP-5 committed StoreBuffer: directed backpressure test needs the harness bus-stall knob on the data link
-propStoreBufferLiveness
 
 # WP-1 recurrence budgets and tag uniqueness: need the ipcCriticalEdge helper (L0) or a composed backend to observe (funcRobOlder is bound by rob.order)
 propBranchRecoveryBudget
