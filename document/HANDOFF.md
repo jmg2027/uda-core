@@ -234,6 +234,24 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     directed test commit.interrupt.serializeHead (interrupt + debug pending on cycle 0 of each
     class); red on the old RTL for all 8 classes; mutants (no suppression, CSR-only,
     redirect-only) all red.
+21. RTL block 11 - CsrController (ADR-019D E-1..E-4, E-6, E-7): the sole committed CSR-state
+    owner (plain registers, not the CsrAccess library: that path infers write intent from the
+    runtime operand and writes at access time, which E-2/E-4 forbid). v0 map: M (mstatus WARL
+    incl. MPP, misa RV32 IMSU, medeleg 0xb3ff, mideleg 0x222, mie, mtvec, mcounteren 0,
+    mstatush 0, mscratch, mepc, mcause, mtval, mip = raw lines | soft SEIP/STIP/SSIP,
+    mvendorid/marchid/mimpid/mconfigptr 0, mhartid = hartId), S (sstatus/sie/sip views,
+    stvec, scounteren 0, sscratch, sepc, scause, stval, satp), D (dcsr, dpc, dscratch0, debug
+    mode only). One-entry result register, ready = !staged && (!resValid || out.ready); legal
+    writes staged and applied only on the matching CommitGrant. InterruptCtrl picks M-destined
+    before S-destined, MEI MSI MTI SEI SSI STI within each. Asserts: CsrWriteIntent (sysOp vs
+    encoding, CsrOp vs funct3), CommitGrant mismatch, NoSpeculativeCsrWrite (state-change
+    monitor), CsrSingleOwner.
+    - 14 L1 tests (csr.ops, readOnlyBoundaries, rdX0, metadata, accessCheck, backpressure,
+      commitGating, writeIntent, singleOwner, supervisor, interruptView, trapWrite,
+      translationContext, publish through PublishMux); red = PENDING on the typed shell.
+    - 33 mutants (write-intent boundaries, access checks, staging/grant, result handling,
+      trap-write kinds, interrupt view, WARL views, assert removals) all red; the first
+      M-before-S mutant survived and the test was strengthened (SEI delegated vs STI in M).
 
 ## Validation status (run this session)
 
@@ -317,8 +335,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
-   ADR-019D order: CommitUnit serialize-head sampling fix -> CsrController -> TrapController
-   -> CSR/Trap integration -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
+   ADR-019D order: CommitUnit serialize-head sampling fix (done) -> CsrController (done) ->
+   TrapController -> CSR/Trap integration -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

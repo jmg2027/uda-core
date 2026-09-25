@@ -40,9 +40,6 @@ propPredictorStateMicroarchitectural
 propCheckpointRestoreExact
 propDisabledExtensionTraps
 propNoCompressedDecode
-propCsrSingleOwner
-propCsrWriteIntent
-propNoSpeculativeCsrWrite
 propPreciseCommit
 propRobTagConsecutive
 propTrapSingleWriter
