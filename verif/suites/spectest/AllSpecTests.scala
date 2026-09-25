@@ -11,7 +11,7 @@ object RunSpecTests {
   val registry: Seq[SpecTest] =
     UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all ++ RenameUnitSpecTests.all ++ ReorderBufferSpecTests.all ++
       SystemOpDecodeSpecTests.all ++ RecoveryControllerSpecTests.all ++ CommitUnitSpecTests.all ++
-      ReservationStationSpecTests.all ++ DispatchUnitSpecTests.all ++
+      ReservationStationSpecTests.all ++ DispatchUnitSpecTests.all ++ ExecUnitSpecTests.all ++
       PhysicalRegisterFileSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)

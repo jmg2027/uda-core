@@ -184,6 +184,15 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     = per-class downstream readiness. 2 L1 tests (incl. a 200-step request-independence
     sweep), 7 mutants all red. The CSR edge still uses the legacy bndCsrReq, which carries no
     robTag and a 5-bit rd (reported: C-3).
+17. RTL block 8 - ALU / AGU / MUL / DIV wrappers: shared one-entry ResultHolder
+    (backend/design/shared/ExecUnits.scala; canAccept = !held || drained, held result dropped
+    in the event cycle, a request killed in its accept cycle never loads), unit-local op
+    layouts (AluOp, MulDivOp, MemOp, BranchOp; UopOp widened to 8 bits), MUL/DIV hold one
+    in-flight operation with its operands (the external cores need them stable until done)
+    and a killed flag, so an uncancelable core result of a killed uop is discarded. 4 L1
+    tests; 17 mutants: 15 red, 2 equivalent (MUL sliceWidth 32 completes in its start cycle,
+    so it is never busy and the in-flight kill flag is never read; the same mutants are red
+    on DIV).
 
 ## Validation status (run this session)
 
@@ -196,7 +205,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   consumer *In interface; no orphan child interfaces.
 - `verif/bin/run.sh verif.spectest.RunSpecTests`: 55/55 PASS (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
-  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit) after RTL block 7.
+  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers)
+  after RTL block 8.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
