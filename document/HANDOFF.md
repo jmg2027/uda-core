@@ -170,6 +170,15 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     port counts width-derived (propPrfPortsFixed, checked on the normalized io type across
     PRF/ROB depths). 3 L1 tests, 7 mutants all red (the p0 mutant became observable only
     after removing p0 storage: Verilator zero-fills registers).
+14. ADR-019C (v0 Erratum 03, owner ruling): FuAvailability view (rawNoDecoupled class 7),
+    oldest ready among available FU classes, RS output stability, BranchUnit control and
+    result channels independent (CheckpointRelease XOR BranchResolution), RecoveryEvent kept
+    combinational. Commit 411a4d8; the new names sat in the allowlists until verified.
+15. RTL block 6 - ReservationStation: unordered entries with ready bits (rename capture and
+    allocation-cycle wakeup), oldest eligible among available classes by funcRobOlder, held
+    offer stable until transfer or kill, PRF read and entry release at the issue transfer,
+    selective kill; asserts RsIssueOnlyReady, RsRecoveryKeepsOlder, RsIssueStable, and
+    needsRs-only allocation. 6 L1 tests (3 reference-model runs), 10 mutants all red.
 
 ## Validation status (run this session)
 
@@ -180,16 +189,17 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 49/49 PASS (6 pre-existing + 2 params +
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 55/55 PASS (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
-  3 PhysicalRegisterFile) after RTL block 5.
+  3 PhysicalRegisterFile + 6 ReservationStation) after RTL block 6.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 51 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
-  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 53 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
+  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed, propRsIssueStable; the ADR-019C
+  placeholders funcFuAvailability and propBranchControlOnce remain until their vertices land) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
@@ -197,7 +207,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
   propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
-  propRetireNonBlocking, propPrfPortsFixed; now 56) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  propRetireNonBlocking, propPrfPortsFixed, propRsIssueOnlyReady, propRsRecoveryKeepsOlder,
+  propRsIssueStable; now 55 incl. the ADR-019C placeholder propBranchControlOnce) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -215,18 +226,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
   the SoC memory map is chosen).
 
-## Open contradictions reported to the OWNER (block RS and BranchUnit)
+## Contradictions resolved by owner ruling
 
-- C-1 ReservationStation select vs FU availability: funcSelectOldestReady selects only
-  entries "whose target FU class can accept" and funcFuRoute says the RS only selects uops
-  whose unit can accept, but the RS has no FU-availability input; IssuedUopOut.ready is a
-  function of the offered uop's fuType, so using it to choose is a combinational loop.
-  Without a view, an older ready DIV behind a busy divider blocks an idle ALU for the whole
-  divide.
-- C-2 combinational loop BranchUnit -> RecoveryController -> producers -> PublishMux ->
-  BranchUnit: BranchResolution must fire with the branch's completion
-  (funcBranchRecoveryRequest), the event is combinational (funcRecoverySelect), producers
-  drop killed tokens in the event cycle, and PublishMux grants among the filtered valids.
+- C-1 (RS select vs FU availability) and C-2 (BranchUnit/RC/PublishMux loop) are closed by
+  ADR-019C.
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -251,9 +254,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
-   ReservationStation (blocked on C-1), DispatchUnit + ALU/MUL/DIV wrappers + BranchUnit
-   (BranchUnit blocked on C-2), PublishMux; each red-first with asserts, mutant controls,
-   and allowlist shrink. RenameUnit spec ambiguities found
+   DispatchUnit, ALU/MUL/DIV/AGU wrappers, BranchUnit, PublishMux (RS done); each red-first
+   with asserts, mutant controls, and allowlist shrink. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

@@ -77,9 +77,10 @@ object FuType {
 
 /** Unit-local operation code carried opaquely from DecodeUnit to the unit named
   * by fuType; RenameUnit and the ROB never interpret it, and it never carries
-  * commit-time semantics (ADR-019A E-2). */
+  * commit-time semantics (ADR-019A E-2). The per-unit layouts are fixed by the unit
+  * wrappers (AluOp, MulDivOp, BranchOp, MemOp). */
 object UopOp {
-  val width = 5
+  val width = 8
 }
 
 /** Commit-time system semantics (bndDecodedUop.sysOp / bndRobEntry.sysOp, ADR-019A E-2),
@@ -321,6 +322,37 @@ class RegisterFileReadReq(val params: BackendParams) extends BackendBundle {
 class RegisterFileReadResp(val params: BackendParams) extends BackendBundle {
   val src1 = UInt(xLen.W)
   val src2 = UInt(xLen.W)
+}
+
+@LocalSpec(bndIssuedUop)
+class IssuedUop(val params: BackendParams) extends BackendBundle {
+  val robTag       = new RobTag(params)
+  val fuType       = UInt(FuType.width.W)
+  val op           = UInt(UopOp.width.W)
+  val src1         = UInt(xLen.W)
+  val src2         = UInt(xLen.W)
+  val imm          = UInt(xLen.W)
+  val pc           = UInt(vAddrWidth.W)
+  val prd          = UInt(physRegIdWidth.W)
+  val hasDest      = Bool()
+  val checkpointId = new BranchCheckpointId(params)
+  val prediction   = new PredictionView(params)
+}
+
+@LocalSpec(bndFuAvailability)
+class FuAvailability(val params: BackendParams) extends BackendBundle {
+  val alu    = Bool()
+  val mul    = Bool()
+  val div    = Bool()
+  val branch = Bool()
+  val mem    = Bool()
+  val csr    = Bool()
+  val bitAlu = if (params.enableBitAlu) Some(Bool()) else None
+
+  /** The bit of a class (false for System, which never enters the RS). */
+  def of(fuType: UInt): Bool = MuxLookup(fuType, false.B)(Seq(
+    FuType.Alu -> alu, FuType.Mul -> mul, FuType.Div -> div, FuType.Branch -> branch,
+    FuType.Mem -> mem, FuType.Csr -> csr))
 }
 
 /** StoreCommit view of the commit broadcast. */
