@@ -322,6 +322,11 @@ When translating this architecture into the DSL, follow
 `document/architecture-team/07-ooo-v0-spec-work-order.md`. Agents doing this work
 should also read `.claude/skills/ooo-spec-author/SKILL.md`.
 
+ADR-019 migration is clean-break. Obsolete non-protected specs/design shells/bundles/
+parameters/docs may be deleted or replaced wholesale. Do not add compatibility shims
+whose only purpose is to preserve the superseded RVC/predecode/ROB-less/epoch-only
+architecture.
+
 ## Testing
 
 Run cluster tests:
