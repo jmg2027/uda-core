@@ -3,7 +3,7 @@ package udacore.backend.design.shared
 import chisel3._
 import chisel3.util._
 import framework.macros.LocalSpec
-import udacore.backend.spec.shared.BackendBundlesSpecs.{bndFuResult, bndMemAddress}
+import udacore.backend.spec.shared.BackendBundlesSpecs.{bndFuResult, bndMemAddress, bndMemResult}
 
 /** Shared pieces of the execution wrappers: result payloads, the unit-local op layouts, and
   * the one-entry elastic result holder (ADR-019C E-2).
@@ -25,6 +25,16 @@ class MemAddress(val params: BackendParams) extends BackendBundle {
   val vaddr      = UInt(vAddrWidth.W)
   val storeData  = UInt(xLen.W)
   val misaligned = Bool()
+}
+
+@LocalSpec(bndMemResult)
+class MemResult(val params: BackendParams) extends BackendBundle {
+  val robTag      = new RobTag(params)
+  val prd         = UInt(physRegIdWidth.W)
+  val wen         = Bool()
+  val data        = UInt(xLen.W)
+  val headExecute = Bool()
+  val exception   = new ExceptionInfo(params)
 }
 
 // ---- Unit-local op layouts (UopOp, 8 bits) ---------------------------------------------------

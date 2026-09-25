@@ -81,6 +81,3 @@ propHistoryRestoreExact
 propOneTakenCfiPerBlock
 propPredictFromPcOnly
 propPredictorStateMicroarchitectural
-
-# ADR-019C new names: bound by their L1 SpecTests as each vertex lands (removed then)
-propBranchControlOnce

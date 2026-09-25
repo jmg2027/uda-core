@@ -193,6 +193,23 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     tests; 17 mutants: 15 red, 2 equivalent (MUL sliceWidth 32 completes in its start cycle,
     so it is never busy and the in-flight kill flag is never read; the same mutants are red
     on DIV).
+18. RTL block 9 - BranchUnit + PublishMux (ADR-019C E-4..E-7):
+    - BranchUnit: resolve (BEQ..BGEU, JAL, JALR with bit 0 cleared, misaligned target ->
+      exception + release), mispredict detect (Direction / Target / UnpredictedCfi; a taken
+      conditional branch predicted not-taken is DirectionMispredict), one control token
+      (BranchResolution XOR CheckpointRelease) and one result token held independently.
+      BranchResolution.valid is registered state only. Asserts RecoveryOnlyOnMispredict,
+      BranchCompletesOnce, BranchControlOnce.
+    - PublishMux: oldest valid candidate by funcRobOlder, atomic PRF write + wakeup + ROB
+      completion (withheld while a needed output is not ready; wen = 0 needs no PRF),
+      losers held; SingleDrain asserts. No RecoveryEvent input (producers filter). The CSR
+      input is never accepted until C-3 (asserted).
+    - C-2 integration harness (BranchUnit + AluUnit + RecoveryController + PublishMux):
+      the killed younger ALU result never publishes, the branch result survives; with the
+      old "resolution waits for the result" rule firtool reports the combinational cycle
+      bu.branchResolutionOut.valid <- ... <- rc.recoveryEventOut <- ... <- pm grant.
+    - 10 L1 tests (3 reference-model runs); 14 mutants, all red except the assert-only
+      mutant B1 (no input can reach the BranchUnit asserts from outside; B4 shows they fire).
 
 ## Validation status (run this session)
 
@@ -205,16 +222,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   consumer *In interface; no orphan child interfaces.
 - `verif/bin/run.sh verif.spectest.RunSpecTests`: 55/55 PASS (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
-  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers)
-  after RTL block 8.
+  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
+  10 BranchUnit/PublishMux) after RTL block 9.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 53 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
-  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed, propRsIssueStable; the ADR-019C
-  placeholders funcFuAvailability and propBranchControlOnce remain until their vertices land) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 51 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
+  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
+  bound) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
@@ -223,7 +240,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
   propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
   propRetireNonBlocking, propPrfPortsFixed, propRsIssueOnlyReady, propRsRecoveryKeepsOlder,
-  propRsIssueStable; now 55 incl. the ADR-019C placeholder propBranchControlOnce) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  propRsIssueStable, propRecoveryOnlyOnMispredict, propBranchCompletesOnce, propSingleDrain,
+  and the ADR-019C propBranchControlOnce; now 51) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -276,8 +294,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
-   DispatchUnit, ALU/MUL/DIV/AGU wrappers, BranchUnit, PublishMux (RS done); each red-first
-   with asserts, mutant controls, and allowlist shrink. RenameUnit spec ambiguities found
+   The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
+   Next: owner ruling on C-3 (CSR request/result shape), then CsrController/TrapController,
+   LSQ/StoreBuffer, DecodeUnit, and BackendTop wiring. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

@@ -37,15 +37,12 @@ propPredictFromPcOnly
 propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
-propBranchCompletesOnce
 propCheckpointRestoreExact
 propDisabledExtensionTraps
 propNoCompressedDecode
 propNoSpeculativeCsrWrite
 propPreciseCommit
-propRecoveryOnlyOnMispredict
 propRobTagConsecutive
-propSingleDrain
 propTrapSingleWriter
 
 # WP-5 LoadStoreQueue asserts
@@ -83,6 +80,3 @@ propDCacheLoadAnswerExactlyOnce
 propICacheFunctionTransparent
 propICacheReadOnly
 propICacheResponseOrder
-
-# ADR-019C new PROPERTYs: paired with their design asserts as each vertex lands (removed then)
-propBranchControlOnce
