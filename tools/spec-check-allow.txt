@@ -46,13 +46,10 @@ propDisabledExtensionTraps
 propNoCommitPastException
 propNoCompressedDecode
 propNoSpeculativeCsrWrite
-propOlderSurvivesRecovery
 propPreciseCommit
 propPrfPortsFixed
 propRecoveryOnlyOnMispredict
 propRetireNonBlocking
-propRobCompletionTargetsLive
-propRobRetireInOrder
 propRobTagConsecutive
 propRsIssueOnlyReady
 propRsRecoveryKeepsOlder

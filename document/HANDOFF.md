@@ -106,6 +106,23 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
      funcRobTagAllocate, funcBusyTable, funcAllocateAtomic, funcSerializeGate,
      funcRetirementMapUpdate, funcArchRecoveryRestore, propCheckpointRestoreExact,
      propRobTagConsecutive.
+8. RTL block 2 - ReorderBuffer (frozen spec unchanged):
+   - L1 SpecTests `verif/suites/spectest/ReorderBufferSpecTests.scala` (8 tests) bind
+     funcRobAllocate, funcRobComplete, funcRobHeadOffer, funcRobRecovery, funcRobOlder,
+     propRobRetireInOrder, propOlderSurvivesRecovery, propRobCompletionTargetsLive;
+     observed PENDING x7 against the typed-IO shell (rob.order bound the already
+     implemented RobOrder.robOlder; its red is the robOlder mutant below).
+   - RTL `backend/design/modules/ReorderBuffer.scala`: RobDepth data-less entries, head/tail
+     RobTag pointers, headLocked trap hand-off, two-phase headExecute completion,
+     selective BranchMispredict kill with tail rewind and blockEnd, ArchRedirect reset.
+     Uops with a decode exception or fuType System are done at allocation; sysOp comes
+     from DecodedUop.op for System uops and is Csr for every Csr uop.
+   - Asserts: window integrity and transfer legality (RobRetireInOrder), survivor state
+     preservation and live recovering tag (OlderSurvivesRecovery), completion targets a
+     live, not-done entry (RobCompletionTargetsLive), allocation at the tail.
+   - Mutation controls (10): 9 turned tests red; the same-cycle-killed-completion filter
+     mutant is equivalent (a killed entry's done bit is unobservable and reallocation
+     re-initializes the entry).
 
 ## Validation status (run this session)
 
@@ -116,19 +133,20 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 15/15 PASS (6 pre-existing + 2 params +
-  7 RenameUnit) after RTL block 1.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 23/23 PASS (6 pre-existing + 2 params +
+  7 RenameUnit + 8 ReorderBuffer) after RTL block 2.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 56 names (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 55 names (funcRobOlder now bound by rob.order) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 66 PROPERTYs (propPhysRegConservation and propCheckpointReleasedOnce
-  removed with the RenameUnit asserts) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+- spec-check-allow: 63 PROPERTYs (removed with their asserts: propPhysRegConservation,
+  propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
+  propRobCompletionTargetsLive) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -154,6 +172,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   is ignored; an ArchRedirect restores sRAT from the rRAT including a same-cycle commit;
   LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings are fixed in
   BackendBundles.scala; the AllocateAtomic fork needs ROB/RS/LSQ ready independent of valid.
+- ReorderBuffer findings awaiting a spec ruling: bndDecodedUop has no sysOp field although
+  funcSerializingTag sets it and funcRobAllocate copies it (carried in op for System uops);
+  "needs no execution" is not enumerated (implemented as decode exception or fuType
+  System); such uops still receive an RS allocation (funcAllocateAtomic forks every uop)
+  but no execution unit accepts fuType System, so a FENCE would hold an RS entry forever
+  (8 FENCEs deadlock rename) - to be ruled before the RS/Dispatch block.
 
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
 - DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
@@ -166,7 +190,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-1. Spec frozen at 242feaf; RenameUnit RTL is green. Next: ReorderBuffer ->
+1. Spec frozen at 242feaf; RenameUnit and ReorderBuffer RTL are green. Next:
    RecoveryController -> CommitUnit, each red-first. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +

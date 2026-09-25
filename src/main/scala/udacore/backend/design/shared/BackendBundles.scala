@@ -66,9 +66,24 @@ object FuType {
 }
 
 /** Unit-local operation code carried opaquely from DecodeUnit to the unit named
-  * by fuType; RenameUnit never interprets it. */
+  * by fuType; RenameUnit never interprets it. For fuType System the "unit" is the
+  * commit head, and op carries the SysOp code (see SysOp). */
 object UopOp {
   val width = 5
+}
+
+/** Commit-head system behavior recorded in the ROB entry (bndRobEntry.sysOp). DecodeUnit
+  * sets it (funcSerializingTag); it travels in DecodedUop.op for fuType System uops, and
+  * every fuType Csr uop is Csr (the commit-side refetch rule for CSR writes applies). */
+object SysOp {
+  val width     = 3
+  val None      = 0.U(width.W)
+  val XRet      = 1.U(width.W)
+  val Fence     = 2.U(width.W)
+  val FenceI    = 3.U(width.W)
+  val SfenceVma = 4.U(width.W)
+  val Wfi       = 5.U(width.W)
+  val Csr       = 6.U(width.W)
 }
 
 // ---- Ordering and recovery identity ----------------------------------------
@@ -218,6 +233,44 @@ class RenameCommit(val params: BackendParams) extends BackendBundle {
 class WakeupBroadcast(val params: BackendParams) extends BackendBundle {
   val valid = Bool()
   val prd   = UInt(physRegIdWidth.W)
+}
+
+@LocalSpec(bndRobEntry)
+class RobEntry(val params: BackendParams) extends BackendBundle {
+  val valid           = Bool()
+  val done            = Bool()
+  val pc              = UInt(vAddrWidth.W)
+  val insn            = UInt(iLen.W)
+  val archRd          = UInt(regIdWidth.W)
+  val hasDest         = Bool()
+  val newPrd          = UInt(physRegIdWidth.W)
+  val oldPrd          = UInt(physRegIdWidth.W)
+  val exception       = new ExceptionInfo(params)
+  val isCfi           = Bool()
+  val checkpointId    = new BranchCheckpointId(params)
+  val cfiOutcome      = new CfiOutcome(params)
+  val ftqIdx          = UInt(ftqIdxWidth.W)
+  val blockEnd        = Bool()
+  val isLoad          = Bool()
+  val isStore         = Bool()
+  val headExecute     = Bool()
+  val serialize       = Bool()
+  val sysOp           = UInt(SysOp.width.W)
+  val predictionFault = Bool()
+}
+
+@LocalSpec(bndRobCompletion)
+class RobCompletion(val params: BackendParams) extends BackendBundle {
+  val robTag      = new RobTag(params)
+  val exception   = new ExceptionInfo(params)
+  val cfiOutcome  = new CfiOutcome(params)
+  val headExecute = Bool()
+}
+
+@LocalSpec(bndRobHead)
+class RobHead(val params: BackendParams) extends BackendBundle {
+  val robTag = new RobTag(params)
+  val entry  = new RobEntry(params)
 }
 
 @LocalSpec(bndRobStatus)
