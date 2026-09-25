@@ -37,6 +37,8 @@ propPredictFromPcOnly
 propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
+propCheckpointReleasedOnce
+propTrapHoldUntilRedirect
 propArchRedirectWins
 propBranchCompletesOnce
 propCheckpointRestoreExact

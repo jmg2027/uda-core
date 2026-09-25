@@ -29,6 +29,9 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfRenameCommitIn)
     val renameCommitIn = ???
 
+    @LocalSpec(intfCheckpointReleaseIn)
+    val checkpointReleaseIn = ???
+
     @LocalSpec(intfWakeupBroadcastIn)
     val wakeupBroadcastIn = ???
 

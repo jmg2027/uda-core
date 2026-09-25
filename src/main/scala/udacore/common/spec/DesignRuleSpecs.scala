@@ -218,7 +218,7 @@ object DesignRuleSpecs {
   val propIsaRetireEquivalence = spec {
     PROPERTY("IsaRetireEquivalence")
       .desc(
-        "For every program in the deterministic regression corpus (RV32IM, U/S, Sv32, " +
+        "For every program in the deterministic regression corpus (RV32IM_Zicsr_Zifencei, Svade, U/S, Sv32, " +
         "including page-fault cases) the CommitUnit retire stream is identical " +
         "token-for-token to the ISA reference model's retire stream; only cycle counts differ."
       )

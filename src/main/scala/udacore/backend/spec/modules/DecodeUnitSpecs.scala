@@ -8,7 +8,7 @@ import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.frontend.spec.shared.FrontendBundlesSpecs.bndFetchPacket
 import udacore.frontend.spec.shared.FrontendParamsSpecs.paramDecodeWidth
 
-/** DecodeUnit: RV32IM + Zicsr + privileged-instruction decode, two per cycle
+/** DecodeUnit: RV32IM_Zicsr_Zifencei + privileged-instruction decode, two per cycle
   * (ADR-019 D-19.1, D-19.3; ADR-017 decode contributions).
   */
 object DecodeUnitSpecs {
@@ -73,7 +73,8 @@ object DecodeUnitSpecs {
   val funcDecodeRv32im = spec {
     FUNCTION("DecodeRv32im")
       .desc(
-        "Decode RV32I, M, Zicsr, FENCE, FENCE.I, ECALL, EBREAK, MRET, SRET, WFI, and " +
+        "Decode RV32I (including FENCE, ECALL, EBREAK), M, Zicsr, Zifencei (FENCE.I), and the " +
+        "privileged MRET, SRET, WFI, and " +
         "SFENCE.VMA. Any other encoding, and any privileged instruction executed below its " +
         "required privilege (SRET in U, MRET below M, SFENCE.VMA in U or with mstatus.TVM, WFI " +
         "per mstatus.TW), becomes an illegal-instruction exception payload (cause 2, tval = " +
@@ -89,7 +90,7 @@ object DecodeUnitSpecs {
       .desc(
         "The decode table is the concatenation of the base-ISA rows and each enabled " +
         "extension's Seq[InstPattern] contribution, selected at elaboration by the " +
-        "extension's enable parameter. v0 enables exactly M and Zicsr; bit-manipulation, A, " +
+        "extension's enable parameter. v0 enables exactly M, Zicsr, and Zifencei; bit-manipulation, A, " +
         "F, and C contribute no rows. Contributions are pure data; no extension owns decode logic."
       )
       .uses(rawExtensionContribution)

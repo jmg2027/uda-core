@@ -100,8 +100,8 @@ object ReorderBufferSpecs {
   val funcRobComplete = spec {
     FUNCTION("RobComplete")
       .desc(
-        "Set done for the named entry and record its exception and, for a control-flow uop, " +
-        "its resolved cfiOutcome. Completion order is unconstrained (OoO completion)."
+        "Set done for the named entry and record its exception, for a control-flow uop its " +
+        "resolved cfiOutcome, and for a store its uncacheable flag. Completion order is unconstrained (OoO completion)."
       )
       .uses(intfRobCompletionIn)
       .build()
@@ -111,8 +111,10 @@ object ReorderBufferSpecs {
     FUNCTION("RobHeadOffer")
       .desc(
         "Offer the head entry on RobHeadOut when it is done (with or without an exception). " +
-        "On transfer the head advances by one. An entry with an exception is transferred once " +
-        "and is then removed by the ArchRedirect that follows it."
+        "The transfer of an exception-free entry is its retirement: the head advances by one. " +
+        "The transfer of an entry carrying an exception is a trap hand-off, not a retirement: " +
+        "the head does NOT advance and the ROB offers nothing further (headLocked) until the " +
+        "ArchRedirect RecoveryEvent naming that robTag empties the window (funcRobRecovery)."
       )
       .uses(intfRobHeadOut)
       .build()
@@ -131,7 +133,13 @@ object ReorderBufferSpecs {
 
   val propRobRetireInOrder = spec {
     PROPERTY("RobRetireInOrder")
-      .desc("Successive RobHeadOut transfers carry consecutive robTags; no entry leaves except from the head.")
+      .desc(
+        "Every entry leaves the ROB exactly once, either by retirement through RobHeadOut " +
+        "while it is the head, or by a RecoveryEvent kill. Retired entries leave in robTag " +
+        "order; a live robTag is skipped only when an ArchRedirect kills it (a trapping head, " +
+        "or the head in front of which an interrupt is taken). No RobHeadOut transfer occurs " +
+        "while headLocked."
+      )
       .uses(intfRobHeadOut)
       .note("Simulation assert.")
       .build()

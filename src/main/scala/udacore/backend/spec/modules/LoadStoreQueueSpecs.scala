@@ -277,7 +277,9 @@ object LoadStoreQueueSpecs {
     FUNCTION("StoreComplete")
       .desc(
         "A store whose paddr and data are both known, or that is Faulted, completes on " +
-        "MemResultOut (no register write) so the ROB marks it done; it stays in the SQ until commit."
+        "MemResultOut (no register write, with its uncacheable attribute) so the ROB marks it " +
+        "done; it stays in the SQ until commit. An uncacheable store is handed to the " +
+        "StoreBuffer at the ROB head before it retires (CommitUnit funcUncacheableStoreAtHead)."
       )
       .uses(intfMemResultOut)
       .build()

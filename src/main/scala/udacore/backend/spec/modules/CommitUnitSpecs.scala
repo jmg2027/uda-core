@@ -38,13 +38,17 @@ object CommitUnitSpecs {
         intfDCacheCleanReqOut,
         intfDCacheCleanRespIn,
         intfSfenceVmaOut,
+        intfRecoveryEventIn,
         funcCommitHead,
+        funcTrapHold,
+        funcUncacheableStoreAtHead,
         funcPreciseTrapHandoff,
         funcInterruptSampling,
         funcBlockEndCommit,
         funcSystemOpSequencing,
         propCommitInOrder,
         propNoCommitPastException,
+        propTrapHoldUntilRedirect,
         propRetireNonBlocking
       )
       .uses(paramCommitWidth, bndCommitBroadcast)
@@ -168,11 +172,20 @@ object CommitUnitSpecs {
       .build()
   }
 
+  val intfRecoveryEventIn = spec {
+    INTERFACE("RecoveryEventIn")
+      .desc("The common RecoveryEvent broadcast; CommitUnit uses it only to release the trap hold.")
+      .uses(bndRecoveryEvent)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 6.")
+      .build()
+  }
+
   val funcCommitHead = spec {
     FUNCTION("CommitHead")
       .desc(
-        "A done head with no exception, no pending interrupt, no sysOp, and no " +
-        "predictionFault retires when all of its views are ready in the same cycle: " +
+        "A done head with no exception, no pending interrupt, no sysOp, no predictionFault, " +
+        "and not an uncacheable store (funcUncacheableStoreAtHead) retires when all of its views are ready in the same cycle: " +
         "RenameCommit always; StoreCommit if isStore; FtqCommit if blockEnd; CommitGrant if a " +
         "CSR uop; the retire token when usingRvvi. Otherwise the head waits."
       )
@@ -180,13 +193,43 @@ object CommitUnitSpecs {
       .build()
   }
 
+  val funcTrapHold = spec {
+    FUNCTION("TrapHold")
+      .desc(
+        "Sending any ExceptionOut token (Sync, Interrupt, or SysOp XRet/Refetch) sets " +
+        "trapPending with the hand-off robTag. While trapPending, RobHeadIn.ready is low, no " +
+        "commit-broadcast view fires, no interrupt is sampled, and no further ExceptionOut is " +
+        "sent. trapPending clears only in the cycle a RecoveryEvent of kind ArchRedirect with " +
+        "that robTag is observed. The TrapController may take any number of cycles."
+      )
+      .uses(intfExceptionOut, intfRobHeadIn, intfRecoveryEventIn)
+      .build()
+  }
+
+  val funcUncacheableStoreAtHead = spec {
+    FUNCTION("UncacheableStoreAtHead")
+      .desc(
+        "A head store whose entry is marked uncacheable is performed before it retires: " +
+        "CommitUnit fires StoreCommit (the SQ hands it to the StoreBuffer), then a " +
+        "StoreBufferDrainReq, and waits for the StoreBufferDrainResp that follows the bus " +
+        "acknowledgement of that store. accessFault = 0: the store retires (RenameCommit, " +
+        "retire token). accessFault = 1: the store does not retire; CommitUnit hands off " +
+        "Exception{Sync, store access fault (7), tval = its vaddr} and the trap is precise, " +
+        "because a denied write has no architectural effect and nothing younger has committed."
+      )
+      .uses(intfStoreCommitOut, intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfExceptionOut)
+      .note("Replaces the imprecise platform-error path (former OQ-G). Cacheable stores need no such wait: the PMA contract makes cacheable writebacks fault-free (paramPmaMap).")
+      .build()
+  }
+
   val funcPreciseTrapHandoff = spec {
     FUNCTION("PreciseTrapHandoff")
       .desc(
-        "A head whose entry carries an exception is not retired: CommitUnit sends " +
-        "Exception{Sync, cause, tval, pc, robTag, ftqIdx} and emits a trap retire token. No " +
-        "younger uop has updated architectural state, so the trap is precise; the " +
-        "TrapController's ArchRedirect then discards the whole window."
+        "A head whose entry carries an exception is not retired: CommitUnit accepts it as a " +
+        "hand-off (the ROB locks its head), sends Exception{Sync, cause, tval, pc, robTag, " +
+        "ftqIdx}, emits a trap retire token, and holds (funcTrapHold). No younger uop has " +
+        "updated architectural state, so the trap is precise; the TrapController's " +
+        "ArchRedirect then discards the whole window."
       )
       .uses(intfExceptionOut, intfRetireStreamOut)
       .build()
@@ -197,8 +240,10 @@ object CommitUnitSpecs {
       .desc(
         "At a retire boundary (before offering the next head for retirement), if an enabled " +
         "interrupt is pending for the current privilege (mip & mie, mideleg, MIE/SIE, priv) " +
-        "and not in debug mode, send Exception{Interrupt, cause, pc = head pc, robTag = head}. " +
-        "Interrupts are never taken in the middle of a serialization sequence."
+        "and not in debug mode, send Exception{Interrupt, cause, pc = head pc, robTag = head} " +
+        "without accepting the head from the ROB, then hold (funcTrapHold); the head is " +
+        "killed by the ArchRedirect and re-executes after the handler returns. Interrupts are " +
+        "never taken in the middle of a serialization sequence."
       )
       .uses(intfInterruptCtrlIn, intfExceptionOut)
       .build()
@@ -248,6 +293,18 @@ object CommitUnitSpecs {
         "next event after the exception hand-off is the ArchRedirect RecoveryEvent that names it."
       )
       .uses(funcPreciseTrapHandoff)
+      .build()
+  }
+
+  val propTrapHoldUntilRedirect = spec {
+    PROPERTY("TrapHoldUntilRedirect")
+      .desc(
+        "Between an ExceptionOut transfer and the ArchRedirect RecoveryEvent that names its " +
+        "robTag, RobHeadIn never transfers and no commit-broadcast view (RenameCommit, " +
+        "StoreCommit, FtqCommit, CommitGrant) fires, regardless of TrapController latency."
+      )
+      .uses(funcTrapHold)
+      .note("Simulation assert.")
       .build()
   }
 

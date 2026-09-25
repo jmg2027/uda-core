@@ -209,7 +209,9 @@ object DataCacheSpecs {
     FUNCTION("DCacheUncached")
       .desc(
         "An uncached load (issued only at the ROB head) or a store drain to a non-cacheable " +
-        "address bypasses the array as a single GetUncached/PutUncached bus access; nothing is installed."
+        "address bypasses the array as a single GetUncached/PutUncached bus access; nothing is " +
+        "installed. An uncacheable store drain is answered only after the bus acknowledgement, " +
+        "with accessFault = denied, so the head store can trap precisely."
       )
       .uses(intfDataMemReqOut)
       .build()

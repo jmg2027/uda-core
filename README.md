@@ -7,7 +7,7 @@ every token-moving connection is a ready/valid edge, and every contract is speci
 Scala spec DSL before RTL is written. The root architecture is
 [ADR-019](document/adr/ADR-019-conventional-ooo-root-architecture.md).
 
-The v0 architectural point is RV32IM with M/S/U privilege and Sv32 virtual memory, fixed
+The v0 architectural point is RV32IM_Zicsr_Zifencei + Svade with M/S/U privilege and Sv32 virtual memory, fixed
 32-bit instructions (no C extension), and two TileLink master links at the core boundary.
 
 ## Status

@@ -29,7 +29,7 @@ dataflow graph, every token-moving connection a ready/valid edge, and speculatio
 recovered selectively through one RecoveryEvent broadcast - never a flush wire and never a
 global-epoch squash.
 
-The v0 point is RV32IM with M/S/U privilege and Sv32, fixed 32-bit instructions (no RVC), a
+The v0 point is RV32IM_Zicsr_Zifencei + Svade with M/S/U privilege and Sv32, fixed 32-bit instructions (no RVC), a
 PC-indexed BTB+TAGE+RAS frontend with an FTQ, an explicit data-less ROB with sRAT/rRAT
 renaming, an RS, an LSQ, VIPT L1 caches, ITLB/DTLB and a shared PTW, and two TileLink master
 links at the boundary. It is independent of the company line (KLASE32); references to

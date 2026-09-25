@@ -133,9 +133,12 @@ object PageTableWalkerSpecs {
         "= 1: PageFault. If R or X: a leaf at level 1 - a superpage, which requires PPN[0] = 0 " +
         "(else PageFault). Otherwise read the level-0 PTE at PPN * 4096 + VPN[0] * 4 and apply " +
         "the same validity rules; a non-leaf at level 0 is a PageFault. Each PTE address must " +
-        "pass funcPmaCheck (readable, else AccessFault); a denied read is an AccessFault. The " +
-        "leaf's R/W/X/U/G/A/D, ASID, and PMA attribute form the refill entry; permission " +
-        "checks against the access are made by the TLB, not the walker."
+        "pass funcPmaCheck (readable, else AccessFault); a denied read is an AccessFault. " +
+        "Global accumulation: globalSeen starts at 0 and is ORed with G of every PTE read on " +
+        "the walk (a non-leaf PTE with G = 1 makes every mapping below it global); the refill " +
+        "entry's global = globalSeen. The leaf's R/W/X/U/A/D, the walk ASID, and the PMA " +
+        "attribute complete the refill entry; permission checks against the access are made " +
+        "by the TLB, not the walker."
       )
       .uses(funcSv32Decompose, funcPmaCheck, bndSv32Pte)
       .build()

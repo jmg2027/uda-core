@@ -46,9 +46,24 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 3. `62aed52` - deleted superseded non-ADR architecture papers/docs; README, CLAUDE.md,
    AGENTS.md, skills, docs index, ADR-000 migration record updated.
 
+4. Review round 1 (owner review of 6d7ce25), all spec-level:
+   - P0 trap hand-off: ReorderBuffer headLocked on an exception hand-off; CommitUnit
+     funcTrapHold/propTrapHoldUntilRedirect (+ RecoveryEventIn) holds RobHeadIn until the
+     ArchRedirect with that robTag; propRobRetireInOrder rewritten (interrupts skip a tag).
+   - P0 RAS: HistoryCheckpoint carries the full RAS contents (rasEntries), making
+     propHistoryRestoreExact true under wrong-path pushes/pops/wrap.
+   - P0 Svade: Sv32 A/D policy named Svade; identity RV32IM_Zicsr_Zifencei + Svade.
+   - P0/P1 precise MMIO stores: CommitUnit funcUncacheableStoreAtHead performs an
+     uncacheable head store through the StoreBuffer and retires only on a fault-free drain
+     response; PMA contract makes cacheable writebacks fault-free. OQ-G closed.
+   - P1 checkpoints: freed at resolution via BranchUnit CheckpointRelease -> RenameUnit
+     (bitmask pool with owner robTag), or after the recovering restore; not at commit.
+   - P1/P2 PTW: globalSeen |= PTE.G over the whole walk.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
+- Review round 1 re-ran all gates below after the fixes (edge check now 7/57/34 edges).
 - `python3 tools/spec-check.py`: 0 errors, 6 warnings (localspec-coverage on protected
   CSR/Decoder/Debug/Trigger and Util - pre-existing).
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
@@ -60,11 +75,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 54 names. SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 55 names (+funcUncacheableStoreAtHead, needs an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 65 PROPERTYs, each pairs with its vertex's design assert when RTL lands.
+- spec-check-allow: 67 PROPERTYs, each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -75,9 +90,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   the v0 reference point should meet.
 - OQ-D: single-hart, non-coherent memory model (no load-load ordering check, no
   memory-order replay) - confirm no second coherent agent or DMA is in v0 scope.
-- OQ-G (new): uncacheable committed-store access faults are imprecise (store already
-  retired). Choose: platform error interrupt, bus-error CSR, or require PMA to make
-  writable device regions non-faulting.
+- OQ-G: closed in review round 1 (uncacheable stores are performed at the ROB head;
+  cacheable regions are writeback-fault-free by PMA contract). The owner should confirm the
+  platform contract when the SoC memory map is chosen.
 - OQ-H (new): assembler protection blocks SFENCE.VMA / raw `.word` in `.scn`; allow adding
   mnemonics (or a `.word` directive) to `src/main/scala/assembler`?
 - OQ-I (new): confirm the ADR-015 D-15.4/15.5 reinterpretation (ISA-model equivalence,
@@ -91,6 +106,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
 - Predictor training at retirement only; no decode-time redirect for direct JAL.
 - v0 serializes every CSR op (rename into empty ROB) and refetches after CSR writes.
+- Full RAS snapshot per FTQ entry costs FtqDepth x RasDepth x 32 bits (4 Kbit at v0).
+- Uncacheable store latency: each one drains the StoreBuffer and waits for a bus ack at the
+  ROB head.
 
 ## Next steps (in order)
 

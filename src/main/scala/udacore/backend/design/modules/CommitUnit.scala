@@ -55,10 +55,19 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfSfenceVmaOut)
     val sfenceVmaOut = ???
+
+    @LocalSpec(intfRecoveryEventIn)
+    val recoveryEventIn = ???
   })
 
   @LocalSpec(funcCommitHead)
   val commitHead = ???
+
+  @LocalSpec(funcTrapHold)
+  val trapHold = ???
+
+  @LocalSpec(funcUncacheableStoreAtHead)
+  val uncacheableStoreAtHead = ???
 
   @LocalSpec(funcPreciseTrapHandoff)
   val preciseTrapHandoff = ???

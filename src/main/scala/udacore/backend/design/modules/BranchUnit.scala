@@ -23,6 +23,9 @@ class BranchUnit(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfBranchResolutionOut)
     val branchResolutionOut = ???
 
+    @LocalSpec(intfCheckpointReleaseOut)
+    val checkpointReleaseOut = ???
+
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
   })

@@ -43,6 +43,19 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
 - ADR-004 serialization is re-based on the ROB: a serializing uop is renamed only into an
   empty ROB and blocks younger rename until it retires; TrapController remains the single
   trap-CSR writer and is now the only commit-head ArchRedirect producer.
+- Review round 1 (spec-level refinements, no new ADR ruling needed):
+  - Trap hand-off protocol: an exception/interrupt hand-off locks the ROB head and
+    CommitUnit holds until the ArchRedirect naming that robTag (propTrapHoldUntilRedirect).
+  - RAS recovery is a full-contents snapshot per FTQ entry so propHistoryRestoreExact holds
+    under wrong-path wrap; a write log is a later area optimization.
+  - The ISA identity is RV32IM_Zicsr_Zifencei + Svade (A/D faults, no hardware A/D update),
+    M/S/U, Sv32. ADR-019's "RV32IM" is read as this precise string.
+  - Uncacheable stores are performed at the ROB head and retire only after the bus ack, so
+    store access faults are precise; cacheable PMA regions are writeback-fault-free by
+    platform contract (resolves the former OQ-G).
+  - Rename checkpoints are freed at branch resolution (CheckpointRelease) or right after
+    the recovering restore, not at commit; FTQ history checkpoints still live to commit.
+  - PTW refills are global when any PTE on the walk has G = 1.
 
 ## Index
 

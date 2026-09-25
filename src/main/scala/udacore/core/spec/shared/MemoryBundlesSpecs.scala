@@ -46,7 +46,7 @@ object MemoryBundlesSpecs {
           List("superpage", "Bool", "4 MiB leaf found at level 1."),
           List("ppn", "UInt(22)", "Physical page number; for a superpage PPN[0] is replaced by VPN[0]."),
           List("asid", "UInt(9)", "Address-space id of the walk that filled it."),
-          List("global", "Bool", "PTE.G: matches every ASID."),
+          List("global", "Bool", "G of any PTE on the walk (non-leaf or leaf): matches every ASID."),
           List("r, w, x, u, a, d", "Bool", "Leaf PTE permission/status bits."),
           List("pma", "PmaAttr", "Physical attributes of the page from paramPmaMap.")
         )
@@ -233,7 +233,7 @@ object MemoryBundlesSpecs {
       .desc("Completion of one committed store drain (the write is in the array or acknowledged on the bus).")
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("accessFault", "Bool", "Bus denied an uncacheable write (imprecise; reported via a platform error path, see OQ-G)."))
+        List(List("accessFault", "Bool", "Bus denied an uncacheable write. Precise: the uncacheable store is still at the ROB head (funcUncacheableStoreAtHead). Cacheable drains never fault (paramPmaMap)."))
       )
       .build()
   }

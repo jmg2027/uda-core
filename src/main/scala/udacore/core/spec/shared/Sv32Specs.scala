@@ -47,10 +47,10 @@ object Sv32Specs {
       .desc(
         "On a translated hit: Fetch requires X; Load requires R, or X when mstatus.MXR; Store " +
         "requires W. U-mode requires U = 1. S-mode may not fetch from a U page and may load or " +
-        "store a U page only when mstatus.SUM. A/D policy (v0): hardware never sets A or D; an " +
-        "access to a leaf with A = 0, or a store to a leaf with D = 0, is a page fault (the " +
-        "privileged-spec option in which software manages A/D). Any violation is the page " +
-        "fault of the access type: instruction (12), load (13), store (15)."
+        "store a U page only when mstatus.SUM. A/D policy: v0 implements the Svade extension - " +
+        "hardware never sets A or D; an access to a leaf with A = 0, or a store to a leaf with " +
+        "D = 0, is a page fault and software updates the PTE. Any violation is the page fault " +
+        "of the access type: instruction (12), load (13), store (15)."
       )
       .build()
   }

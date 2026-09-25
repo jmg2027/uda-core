@@ -2,7 +2,7 @@
 # kept by ADR-019): an enabled machine-timer interrupt arriving during a tight loop is
 # taken with mcause = interrupt | 7 and the loop state is precise.
 @name irq-timer-retire-boundary
-@verifies funcInterruptSampling funcArchRecoveryRestore
+@verifies funcInterruptSampling funcArchRecoveryRestore funcTrapHold propTrapHoldUntilRedirect
 @irq t 400 200
 @maxcycles 8000
 jal x28, setvec

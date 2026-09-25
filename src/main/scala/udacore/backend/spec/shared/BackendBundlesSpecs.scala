@@ -40,6 +40,20 @@ object BackendBundlesSpecs {
       .build()
   }
 
+  val bndCheckpointRelease = spec {
+    BUNDLE("CheckpointRelease")
+      .desc("BranchUnit to RenameUnit: a control-flow uop completed without requesting recovery, so its rename checkpoint is no longer needed.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("checkpointId", "BranchCheckpointId", "Checkpoint to free."),
+          List("robTag", "RobTag", "Owner uop (cross-check against the checkpoint's recorded owner).")
+        )
+      )
+      .uses(bndRobTag, bndBranchCheckpointId)
+      .build()
+  }
+
   val bndRecoveryEvent = spec {
     BUNDLE("RecoveryEvent")
       .desc(
@@ -89,7 +103,7 @@ object BackendBundlesSpecs {
 
   val bndDecodedUop = spec {
     BUNDLE("DecodedUop")
-      .desc("One decoded RV32IM uop leaving DecodeUnit (a decode packet carries up to DecodeWidth of these).")
+      .desc("One decoded RV32IM_Zicsr_Zifencei uop leaving DecodeUnit (a decode packet carries up to DecodeWidth of these).")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -142,10 +156,11 @@ object BackendBundlesSpecs {
           List("archRd, hasDest", "UInt(5), Bool", "Architectural destination."),
           List("newPrd, oldPrd", "UInt(PhysRegIdWidth)", "Physical destination and the mapping it replaces."),
           List("exception", "ExceptionInfo", "valid/cause/tval recorded at completion or allocation; raised only at the head."),
-          List("isCfi, checkpointId", "Bool, BranchCheckpointId", "Branch recovery metadata."),
+          List("isCfi, checkpointId", "Bool, BranchCheckpointId", "Branch recovery metadata (the checkpoint itself is freed at resolution, not at commit)."),
           List("cfiOutcome", "CfiOutcome", "Resolved outcome recorded at branch completion (predictor training at commit)."),
           List("ftqIdx, blockEnd", "FtqIdx, Bool", "FTQ reference; blockEnd marks the last committed instruction of its fetch block."),
           List("isLoad, isStore", "Bool", "Memory ordering metadata (SQ commit handoff for stores)."),
+          List("uncacheable", "Bool", "Store to a non-cacheable PMA region, recorded at completion: performed at the head before retirement (precise access fault)."),
           List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior: none | xRET | fence | fence.i | sfence.vma | wfi | csr-with-side-effect."),
           List("predictionFault", "Bool", "Commit triggers an ArchRedirect(Refetch) to pc+4.")
         )
@@ -162,7 +177,8 @@ object BackendBundlesSpecs {
         List(
           List("robTag", "RobTag", "Completing uop."),
           List("exception", "ExceptionInfo", "Execution-detected exception (misaligned, page/access fault, illegal CSR access)."),
-          List("cfiOutcome", "CfiOutcome", "Present for control-flow uops.")
+          List("cfiOutcome", "CfiOutcome", "Present for control-flow uops."),
+          List("uncacheable", "Bool", "Present for stores: translated to a non-cacheable page.")
         )
       )
       .uses(bndRobTag, bndCfiOutcome)
@@ -439,6 +455,7 @@ object BackendBundlesSpecs {
         List(
           List("robTag", "RobTag", "Completing memory uop."),
           List("prd, wen, data", "", "Load writeback (wen false for stores and faulting loads)."),
+          List("uncacheable", "Bool", "Store completions: the store's page is non-cacheable (the ROB marks the entry)."),
           List("exception", "ExceptionInfo", "Misaligned / page fault / access fault of the right access type.")
         )
       )
@@ -457,7 +474,7 @@ object BackendBundlesSpecs {
       .markdownTable(
         List("Projected view", "Fields", "Consumer", "Protocol"),
         List(
-          List("RenameCommit", "archRd, newPrd, oldPrd, hasDest, checkpointId (if CFI)", "RenameUnit (rRAT update, oldPrd free, checkpoint release)", "ready/valid"),
+          List("RenameCommit", "archRd, newPrd, oldPrd, hasDest", "RenameUnit (rRAT update, oldPrd free)", "ready/valid"),
           List("StoreCommit", "robTag", "LoadStoreQueue (SQ head -> StoreBuffer)", "ready/valid"),
           List("FtqCommit", "ftqIdx, cfiOutcome of the block exit", "FetchTargetQueue (entry release, predictor training)", "ready/valid"),
           List("CommitGrant", "robTag, valid", "CsrController (commit-gated CSR write)", "rawNoDecoupled class 4"),

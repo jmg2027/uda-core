@@ -27,6 +27,7 @@ object RenameUnitSpecs {
         intfRsAllocOut,
         intfLsqAllocOut,
         intfRenameCommitIn,
+        intfCheckpointReleaseIn,
         intfWakeupBroadcastIn,
         intfRobStatusIn,
         intfRecoveryEventIn,
@@ -42,6 +43,7 @@ object RenameUnitSpecs {
         funcArchRecoveryRestore,
         propPhysRegConservation,
         propCheckpointRestoreExact,
+        propCheckpointReleasedOnce,
         propRobTagConsecutive
       )
       .uses(paramRenameWidth, paramIntegerPrfEntries, paramBranchCheckpointCount, funcRobOlder)
@@ -49,10 +51,11 @@ object RenameUnitSpecs {
       .note(
         "Speculative-holder stance. Ordering: the allocation pointer (robTag), the free list " +
         "(a circular FIFO of free prds with a speculative head, an architectural head, and a " +
-        "tail), and the checkpoints (allocated in program order, circular). Live: sRAT " +
-        "mappings and checkpoints of uncommitted uops. Recovery: BranchMispredict restores the " +
-        "sRAT and speculative free-list head from the recovering branch's checkpoint and frees " +
-        "every younger checkpoint; ArchRedirect restores sRAT := rRAT and speculative head := " +
+        "tail), and the checkpoints (a free-bitmask pool; each records its owner robTag). Live: " +
+        "sRAT mappings of uncommitted uops and checkpoints of unresolved control-flow uops. " +
+        "Recovery: BranchMispredict restores the sRAT and speculative free-list head from the " +
+        "recovering branch's checkpoint and frees it together with every checkpoint whose owner " +
+        "funcRecoveryKills selects; ArchRedirect restores sRAT := rRAT and speculative head := " +
         "architectural head and frees every checkpoint. Survives: rRAT, the architectural " +
         "free-list head, the tail. Reclaim: a free-list head restore returns every prd " +
         "allocated after the restore point; commit pushes each oldPrd at the tail."
@@ -96,6 +99,14 @@ object RenameUnitSpecs {
     INTERFACE("RenameCommitIn")
       .desc("RenameCommit view of the commit broadcast: {archRd, newPrd, oldPrd, hasDest, checkpointId} in program order.")
       .uses(bndCommitBroadcast)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfCheckpointReleaseIn = spec {
+    INTERFACE("CheckpointReleaseIn")
+      .desc("Checkpoint releases from the BranchUnit for branches that completed without recovery. Always ready.")
+      .uses(bndCheckpointRelease)
       .is(rawReadyValidIntf)
       .build()
   }
@@ -163,11 +174,13 @@ object RenameUnitSpecs {
   val funcBranchCheckpoint = spec {
     FUNCTION("BranchCheckpoint")
       .desc(
-        "A control-flow uop allocates the next checkpoint (circular, program order) and " +
+        "A control-flow uop allocates any free checkpoint, records its robTag as owner, and " +
         "snapshots {sRAT, speculative free-list head} as they stand immediately after renaming " +
         "that uop, including its own link destination. With no free checkpoint the uop waits " +
-        "(backpressure). The checkpoint is released when the uop commits (RenameCommit carries " +
-        "its id) or when a RecoveryEvent kills it."
+        "(backpressure). A checkpoint lives only while its branch is unresolved: it is freed by " +
+        "CheckpointRelease (completion without recovery), by the uop's own BranchMispredict " +
+        "event (after the restore), or when a RecoveryEvent kills its owner. Commit never " +
+        "frees checkpoints; the FTQ keeps the separate GHR/RAS checkpoint until block commit."
       )
       .uses(paramBranchCheckpointCount, bndBranchCheckpointId)
       .build()
@@ -213,7 +226,7 @@ object RenameUnitSpecs {
     FUNCTION("RetirementMapUpdate")
       .desc(
         "On each RenameCommit: if hasDest, rRAT[archRd] := newPrd, push oldPrd to the free-list " +
-        "tail, and advance the architectural head; if the uop owns a checkpoint, release it."
+        "tail, and advance the architectural head."
       )
       .uses(intfRenameCommitIn)
       .build()
@@ -223,9 +236,9 @@ object RenameUnitSpecs {
     FUNCTION("BranchRecoveryRestore")
       .desc(
         "On RecoveryEvent{BranchMispredict}: sRAT := checkpoint[e.checkpointId].sRAT, " +
-        "speculative head := checkpoint[e.checkpointId].head, release every checkpoint " +
-        "allocated after e.checkpointId, keep e.checkpointId, and drop any unrenamed uop in the " +
-        "event cycle. Recovery is complete in the event cycle; no ROB walk is performed."
+        "speculative head := checkpoint[e.checkpointId].head, then free e.checkpointId and every " +
+        "checkpoint whose owner robTag funcRecoveryKills selects, and drop any unrenamed uop in " +
+        "the event cycle. The recovering branch is now resolved and needs no checkpoint. Recovery is complete in the event cycle; no ROB walk is performed."
       )
       .uses(intfRecoveryEventIn, funcRecoveryKills)
       .build()
@@ -263,6 +276,19 @@ object RenameUnitSpecs {
         "would have followed that branch."
       )
       .uses(funcBranchRecoveryRestore)
+      .build()
+  }
+
+  val propCheckpointReleasedOnce = spec {
+    PROPERTY("CheckpointReleasedOnce")
+      .desc(
+        "Every allocated checkpoint is freed exactly once - by CheckpointRelease, by its " +
+        "owner's own BranchMispredict, or by the kill of its owner - and a checkpoint is never " +
+        "freed while its owner is live and unresolved. In particular a correctly predicted " +
+        "branch holds its checkpoint only until its completion, not until commit."
+      )
+      .uses(funcBranchCheckpoint)
+      .note("Simulation assert; a leak deadlocks rename, so the rename-checkpoint .scn also observes it.")
       .build()
   }
 

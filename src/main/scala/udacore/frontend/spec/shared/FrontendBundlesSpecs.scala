@@ -76,7 +76,7 @@ object FrontendBundlesSpecs {
         List(
           List("ghr", "UInt(GhrLength)", "Global history."),
           List("rasTop", "UInt(log2(RasDepth))", "RAS top pointer."),
-          List("rasTopEntry", "UInt(vAddrWidth)", "Value at rasTop (restored so a wrong-path push cannot corrupt it).")
+          List("rasEntries", "Vec(RasDepth, UInt(vAddrWidth))", "Full RAS contents (v0 full snapshot): wrong-path pops followed by pushes, or pushes that wrap the circular stack, may overwrite any entry, so only a full snapshot makes restore exact.")
         )
       )
       .uses(paramGhrLength, paramRasDepth)

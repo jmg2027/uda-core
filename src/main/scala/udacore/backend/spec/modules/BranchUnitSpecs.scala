@@ -23,6 +23,7 @@ object BranchUnitSpecs {
         intfBranchUnitReqIn,
         intfBranchResultOut,
         intfBranchResolutionOut,
+        intfCheckpointReleaseOut,
         intfRecoveryEventIn,
         funcBranchResolve,
         funcMispredictDetect,
@@ -59,6 +60,14 @@ object BranchUnitSpecs {
     INTERFACE("BranchResolutionOut")
       .desc("Recovery request for a mispredicted control-flow uop, to the RecoveryController.")
       .uses(bndBranchResolution)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfCheckpointReleaseOut = spec {
+    INTERFACE("CheckpointReleaseOut")
+      .desc("Checkpoint release for a branch that completes without recovery (correct prediction or faulting target), to RenameUnit.")
+      .uses(bndCheckpointRelease)
       .is(rawReadyValidIntf)
       .build()
   }
@@ -102,9 +111,12 @@ object BranchUnitSpecs {
       .desc(
         "For a mispredicted, non-faulting branch, offer BranchResolution{robTag, checkpointId, " +
         "ftqIdx, pc, outcome, redirectTarget, cause} together with the branch's completion " +
-        "(both tokens fire in the same cycle). The branch itself, and all older uops, remain live."
+        "(both tokens fire in the same cycle); RenameUnit frees that checkpoint after restoring " +
+        "from it. Every other branch (correctly predicted, or faulting) offers " +
+        "CheckpointRelease{checkpointId, robTag} together with its completion instead. The " +
+        "branch itself, and all older uops, remain live."
       )
-      .uses(intfBranchResolutionOut, funcRecoveryKills)
+      .uses(intfBranchResolutionOut, intfCheckpointReleaseOut, funcRecoveryKills)
       .build()
   }
 

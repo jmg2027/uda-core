@@ -2,7 +2,7 @@
 # effect is visible, the younger one's is not, mcause = 13 and mtval = the faulting VA.
 @name sv32-precise-load-page-fault
 @verifies propPreciseCommit funcPreciseTrapHandoff propNoCommitPastException propWalkFaultTyping
-@verifies propNoFaultCaching funcSystemOpSequencing funcArchRecoveryRestore
+@verifies propNoFaultCaching funcSystemOpSequencing funcArchRecoveryRestore funcTrapHold propTrapHoldUntilRedirect
 @maxcycles 20000
 # --- Sv32 setup (M-mode, identical in every sv32_*.scn) --------------------------
 # root table 0x90000: [0] identity 4 MiB megapage VRWXAD (covers program, results, tables)

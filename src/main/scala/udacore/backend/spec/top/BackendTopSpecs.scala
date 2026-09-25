@@ -153,7 +153,8 @@ object BackendTopSpecs {
 
         trap -- ArchRedirect --> rc
         bru -- BranchResolution --> rc
-        rc -. RecoveryEvent .-> dec & rn & rob & rs & dis
+        bru -- CheckpointRelease --> rn
+        rc -. RecoveryEvent .-> dec & rn & rob & rs & dis & com
         rc -. RecoveryEvent .-> alu & balu & mul & div & bru & agu & lsq
     end
 

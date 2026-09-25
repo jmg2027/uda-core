@@ -159,7 +159,7 @@ object BranchPredictorSpecs {
   val funcSpeculativeHistoryUpdate = spec {
     FUNCTION("SpeculativeHistoryUpdate")
       .desc(
-        "After capturing the checkpoint {ghr, rasTop, rasTopEntry} into the Prediction, update " +
+        "After capturing the checkpoint {ghr, rasTop, rasEntries} into the Prediction, update " +
         "speculatively: the GHR shifts in exactly one bit, the predicted direction, iff the " +
         "block's tracked CFI is a Branch; otherwise it is unchanged. The RAS updates per " +
         "funcRasPredict."
@@ -172,8 +172,7 @@ object BranchPredictorSpecs {
     FUNCTION("HistoryRestore")
       .desc(
         "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until a " +
-        "HistoryRestore arrives. Restore GHR, rasTop, and the RAS entry at rasTop from the " +
-        "checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
+        "HistoryRestore arrives. Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
         "outcome with the same rules as the speculative update: shift in the resolved " +
         "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret."
       )
@@ -221,9 +220,9 @@ object BranchPredictorSpecs {
   val propHistoryRestoreExact = spec {
     PROPERTY("HistoryRestoreExact")
       .desc(
-        "After a HistoryRestore, the GHR and the RAS top pointer and top entry equal the " +
+        "After a HistoryRestore, the GHR, the RAS top pointer, and every RAS entry equal the " +
         "recovering block's checkpoint updated by exactly the recovering instruction's " +
-        "resolved outcome, independent of any wrong-path prediction made in between."
+        "resolved outcome, independent of any wrong-path push, pop, or wrap made in between."
       )
       .uses(intfHistoryRestoreIn)
       .build()
@@ -256,6 +255,12 @@ object BranchPredictorSpecs {
   val rawRasSubcore = spec {
     RAW("Ras", "subcore")
       .desc("Circular return address stack with a top pointer; overflow overwrites the oldest entry, underflow returns the stale entry (a misprediction, never an error).")
+      .note(
+        "v0 recovery is by full-contents snapshot per FTQ entry (bndHistoryCheckpoint; " +
+        "FtqDepth x RasDepth x vAddrWidth bits). A speculative write log or linked RAS with a " +
+        "persistent stack pointer is the later area optimization and must keep " +
+        "propHistoryRestoreExact."
+      )
       .build()
   }
 }

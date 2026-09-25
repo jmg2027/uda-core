@@ -96,7 +96,8 @@ object StoreBufferSpecs {
 
   val intfStoreBufferDrainRespOut = spec {
     INTERFACE("StoreBufferDrainRespOut")
-      .desc("Drain completion to the CommitUnit.")
+      .desc("Drain completion to the CommitUnit, with the accessFault of an uncacheable head store.")
+      .uses(bndStoreDrainResp)
       .is(rawReadyValidIntf)
       .build()
   }
@@ -126,7 +127,13 @@ object StoreBufferSpecs {
 
   val funcDrainFence = spec {
     FUNCTION("DrainFence")
-      .desc("Accept a DrainReq and answer DrainResp once every entry present at acceptance has drained (the buffer may accept no new stores meanwhile, since commit is blocked on the fence).")
+      .desc(
+        "Accept a StoreBufferDrainReq and answer StoreBufferDrainResp once every entry present " +
+        "at acceptance has drained (no new store can arrive meanwhile: commit is waiting). The " +
+        "response carries accessFault = 1 iff the last drained entry was an uncacheable store " +
+        "whose bus write was denied; that is how the head uncacheable store's fault becomes " +
+        "precise (CommitUnit funcUncacheableStoreAtHead)."
+      )
       .uses(intfStoreBufferDrainReqIn, intfStoreBufferDrainRespOut)
       .build()
   }

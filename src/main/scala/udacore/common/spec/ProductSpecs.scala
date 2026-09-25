@@ -43,13 +43,14 @@ object ProductSpecs {
   val rawParametricISA = spec {
     RAW("ParametricISA", "product.isa")
       .desc("""
-        |The v0 architectural point is RV32IM with M, S, and U privilege modes and Sv32 virtual
-        |memory. Every instruction is a fixed 32-bit word at a 4-byte aligned PC: the C extension
+        |The v0 architectural point is RV32IM_Zicsr_Zifencei with the Svade extension, M, S, and U
+        |privilege modes, and Sv32 virtual memory (misa reports I, M, S, U; Zicsr, Zifencei, and
+        |Svade are not misa bits). Every instruction is a fixed 32-bit word at a 4-byte aligned PC: the C extension
         |is not fetched, decoded, expanded, or represented anywhere in the frontend. Further
         |extensions (bit-manipulation, A, F, RV64) are ADR-017 contributions that later ADRs may
         |enable; none is part of v0.
         """.stripMargin)
-      .note("ADR-019 D-19.1/D-19.3. XLEN remains a parameter, but only XLEN=32 is a v0 configuration.")
+      .note("ADR-019 D-19.1/D-19.3. ADR-019 writes RV32IM; Zicsr and Zifencei are named separately because they are separate ratified extensions, and Svade names the A/D policy of Sv32Specs. XLEN remains a parameter, but only XLEN=32 is a v0 configuration.")
       .build()
   }
 

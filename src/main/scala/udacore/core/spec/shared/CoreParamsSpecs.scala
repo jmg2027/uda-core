@@ -20,7 +20,7 @@ object CoreParamsSpecs {
     PARAMETER("XLen")
       .desc(
         "Base integer register width (CoreParams.dataWidth). The v0 architecture point is " +
-        "RV32IM, so 32 is the only v0 value; RV64 is a later ADR."
+        "RV32IM_Zicsr_Zifencei, so 32 is the only v0 value; RV64 is a later ADR."
       )
       .is(rawContractParams)
       .entry("v0", "32")
@@ -64,6 +64,12 @@ object CoreParamsSpecs {
         "Static physical-memory-attribute map: a list of physical regions with {cacheable, " +
         "executable, readable, writable}. Consulted by the ITLB/DTLB after translation (or in " +
         "Bare mode) and by the PTW for page-table reads. Unmapped addresses raise access faults."
+      )
+      .note(
+        "Platform contract: a cacheable region never denies a line fill or writeback of an " +
+        "address the PMA check accepted, so cached stores and dirty writebacks cannot fault " +
+        "after retirement. Only uncacheable accesses may be denied, and those are performed at " +
+        "the ROB head, so every store access fault is precise."
       )
       .is(rawContractParams)
       .entry("v0", "one cacheable RAM region plus one uncacheable device region; set by the integrator")
