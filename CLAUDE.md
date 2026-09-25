@@ -23,15 +23,16 @@ what prose cannot.
 
 ## Project Identity
 
-UDACore is a **personal research vehicle for parametric in-order-to-OoO scaling**: one RTL
-codebase whose window parameter `SpeculativeRegNum` (N) scales from an in-order point (N=1,
-where the OoO fabric must elaborate away - ADR-008) to wide OoO (N=32+), built on
-**Unified Dataflow Architecture (UDA)**: every component is a vertex in a dataflow graph,
-every connection a ready/valid edge, and epoch-based speculation replaces flush signals.
+UDACore is a **personal, conventional out-of-order RISC-V core** (ADR-019) built with the
+**Unified Dataflow Architecture (UDA)** discipline: every component is a vertex in a
+dataflow graph, every token-moving connection a ready/valid edge, and speculation is
+recovered selectively through one RecoveryEvent broadcast - never a flush wire and never a
+global-epoch squash.
 
-It is XLEN-parametric (RV32/RV64, IMC), speaks standard full TileLink at its memory
-boundary, and carries elaboration-time accommodation seams for caches, TLBs, and the U/S/H
-privilege ladder (ADR-016). It is independent of the company line (KLASE32); references to
+The v0 point is RV32IM with M/S/U privilege and Sv32, fixed 32-bit instructions (no RVC), a
+PC-indexed BTB+TAGE+RAS frontend with an FTQ, an explicit data-less ROB with sRAT/rRAT
+renaming, an RS, an LSQ, VIPT L1 caches, ITLB/DTLB and a shared PTW, and two TileLink master
+links at the boundary. It is independent of the company line (KLASE32); references to
 "main" mean that lineage, from which the verif/PPA instruments were ported.
 
 ## Order of Authority (the law)
@@ -55,12 +56,13 @@ protected-file waivers (OQ-E), RV64 decode scheduling. Record them in
 
 ## Current State (calibrate before promising results)
 
-- **CoreTop and most vertices are spec shells** (`???` placeholders, deliberately).
-  DUT-facing verif commands answer `harness-not-ready` (exit 3) - that is the designed
-  status, not a failure. The RTL fill-in order is in `document/HANDOFF.md`.
+- **ADR-019 spec phase**: the new architecture exists as spec DSL contracts; CoreTop and
+  every ADR-019 vertex are design shells (`???` placeholders, deliberately). DUT-facing
+  verif commands answer `harness-not-ready` (exit 3) - the designed PENDING color of the
+  ADR-019 `.scn` red tests, not a failure. The RTL fill-in order is in `document/HANDOFF.md`.
 - **Implemented and elaborating today**: the external functional units (Alu, Multiplier,
-  Divider, BitAlu), GlobalEpochUnit, BootSequencer, the CSR decorator library
-  (`common/system/csr`), TileLink bundles (`common/tilelink`).
+  Divider, BitAlu), BootSequencer, the CSR decorator library (`common/system/csr`),
+  TileLink bundles (`common/tilelink`), and the parameter legality requires.
 - **Working instruments today**: the whole verif engine (scn parse/gate/trace/daemon
   machinery), EmitUnit + sta.sh unit + ppa-unit.sh (real synthesis/STA on the units).
 
@@ -91,24 +93,27 @@ hook): staged-ASCII check + spec-check on any src/main/scala commit.
 
 ## Architecture in One Screen
 
-- Domains: `core` (CoreTop integration, epoch, boot, bus adapters, cache/TLB vertices when
-  configured), `frontend`, `backend`, `memorysubsystem`, `external` (IP-style functional
-  units), `common` (isa, system/csr, tilelink, util, cross-domain specs).
-- **Epochs, not flushes**: redirect fires only at the in-order commit head (ADR-011); the
-  global epoch increments and stale tokens self-filter (eager-filter vertices enumerated in
-  the spec). Committed state (StoreBuffer committed entries, caches) is epoch-exempt.
-- **Edges**: everything token-moving is ready/valid except sanctioned rawNoDecoupled
-  facts/statics (epoch/generation where used / async inputs / boot statics /
-  commit-broadcast strobes / wakeup / ADR-019 RecoveryEvent
-  broadcast) - see `DesignRuleSpecs.rawNoDecoupled`.
-- **Boundary**: two TileLink master links, `instBus` (TL-UL/UH) and `dataBus` (TL-C when a
-  DCache is configured), bridged by CoreTop-owned adapter vertices (ADR-016). Cache/TLB
-  vertices splice into internal edges; the boundary never changes.
+- Domains: `core` (CoreTop, BootSequencer, ITLB/DTLB/PTW, VIPT I/D caches, bus adapters),
+  `frontend` (FetchPcGen, BranchPredictor, FTQ, FetchUnit, FetchBuffer), `backend` (decode,
+  rename, ROB, RS, execution units, LSQ, StoreBuffer, commit, trap/CSR, RecoveryController),
+  `external` (IP-style functional units), `common` (isa, system/csr, tilelink, util,
+  cross-domain doctrine).
+- **Selective recovery, not flushes**: a mispredicted branch recovers at execute; the
+  RecoveryController broadcasts one RecoveryEvent and every speculative holder discards
+  only entries younger than its robTag (`funcRecoveryKills` over `funcRobOlder`). Older
+  work survives. Commit-head traps/xRET/refetch are ArchRedirect events that discard the
+  whole window. Committed state (rRAT, StoreBuffer, caches, TLBs) is recovery-exempt.
+- **Edges**: everything token-moving is ready/valid except the sanctioned rawNoDecoupled
+  classes (transaction-generation tags / async inputs / boot statics / committed-state views
+  / wakeup / RecoveryEvent) - see `DesignRuleSpecs.rawNoDecoupled`.
+- **Boundary**: two TileLink master links, `instBus` and `dataBus`, bridged by
+  InstBusAdapter/DataBusAdapter. v0 is TL-UH on both; coherence (TL-C) is a separate
+  parameter, never implied by the D-cache (ADR-019 D-19.13).
 - **Extensions** (ADR-017): optional vertices + data contributions (decode rows absent when
   disabled, so instructions trap; CSR map entries into the one readFromCsr map). Never
   main-style Feature weaving.
-- **Parameters**: three tiers (contract/tuning/private) per domain; XLEN in {32, 64};
-  nothing hard-codes 32.
+- **Parameters**: three tiers (contract/tuning/private) per domain; the v0 reference values
+  are the case-class defaults; XLEN stays a parameter (v0 = 32).
 
 ## Naming
 
@@ -122,7 +127,7 @@ hook): staged-ASCII check + spec-check on any src/main/scala commit.
 
 - `src/main/scala/udacore/backend/design/modules/csr/CSR.scala` (AGENT: DO NOT TOUCH;
   OQ-E pending)
-- `src/main/scala/assembler/*` (it has RVC support main's lacks)
+- `src/main/scala/assembler/*` (it can emit RVC; the v0 core treats those encodings as illegal)
 - `src/test/scala/cluster/*`, `src/test/scala/assembler/*` (stale vs the rebuild APIs but
   owner-held)
 - The verif Gate discipline (latency/skew/differential verdicts) may be extended, never

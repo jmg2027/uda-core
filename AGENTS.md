@@ -20,8 +20,8 @@
   design assert or an explicit `tools/spec-check-allow.txt` entry (ADR-015).
 - Edge doctrine: every token-moving interface is ready/valid except the sanctioned
   rawNoDecoupled FACT/static classes enumerated in
-  `common/spec/DesignRuleSpecs.rawNoDecoupled`: epoch/generation broadcast where still
-  used, async inputs, boot statics, commit-broadcast strobes, wakeup broadcast, and the
+  `common/spec/DesignRuleSpecs.rawNoDecoupled`: local transaction-generation tags, async
+  inputs, boot statics, committed-state views and commit strobes, wakeup broadcast, and the
   ADR-019 speculative RecoveryEvent broadcast. No ad-hoc flush/kill side-channels are
   allowed: selective squash is derived locally from RecoveryEvent identity. Stalls are
   ready backpressure only.
@@ -138,8 +138,8 @@ CONTRACT("CoreTop").has(intfBootAddrIn)
 // Good: "Interface IS ready/valid protocol"
 INTERFACE("Port").is(rawReadyValidIntf)
 
-// Good: "Function USES epoch parameter"
-FUNCTION("Control").uses(paramEpochWidth)
+// Good: "Function USES ROB depth parameter"
+FUNCTION("Control").uses(paramRobDepth)
 ```
 
 ### Recommended File Organization
@@ -223,8 +223,8 @@ class ModuleName(params: Params) extends Module {
     val output = Decoupled(new BndOutput(params))
 
     // Exception interfaces (rawNoDecoupled in specs):
-    @LocalSpec(intfEpoch)
-    val epoch = Input(UInt(EpochWidth.W))
+    @LocalSpec(intfRecoveryEventIn)
+    val recoveryEvent = Input(new RecoveryEvent(params))
   })
 
   @LocalSpec(funcMain)

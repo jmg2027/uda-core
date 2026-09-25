@@ -1,6 +1,6 @@
 ---
 name: ppa
-description: Use when measuring area/timing/power of UDACore RTL - synthesizing a functional unit or (once its RTL lands) CoreTop to sky130 gates, running constrained OpenSTA, sweeping clock targets, or comparing parameter points (multiplier slice width, divider algorithm, Zbc on/off, N-sweep). Trigger on "synthesize", "STA", "what frequency does this close at", "area of", "PPA compare", "N=1 area bar".
+description: Use when measuring area/timing/power of UDACore RTL - synthesizing a functional unit or (once its RTL lands) CoreTop to sky130 gates, running constrained OpenSTA, sweeping clock targets, or comparing parameter points (multiplier slice width, divider algorithm, Zbc on/off, ROB/RS/LSQ/cache geometry). Trigger on "synthesize", "STA", "what frequency does this close at", "area of", "PPA compare".
 ---
 
 # UDACore synthesis / STA / PPA instruments
@@ -44,8 +44,8 @@ The abc delay target follows STA_PERIOD, so re-synthesis per sweep point is inte
 ## Discipline
 - ppa-unit.sh uses a plain abc map (no buffer tree): its ns/power are RELATIVE-only;
   area and DFF counts are solid. sta.sh's buffered map is the number to quote.
-- One axis per named config (ADR-015 D-15.5): never conflate N, cache, and coherence axes
-  in a comparison; add a new EmitUnit/EmitCore config instead of editing an existing one.
-- The N=1 acceptance flow (ADR-008: forbidden-structure grep + area bar vs the main-line
-  reference) activates when CoreTop elaborates; propN1ForbiddenStructures in
-  common/spec/ProductSpecs.scala is the canonical list.
+- One axis per named config (ADR-015 D-15.5): never conflate window size, cache geometry,
+  and coherence axes in a comparison; add a new EmitUnit/EmitCore config instead of editing
+  an existing one (ConfigRegistry in common/spec/ProductSpecs.scala).
+- ADR-008's N=1 degeneracy bar is superseded by ADR-019; core-level PPA points are the v0
+  reference configuration and its one-axis variants, measured once CoreTop elaborates.

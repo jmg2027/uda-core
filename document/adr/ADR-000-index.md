@@ -27,6 +27,23 @@ VIPT L1 caches, and Sv32 ITLB/DTLB/PTW.
 ADR-011 remains historical rationale for why the old single-global-epoch machine
 required commit-head redirect. Do not apply that constraint to ADR-019 work.
 
+### ADR-019 spec migration record (Work Order 07)
+
+- The position papers and critiques these ADRs were synthesized from
+  (`document/architecture-team/01..06-*.md`, `critique-*.md`, `work-orders.md`) described
+  the superseded machine and were deleted in the clean-break migration; recover them from
+  git history when reading an older ADR's rationale.
+- ADR-015 D-15.4/D-15.5 are applied without the N axis, which ADR-019 removed with ADR-008:
+  the retire-stream soundness rule now governs ISA-model equivalence
+  (`DesignRuleSpecs.propIsaRetireEquivalence`), and the ConfigRegistry names one-axis
+  variants of the v0 reference point instead of n1/n8/n32.
+- ADR-015 D-15.2 machine check 5 is re-based on ADR-019 D-19.10: a Reg/Queue site must
+  state its recovery stance (RecoveryEvent, transaction generation, or recovery-exempt);
+  `tools/spec-check.py` check `reg-queue-recovery` replaces `reg-queue-epoch`.
+- ADR-004 serialization is re-based on the ROB: a serializing uop is renamed only into an
+  empty ROB and blocks younger rename until it retires; TrapController remains the single
+  trap-CSR writer and is now the only commit-head ArchRedirect producer.
+
 ## Index
 
 | ADR | Title | Status | Settles (paper / critique) |

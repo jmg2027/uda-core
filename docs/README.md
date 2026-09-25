@@ -2,9 +2,15 @@
 
 This index maps the `docs/` tree. Each entry explains what the document covers,
 who needs it, and how often it is reviewed so you can quickly tell whether it
-belongs in your workflow. Start with the overview in
-[summary.md](summary.md), then use the *Immediate essentials* table while
-onboarding or gathering references for a new task.
+belongs in your workflow. Start with ADR-019 and the repository README, then use
+the *Immediate essentials* table while gathering references for a new task.
+
+> **Authority** - `document/adr/ADR-019-conventional-ooo-root-architecture.md` is the
+> root architecture. These documents are UDA methodology background written for the
+> earlier epoch-centered machine; where a document describes global-epoch squash,
+> commit-head-only branch redirect, ROB-less retirement, compressed instructions, or
+> an N=1-to-N=32 scaling axis, ADR-019 and the spec tree win. The ready/valid edge
+> discipline, rawTop wiring rule, spec-first workflow, and naming rules still apply.
 
 > **Information model** - Architectural intent, diagrams, and interface
 > contracts now live exclusively in the spec DSL (`src/main/scala/udacore/**/spec`).
@@ -22,8 +28,8 @@ onboarding or gathering references for a new task.
 
 | Document | Purpose | Primary Audience | Status / Review Cadence |
 | --- | --- | --- | --- |
-| **[Summary](summary.md)** | One-stop orientation covering pillars, workflows, commands, and navigation links. | All new contributors | Active - review each release |
-| **[ONBOARDING.md](../ONBOARDING.md)** | Day-by-day starting plan linking into specs, design, and waveform checkpoints. | New RTL + spec authors | Active - refresh quarterly |
+| **[ADR-019](../document/adr/ADR-019-conventional-ooo-root-architecture.md)** | Root architecture of the conventional OoO core. | All contributors | Binding |
+| **[Work Order 07](../document/architecture-team/07-ooo-v0-spec-work-order.md)** | Spec-authoring plan for the ADR-019 v0 core. | Spec authors | Active |
 | **[Spec Usage Guideline](process/spec-usage-guideline.md)** | Canonical reference for writing `LocalSpec` artifacts before design edits. | All implementers | Active - review with every spec evolution |
 
 ## Foundations (`docs/foundations/`)
@@ -33,7 +39,6 @@ onboarding or gathering references for a new task.
 | [core-design-principles.md](foundations/core-design-principles.md) | Defines UDA worldview, five invariants, and how they keep flow, validation, optimisation aligned. | Architects, reviewers | Stable - audit annually |
 | [unified-design-principles.md](foundations/unified-design-principles.md) | Policy bundle for mandatory conventions and enforcement matrix. | Architecture, governance | Active - update with policy changes |
 | [design-constitution.md](foundations/design-constitution.md) | Graph axioms for treating vertices and edges consistently across the design. | Raw top designers | Stable reference |
-| [dataflow-execution-model.md](foundations/dataflow-execution-model.md) | Token semantics, epoch guards, control=data doctrine. | Backend, verification | Active - review each major backend revision |
 | [unified-microarchitectural-paradigms.md](foundations/unified-microarchitectural-paradigms.md) | Defines ECA/RAA/MDG/FCL paradigms and interplay rules. | All subsystem leads | Stable reference |
 | [uda-methodology.md](foundations/uda-methodology.md) | Consolidated UDA playbook covering concepts, workflows, and v2 roadmap. | Tooling + methodology owners | Active - review each release |
 
@@ -53,7 +58,7 @@ onboarding or gathering references for a new task.
 | [role-based-interface-parameterization.md](practices/role-based-interface-parameterization.md) | Guidance for sizing bundles by producer/consumer responsibility. | Architects | Stable |
 | [parameter-architecture-guide.md](practices/parameter-architecture-guide.md) | English appendix covering Chipyard pivots and zero-friendly defaults. | Architects, tooling | Active |
 | [naming-conventions.md](practices/naming-conventions.md) | Directory mirroring and spec naming standards. | All contributors | Active |
-| [implementation-techniques.md](practices/implementation-techniques.md) | RelayStation usage, token structure, epoch management. | Backend implementers | Active |
+| [implementation-techniques.md](practices/implementation-techniques.md) | RelayStation usage and token structure (its epoch-management section is superseded by ADR-019 RecoveryEvent recovery). | Backend implementers | Active |
 | [application-guidelines.md](practices/application-guidelines.md) | Migration steps for legacy pipelines into UDA. | Migration task forces | Stable |
 
 ### Practices cleanup radar
@@ -77,7 +82,7 @@ onboarding or gathering references for a new task.
 
 | Document | Purpose Snapshot | Audience | Status |
 | --- | --- | --- | --- |
-| [riscv-builtin-assembler-with-rvc.md](tooling/riscv-builtin-assembler-with-rvc.md) | Operating notes for bundled assembler and RVC support. | Tooling maintainers | Stable |
+| [riscv-builtin-assembler-with-rvc.md](tooling/riscv-builtin-assembler-with-rvc.md) | Operating notes for the bundled (owner-protected) assembler, which can emit RVC; the v0 core does not execute compressed instructions. | Tooling maintainers | Stable |
 | [sbt-commands-reference.md](tooling/sbt-commands-reference.md) | Quick reference for required sbt workflows and troubleshooting tips. | Contributors running builds/tests | Active |
 
 ## Archives & Historical References
@@ -90,13 +95,11 @@ them only when an active effort needs the context.
 
 ### How to keep this index healthy
 1. **Add new documents here immediately.** Include audience + cadence so future
-   maintainers can plan reviews. If a new directory is required, align with the
-   maintainer plan captured in `docs/summary.md` section 12.
+   maintainers can plan reviews.
 2. **Move archive-grade material to the archives directory (temporary home) and
    tag it as Archive.** Update links once a dedicated archives directory returns.
 3. **Update the cleanup radar bullets** when de-duplication work is completed or
    new redundancy is spotted. Capture consolidation decisions, checklists, and
    snapshots in working notes tied to the relevant initiative.
 
-For deeper architectural and workflow narratives, continue through the reading
-order outlined in [summary.md](summary.md).
+For architecture, read the ADRs and the spec tree; this directory is methodology only.

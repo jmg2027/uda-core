@@ -40,7 +40,7 @@ spec -> test -> RED -> test review -> implement -> GREEN, hierarchically:
    instead of being decided by an agent.
 2. Write/update the spec: `<domain>/spec/...Specs.scala` mirroring the design path.
    Ordering: CONTRACT -> INTERFACEs -> FUNCTIONs -> others. One file = one CONTRACT
-   (sub-cores inside a vertex are RAW("...","subcore"), per the RvcExpander/Divider ruling).
+   (sub-cores inside a vertex are RAW("...","subcore"), per the Divider/BranchPredictor subcore ruling).
 3. Implement in design/ with `@LocalSpec(<specVal>)` on the class, each IO field, and each
    spec'd behavior val. No stubs, no `DontCare`, no TODO comments - documented placeholders
    only (`val x = ???` with the contract in the doc comment is the shell convention).
@@ -54,10 +54,10 @@ spec -> test -> RED -> test review -> implement -> GREEN, hierarchically:
 ## UDA edge rules (what reviews check)
 - Every vertex-to-vertex interface is a ready/valid edge: `.is(rawReadyValidIntf)`.
 - `.is(rawNoDecoupled)` ONLY for the sanctioned classes
-  (DesignRuleSpecs.rawNoDecoupled): (1) epoch/generation broadcast where still used,
-  (2) async inputs (interrupt, debugReq), (3) boot statics (bootAddr, hartEn),
-  (4) commit-time broadcast strobes, (5) wakeup broadcast, and (6) ADR-019
-  speculative RecoveryEvent broadcast. Broadcast FACT vs queued TRANSFER remains the
+  (DesignRuleSpecs.rawNoDecoupled): (1) local transaction-generation tags of uncancelable
+  request/response pairs, (2) async inputs (interrupt, debugReq), (3) boot statics
+  (bootAddr, hartEn), (4) commit-time strobes and committed-state views, (5) wakeup
+  broadcast, and (6) ADR-019 speculative RecoveryEvent broadcast. Broadcast FACT vs queued TRANSFER remains the
   test: token-moving projections stay ready/valid.
 - No ad-hoc flush/kill/squash side-channels. Under ADR-019, branch recovery is selective:
   the common RecoveryEvent identifies the recovery point and each speculative holder
@@ -68,8 +68,9 @@ spec -> test -> RED -> test review -> implement -> GREEN, hierarchically:
 - rawTop specs/modules: vertex instantiation + `:<>=` wiring only; the mermaid in the
   CONTRACT must reconcile edge-for-edge with the child INTERFACE union (spec-check
   graph-consistency enforces the drawn-boundary version).
-- State-holding vertices declare their recovery stance. Legacy transaction-generation
-  state may be epoch/generation-filtered; ADR-019 program-order speculative state must
+- State-holding vertices declare their recovery stance (rawSpeculativeHolder). Uncancelable
+  transaction state may use a local generation tag (propGenerationTagScope); program-order
+  speculative state must
   declare selective-recovery behavior (ordering key, younger-than rule, resource reclaim)
   or committed/architectural exemption.
 - Extensions (ADR-017): optional vertices + data contributions only - decode rows
