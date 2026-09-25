@@ -29,13 +29,16 @@ object BranchUnitSpecs {
         funcMispredictDetect,
         funcBranchRecoveryRequest,
         propRecoveryOnlyOnMispredict,
-        propBranchCompletesOnce
+        propBranchCompletesOnce,
+        propBranchControlOnce
       )
       .is(rawSpeculativeHolder)
       .note(
-        "Speculative-holder stance: holds at most one branch (and its two output tokens). A " +
-        "RecoveryEvent that kills the held robTag (funcRecoveryKills) drops both tokens, so a " +
-        "killed branch never completes or requests recovery."
+        "Speculative-holder stance: holds at most one branch and its two independent output " +
+        "tokens (control: BranchResolution or CheckpointRelease; result: BranchResult). A " +
+        "RecoveryEvent that kills the held robTag (funcRecoveryKills) drops every unfired " +
+        "token, so a killed branch never completes or requests recovery; a token that already " +
+        "fired is not undone (ADR-019C E-6)."
       )
       .build()
   }
@@ -45,6 +48,7 @@ object BranchUnitSpecs {
       .desc("Issued control-flow uops (operands, pc, imm, prediction, checkpointId, ftqIdx).")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
+      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
       .build()
   }
 
@@ -109,13 +113,17 @@ object BranchUnitSpecs {
   val funcBranchRecoveryRequest = spec {
     FUNCTION("BranchRecoveryRequest")
       .desc(
-        "For a mispredicted, non-faulting branch, offer BranchResolution{robTag, checkpointId, " +
-        "ftqIdx, pc, outcome, redirectTarget, cause} together with the branch's completion " +
-        "(both tokens fire in the same cycle); RenameUnit frees that checkpoint after restoring " +
-        "from it. Every other branch (correctly predicted, or faulting) offers " +
-        "CheckpointRelease{checkpointId, robTag} together with its completion instead. The " +
-        "branch itself, and all older uops, remain live."
+        "Control resolution and result publication are independent channels (ADR-019C E-4): " +
+        "for a mispredicted, non-faulting branch offer BranchResolution{robTag, checkpointId, " +
+        "ftqIdx, pc, outcome, redirectTarget, cause}; for a correctly predicted or faulting " +
+        "branch offer CheckpointRelease{checkpointId, robTag}; every branch offers its " +
+        "BranchResult. Neither channel waits for the other: they fire in the same cycle or in " +
+        "different cycles. BranchResolutionOut.valid never depends on BranchResultOut.ready, " +
+        "the PublishMux grant, or the RecoveryEvent its own resolution produces. RenameUnit " +
+        "frees a mispredicted branch's checkpoint when it applies the RecoveryEvent. The " +
+        "branch itself survives its own recovery; all older uops remain live."
       )
+      .note("ADR-019C E-4/E-5/E-6: an older same-cycle ArchRedirect kills the branch and discards its unfired tokens.")
       .uses(intfBranchResolutionOut, intfCheckpointReleaseOut, funcRecoveryKills)
       .build()
   }
@@ -124,6 +132,18 @@ object BranchUnitSpecs {
     PROPERTY("RecoveryOnlyOnMispredict")
       .desc("BranchResolutionOut fires only for a live branch whose resolved outcome differs from its prediction, and never for a faulting branch.")
       .uses(intfBranchResolutionOut)
+      .build()
+  }
+
+  val propBranchControlOnce = spec {
+    PROPERTY("BranchControlOnce")
+      .desc(
+        "Every live branch produces exactly one control side effect - CheckpointRelease XOR " +
+        "BranchResolution, never both and never neither - unless a RecoveryEvent kills it " +
+        "before its control token fires (ADR-019C E-5)."
+      )
+      .uses(intfBranchResolutionOut, intfCheckpointReleaseOut)
+      .note("Simulation assert.")
       .build()
   }
 

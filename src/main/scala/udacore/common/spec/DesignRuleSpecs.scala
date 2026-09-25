@@ -56,7 +56,8 @@ object DesignRuleSpecs {
           List("3", "boot-time statics", "bootAddr, hartEn"),
           List("4", "commit-time broadcast strobes and committed-state views", "commitGrant, ROB head position, translation context"),
           List("5", "wakeup broadcast derived from result publication", "WakeupBroadcast"),
-          List("6", "ADR-019 speculative RecoveryEvent broadcast", "RecoveryEvent")
+          List("6", "ADR-019 speculative RecoveryEvent broadcast", "RecoveryEvent"),
+          List("7", "execution-capacity views derived only from registered state and the drain of already-held tokens, never from the request they gate (ADR-019C E-1/E-2)", "FuAvailability")
         )
       )
       .note(

@@ -37,6 +37,11 @@ object PublishMuxSpecs {
         "edge, and the producer drops it when funcRecoveryKills selects it, so a killed uop " +
         "never writes the PRF, wakes a consumer, or completes a ROB entry."
       )
+      .note(
+        "ADR-019C E-7: the RecoveryEvent stays combinational; PublishMux grants the oldest " +
+        "candidate still live in the event cycle. A branch's result survives its own " +
+        "BranchResolution's event, while younger same-cycle results are gone."
+      )
       .build()
   }
 

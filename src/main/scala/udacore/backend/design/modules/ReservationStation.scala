@@ -29,6 +29,9 @@ class ReservationStation(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfIssuedUopOut)
     val issuedUopOut = ???
 
+    @LocalSpec(intfFuAvailabilityIn)
+    val fuAvailabilityIn = ???
+
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
   })

@@ -38,10 +38,16 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfCsrReqOut)
     val csrReqOut = ???
 
+    @LocalSpec(intfFuAvailabilityOut)
+    val fuAvailabilityOut = ???
+
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
   })
 
   @LocalSpec(funcFuRoute)
   val fuRoute = ???
+
+  @LocalSpec(funcFuAvailability)
+  val fuAvailability = ???
 }

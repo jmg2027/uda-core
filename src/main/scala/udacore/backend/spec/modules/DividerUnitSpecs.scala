@@ -33,6 +33,7 @@ object DividerUnitSpecs {
       .desc("Issued uops routed to this unit by DispatchUnit.")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
+      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
       .build()
   }
 

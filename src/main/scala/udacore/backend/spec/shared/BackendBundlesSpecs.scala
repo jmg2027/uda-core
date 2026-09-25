@@ -235,6 +235,20 @@ object BackendBundlesSpecs {
       .build()
   }
 
+  val bndFuAvailability = spec {
+    BUNDLE("FuAvailability")
+      .desc("DispatchUnit to ReservationStation (ADR-019C E-1): per FU class, whether an IssuedUop of that class presented this cycle would be accepted by DispatchUnit and its execution wrapper.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("alu, mul, div, branch, mem, csr", "Bool", "One bit per FU class (mem = the AGU path of loads and stores)."),
+          List("bitAlu", "Bool", "Only when the BitAluUnit extension is elaborated.")
+        )
+      )
+      .note("System uops never enter the RS (ADR-019A E-1) and have no bit. rawNoDecoupled class 7: derived only from registered state and the drain of already-held tokens (ADR-019C E-2).")
+      .build()
+  }
+
   val bndFuResult = spec {
     BUNDLE("FuResult")
       .desc("Result of any execution unit toward PublishMux: register value (optional) plus the ROB completion payload.")

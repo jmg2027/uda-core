@@ -119,6 +119,7 @@ object BackendTopSpecs {
         rs -- RegisterFileReadReq --> prf
         prf -- RegisterFileReadResp --> rs
         rs -- IssuedUop --> dis
+        dis -. FuAvailability .-> rs
 
         dis -- AluReq --> alu
         dis -- BitAluReq --> balu
@@ -207,7 +208,8 @@ object BackendTopSpecs {
         "DecodedPacketOut -> RenameUnit.DecodedPacketIn; RenameUnit.{RobAllocOut, RsAllocOut, " +
         "LsqAllocOut} -> {ReorderBuffer.RobAllocIn, ReservationStation.RsAllocIn, " +
         "LoadStoreQueue.LsqAllocIn}; RS.RegisterFileReadReqOut <-> PRF.RegisterFileRead*; " +
-        "RS.IssuedUopOut -> DispatchUnit.IssuedUopIn; DispatchUnit.*ReqOut -> each unit's " +
+        "RS.IssuedUopOut -> DispatchUnit.IssuedUopIn; DispatchUnit.FuAvailabilityOut -> " +
+        "RS.FuAvailabilityIn (rawNoDecoupled class 7, ADR-019C); DispatchUnit.*ReqOut -> each unit's " +
         "*ReqIn; AGU.MemAddressOut -> LSQ.MemAddressIn; unit *ResultOut and LSQ.MemResultOut -> " +
         "PublishMux.*ResultIn/MemResultIn; PublishMux.{PhysicalRegWriteOut, " +
         "WakeupBroadcastOut, RobCompletionOut} -> PRF/RS+Rename/ROB; ROB.RobHeadOut -> " +

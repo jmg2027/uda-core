@@ -21,8 +21,10 @@ object DispatchUnitSpecs {
         intfBranchUnitReqOut,
         intfAddressGenerationReqOut,
         intfCsrReqOut,
+        intfFuAvailabilityOut,
         intfRecoveryEventIn,
-        funcFuRoute
+        funcFuRoute,
+        funcFuAvailability
       )
       .is(rawSpeculativeHolder)
       .note(
@@ -97,6 +99,15 @@ object DispatchUnitSpecs {
       .build()
   }
 
+  val intfFuAvailabilityOut = spec {
+    INTERFACE("FuAvailabilityOut")
+      .desc("Per-class FU availability to the ReservationStation (ADR-019C E-1).")
+      .uses(bndFuAvailability)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 7.")
+      .build()
+  }
+
   val intfRecoveryEventIn = spec {
     INTERFACE("RecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
@@ -109,11 +120,27 @@ object DispatchUnitSpecs {
   val funcFuRoute = spec {
     FUNCTION("FuRoute")
       .desc(
-        "Offer the IssuedUop on the one request edge selected by fuType; IssuedUopIn is ready " +
-        "exactly when that edge is ready. The RS only selects uops whose unit can accept, so " +
-        "routing never reorders or duplicates uops."
+        "Offer the IssuedUop on the one request edge selected by fuType; IssuedUopIn.ready " +
+        "equals the FuAvailability bit of the presented uop's class. The RS only selects uops " +
+        "whose class is available, so routing never reorders, duplicates, or loses uops."
       )
+      .note("ADR-019C E-1/E-2.")
       .uses(intfIssuedUopIn, funcRecoveryKills)
+      .build()
+  }
+
+  val funcFuAvailability = spec {
+    FUNCTION("FuAvailability")
+      .desc(
+        "Drive one availability bit per FU class: set when an IssuedUop of that class " +
+        "presented this cycle would be accepted by DispatchUnit and its execution wrapper. " +
+        "Each bit derives only from the wrapper's request readiness, which depends on its " +
+        "registered state and the drain of its already-held output token and never on the " +
+        "current request's valid or payload; a DispatchUnit holding a routed token drives " +
+        "that class unavailable and never accepts a hidden second token."
+      )
+      .uses(intfFuAvailabilityOut)
+      .note("ADR-019C E-2: the loop RS selection -> IssuedUop -> FU ready -> FuAvailability -> RS selection is forbidden.")
       .build()
   }
 }

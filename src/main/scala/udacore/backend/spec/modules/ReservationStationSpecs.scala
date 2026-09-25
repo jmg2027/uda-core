@@ -22,12 +22,14 @@ object ReservationStationSpecs {
         intfRegisterFileReadReqOut,
         intfRegisterFileReadRespIn,
         intfIssuedUopOut,
+        intfFuAvailabilityIn,
         intfRecoveryEventIn,
         funcRsWakeup,
         funcSelectOldestReady,
         funcRsRecovery,
         propRsIssueOnlyReady,
-        propRsRecoveryKeepsOlder
+        propRsRecoveryKeepsOlder,
+        propRsIssueStable
       )
       .uses(paramIntegerRsEntries, paramIssueWidth, funcRobOlder)
       .is(rawSpeculativeHolder)
@@ -81,6 +83,15 @@ object ReservationStationSpecs {
       .build()
   }
 
+  val intfFuAvailabilityIn = spec {
+    INTERFACE("FuAvailabilityIn")
+      .desc("Per-class FU availability from DispatchUnit (ADR-019C E-1).")
+      .uses(bndFuAvailability)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 7.")
+      .build()
+  }
+
   val intfRecoveryEventIn = spec {
     INTERFACE("RecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
@@ -100,11 +111,15 @@ object ReservationStationSpecs {
   val funcSelectOldestReady = spec {
     FUNCTION("SelectOldestReady")
       .desc(
-        "Among entries with both sources ready whose target FU class can accept, select the " +
+        "Among entries with both sources ready whose FuAvailability bit is set, select the " +
         "oldest by funcRobOlder (the v0 arbitration policy), read its operands, and issue it. " +
-        "Oldest-first guarantees the ROB head is never starved."
+        "A ready entry of an unavailable class never blocks a younger ready entry of an " +
+        "available class; within a class the choice is oldest-first, so the ROB head is never " +
+        "starved. The PRF read and the entry release coincide with the issue transfer; a " +
+        "selected entry killed by a same-cycle RecoveryEvent is not issued and is freed."
       )
-      .uses(intfIssuedUopOut, funcRobOlder)
+      .note("ADR-019C E-1/E-3.")
+      .uses(intfIssuedUopOut, intfFuAvailabilityIn, funcRobOlder)
       .note("This is edgeWakeupSelect (EdgeBudgetSpecs), budget 0 stages.")
       .build()
   }
@@ -120,6 +135,18 @@ object ReservationStationSpecs {
     PROPERTY("RsIssueOnlyReady")
       .desc("A uop is issued only when both source prds hold their final values (ready bit set by a wakeup or at rename).")
       .uses(intfIssuedUopOut)
+      .build()
+  }
+
+  val propRsIssueStable = spec {
+    PROPERTY("RsIssueStable")
+      .desc(
+        "While IssuedUopOut is valid and not ready, its bits and selected entry stay unchanged " +
+        "until the transfer or a RecoveryEvent kill of that entry; an entry is freed only by " +
+        "its issue transfer or a kill, never for a uop that was not accepted (ADR-019C E-3)."
+      )
+      .uses(intfIssuedUopOut)
+      .note("Simulation assert.")
       .build()
   }
 

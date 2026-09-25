@@ -33,7 +33,9 @@ execution, an explicit `sysOp` in the decoded uop, RobStatus timing, the domain 
 baseline; ADR-019A is applied on top of it. **ADR-019B (v0 Erratum 02)** follows it:
 RecoveryCause.Debug, WFI as a serializing NOP, the usingRvvi commit PRF read path, the
 executing-privilege meaning of RetireToken.priv, trap-entry observation tokens, and atomic
-retiring redirects.
+retiring redirects. **ADR-019C (v0 Erratum 03)** adds the FuAvailability view
+(rawNoDecoupled class 7) for oldest-ready-among-available RS selection and separates the
+BranchUnit's control-resolution and result-publication channels.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -95,6 +97,7 @@ retiring redirects.
 | [019](ADR-019-conventional-ooo-root-architecture.md) | Conventional OoO root architecture | **accepted (current root)** | owner directive 2026-09-25; supersedes epoch/predecode/ROB-less base where stated |
 | [019A](ADR-019A-v0-erratum-01.md) | ADR-019 v0 erratum 01 (RS allocation set, sysOp, recovery ordering) | **accepted** | owner ruling 2026-09-25; amends 019 on top of the 242feaf freeze |
 | [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
+| [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
 
 ## Status of pre-ADR-019 proposed experiments
 

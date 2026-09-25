@@ -32,6 +32,7 @@ object AddressGenerationUnitSpecs {
       .desc("Issued load/store uops.")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
+      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
       .build()
   }
 

@@ -85,3 +85,7 @@ propDCacheLoadAnswerExactlyOnce
 propICacheFunctionTransparent
 propICacheReadOnly
 propICacheResponseOrder
+
+# ADR-019C new PROPERTYs: paired with their design asserts as each vertex lands (removed then)
+propRsIssueStable
+propBranchControlOnce

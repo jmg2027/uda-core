@@ -51,6 +51,7 @@ object CsrControllerSpecs {
   val intfCsrReqIn = spec {
     INTERFACE("CSRReqIn")
       .desc("CSR operations from DispatchUnit.")
+      .note("ADR-019C E-2: ready derives only from registered state, never from this request's valid or payload.")
       .uses(bndCsrReq)
       .is(rawReadyValidIntf)
       .build()
