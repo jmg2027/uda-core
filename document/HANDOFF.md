@@ -137,7 +137,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-1. Owner review passed after round 2; RTL starts with RenameUnit -> ReorderBuffer ->
+1. Spec frozen after review round 3; RTL starts with RenameUnit -> ReorderBuffer ->
    RecoveryController -> CommitUnit.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
