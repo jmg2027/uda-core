@@ -38,6 +38,7 @@ object BackendTopSpecs {
         intfDtlbRefillIn,
         intfDCacheLoadRespIn,
         intfUncachedStoreRespIn,
+        intfUncachedLoadRespIn,
         intfStoreDrainRespIn,
         intfDCacheCleanRespIn,
         intfRecoveryEventOut,
@@ -45,6 +46,7 @@ object BackendTopSpecs {
         intfDtlbReqOut,
         intfDCacheLoadReqOut,
         intfUncachedStoreReqOut,
+        intfUncachedLoadReqOut,
         intfStoreDrainReqOut,
         intfTranslationContextOut,
         intfSfenceVmaOut,
@@ -71,6 +73,7 @@ object BackendTopSpecs {
         dtlbrefill@{shape: text, label: DtlbRefill}
         dcresp@{shape: text, label: DCacheLoadResp}
         ucresp@{shape: text, label: UncachedStoreResp}
+        ulresp@{shape: text, label: UncachedLoadResp}
         sdresp@{shape: text, label: StoreDrainResp}
         dccresp@{shape: text, label: DCacheCleanResp}
     end
@@ -102,6 +105,7 @@ object BackendTopSpecs {
     dtlbrefill --> lsq
     dcresp --> lsq
     ucresp --> lsq
+    ulresp --> lsq
     sdresp --> sb
     dccresp --> com
 
@@ -169,6 +173,7 @@ object BackendTopSpecs {
     lsq --> dtlbreq
     lsq --> dcreq
     lsq --> ucreq
+    lsq --> ulreq
     sb --> sdreq
     csr -.-> tctx
     com --> sfence
@@ -182,6 +187,7 @@ object BackendTopSpecs {
         dtlbreq@{shape: text, label: DtlbReq}
         dcreq@{shape: text, label: DCacheLoadReq}
         ucreq@{shape: text, label: UncachedStoreReq}
+        ulreq@{shape: text, label: UncachedLoadReq}
         sdreq@{shape: text, label: StoreDrainReq}
         tctx@{shape: text, label: TranslationContext}
         sfence@{shape: text, label: SfenceVma}
@@ -266,6 +272,22 @@ object BackendTopSpecs {
     INTERFACE("DCacheLoadRespIn")
       .desc("DataCache load answers, wired to the LSQ.")
       .uses(bndDCacheLoadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedLoadRespIn = spec {
+    INTERFACE("UncachedLoadRespIn")
+      .desc("DataCache answers of uncached loads, wired to the LSQ.")
+      .uses(bndUncachedLoadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedLoadReqOut = spec {
+    INTERFACE("UncachedLoadReqOut")
+      .desc("Granted uncacheable loads from the LSQ to the DataCache uncached port.")
+      .uses(bndUncachedLoadReq)
       .is(rawReadyValidIntf)
       .build()
   }

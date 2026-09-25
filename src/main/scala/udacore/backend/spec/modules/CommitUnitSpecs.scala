@@ -203,8 +203,8 @@ object CommitUnitSpecs {
   val funcCommitHead = spec {
     FUNCTION("CommitHead")
       .desc(
-        "A done head with no exception, no pending interrupt, no sysOp, and no " +
-        "predictionFault retires when all of its views are ready in the same cycle: " +
+        "A presented head that is done (never one with headExecute && !done), with no " +
+        "exception, no pending interrupt, no sysOp, and no predictionFault retires when all of its views are ready in the same cycle: " +
         "RenameCommit always; StoreCommit if isStore; FtqCommit if blockEnd; CommitGrant if a " +
         "CSR uop; the retire token when usingRvvi. Otherwise the head waits."
       )
@@ -228,8 +228,9 @@ object CommitUnitSpecs {
   val funcHeadMemGrant = spec {
     FUNCTION("HeadMemGrant")
       .desc(
-        "When the head entry is not done and is marked headExecute (an uncacheable load or " +
-        "store), and no trap hold is active, send HeadMemGrant{robTag} once and set " +
+        "When RobHeadIn presents a head with headExecute && !done (an uncacheable load or " +
+        "store), keep RobHeadIn.ready low (observe, do not dequeue), and if no trap hold is " +
+        "active send HeadMemGrant{robTag} once and set " +
         "grantInFlight. While grantInFlight, no interrupt or debug request is sampled in front " +
         "of that head, so the single bus access it performs is never killed and replayed. The " +
         "head then completes normally (done, possibly with an exception) and retires through " +

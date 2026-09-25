@@ -1,7 +1,7 @@
 # ADR-019 D-19.12: a store on a wrong path must never become architecturally visible.
 # The taken branch is unpredicted (cold BTB); the two fall-through stores are wrong-path.
 @name ooo-wrong-path-store-invisible
-@verifies propNoSpeculativeStoreVisible funcStoreCommitHandoff funcLsqRecovery propLsqRecoveryKeepsOlder
+@verifies propNoWrongPathStoreVisible funcStoreCommitHandoff funcLsqRecovery propLsqRecoveryKeepsOlder
 @verifies funcCommitOrderDrain propInOrderDrain propCommittedSurvivesRecovery funcStoreToLoadForward
 @verifies funcLsqAllocate funcAddressCapture funcStoreComplete funcAddressGenerate funcCommittedForward
 @verifies funcDCacheStoreWrite propDCacheCommittedStoresOnly

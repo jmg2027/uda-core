@@ -35,6 +35,9 @@ class BackendTop(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfUncachedStoreRespIn)
     val uncachedStoreRespIn = ???
 
+    @LocalSpec(intfUncachedLoadRespIn)
+    val uncachedLoadRespIn = ???
+
     @LocalSpec(intfStoreDrainRespIn)
     val storeDrainRespIn = ???
 
@@ -55,6 +58,9 @@ class BackendTop(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfUncachedStoreReqOut)
     val uncachedStoreReqOut = ???
+
+    @LocalSpec(intfUncachedLoadReqOut)
+    val uncachedLoadReqOut = ???
 
     @LocalSpec(intfStoreDrainReqOut)
     val storeDrainReqOut = ???

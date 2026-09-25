@@ -1,7 +1,7 @@
 # ADR-019 verification obligation: precise store page fault on a read-only page. The
 # load from the same page succeeds; the store raises cause 15 and never reaches memory.
 @name sv32-precise-store-page-fault
-@verifies funcSv32PermissionCheck funcAddressCapture funcStoreComplete propNoSpeculativeStoreVisible
+@verifies funcSv32PermissionCheck funcAddressCapture funcStoreComplete propNoWrongPathStoreVisible
 @maxcycles 20000
 # --- Sv32 setup (M-mode, identical in every sv32_*.scn) --------------------------
 # root table 0x90000: [0] identity 4 MiB megapage VRWXAD (covers program, results, tables)

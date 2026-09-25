@@ -31,6 +31,8 @@ object DataCacheSpecs {
         intfPtwMemRespOut,
         intfDCacheCleanReqIn,
         intfDCacheCleanRespOut,
+        intfUncachedLoadReqIn,
+        intfUncachedLoadRespOut,
         intfUncachedStoreReqIn,
         intfUncachedStoreRespOut,
         intfDataMemReqOut,
@@ -137,6 +139,22 @@ object DataCacheSpecs {
       .build()
   }
 
+  val intfUncachedLoadReqIn = spec {
+    INTERFACE("UncachedLoadReqIn")
+      .desc("Granted uncacheable loads from the LoadStoreQueue (physical).")
+      .uses(bndUncachedLoadReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedLoadRespOut = spec {
+    INTERFACE("UncachedLoadRespOut")
+      .desc("Bus answer of each uncached load, to the LoadStoreQueue.")
+      .uses(bndUncachedLoadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
   val intfUncachedStoreReqIn = spec {
     INTERFACE("UncachedStoreReqIn")
       .desc("Granted uncacheable stores from the LoadStoreQueue (physical).")
@@ -175,7 +193,7 @@ object DataCacheSpecs {
         "Read all ways of set va[11:6] for a load while the DTLB translates it; when the " +
         "paired translation is Hit and cacheable, compare tags with pa[33:12]. Hit: answer " +
         "Data with paddr. Translation Miss: answer TlbMiss. Translation fault: answer the " +
-        "fault. Hit but not cacheable: answer Uncacheable (the LSQ retries at the ROB head)."
+        "fault. Hit but not cacheable: answer Uncacheable with paddr and touch nothing (the LSQ performs the load later through UncachedLoadReq after its HeadMemGrant)."
       )
       .uses(intfDCacheLoadReqIn, intfDCacheTranslationIn, intfDCacheLoadRespOut, propViptGeometryLegal)
       .build()
@@ -226,12 +244,14 @@ object DataCacheSpecs {
   val funcDCacheUncached = spec {
     FUNCTION("DCacheUncached")
       .desc(
-        "An uncached load (issued only after its HeadMemGrant) or an UncachedStoreReq bypasses " +
-        "the array as a single GetUncached/PutUncached bus access; nothing is installed. Each " +
+        "An UncachedLoadReq or UncachedStoreReq (physical; issued by the LSQ only after the " +
+        "uop's HeadMemGrant) bypasses the array and the TLB as a single GetUncached/PutUncached " +
+        "bus access; nothing is installed. Each " +
         "is answered only after the bus acknowledgement, with the access fault = denied, so the " +
         "head uop can trap precisely."
       )
-      .uses(intfDataMemReqOut, intfUncachedStoreReqIn, intfUncachedStoreRespOut)
+      .uses(intfDataMemReqOut, intfUncachedLoadReqIn, intfUncachedLoadRespOut,
+            intfUncachedStoreReqIn, intfUncachedStoreRespOut)
       .build()
   }
 
@@ -260,7 +280,7 @@ object DataCacheSpecs {
         "line fills; no load, PTE read, or wrong-path access ever modifies a byte of cached data."
       )
       .uses(intfStoreDrainReqIn)
-      .note("ADR-019 D-19.12: speculative stores never reach the cache (propNoSpeculativeStoreVisible upstream).")
+      .note("ADR-019 D-19.12: speculative stores never reach the cache (propNoWrongPathStoreVisible upstream).")
       .build()
   }
 

@@ -41,6 +41,12 @@ class DataCache(val params: CoreParams) extends CoreModule {
     @LocalSpec(intfDCacheCleanRespOut)
     val dCacheCleanRespOut = ???
 
+    @LocalSpec(intfUncachedLoadReqIn)
+    val uncachedLoadReqIn = ???
+
+    @LocalSpec(intfUncachedLoadRespOut)
+    val uncachedLoadRespOut = ???
+
     @LocalSpec(intfUncachedStoreReqIn)
     val uncachedStoreReqIn = ???
 

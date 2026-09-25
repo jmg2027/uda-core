@@ -52,7 +52,8 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
     M/S/U, Sv32. ADR-019's "RV32IM" is read as this precise string.
   - Uncacheable loads and stores are executed at the ROB head under a HeadMemGrant, before
     and separate from commit: the LSQ performs the single bus access (stores through a
-    dedicated uncached D-cache port, never the StoreBuffer) and completes the uop, which then
+    dedicated uncached D-cache port, never the StoreBuffer; loads through the matching
+    physical UncachedLoadReq port) and completes the uop, which then
     retires through the ordinary atomic commit or traps precisely. Cacheable PMA regions are
     fill/writeback-fault-free by platform contract (resolves the former OQ-G).
   - Debug requests are sampled by the CommitUnit at a precise retire boundary, like

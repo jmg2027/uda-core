@@ -193,7 +193,7 @@ object BackendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "Head tag."),
-          List("entry", "RobEntry", "Head entry; offered only when done or when its exception is known.")
+          List("entry", "RobEntry", "Head entry; presented when done or headExecute (valid = head.valid && (done || headExecute)); a headExecute && !done head is observed, never transferred.")
         )
       )
       .build()

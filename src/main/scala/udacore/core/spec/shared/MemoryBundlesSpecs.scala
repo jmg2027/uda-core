@@ -185,14 +185,13 @@ object MemoryBundlesSpecs {
 
   val bndDCacheLoadReq = spec {
     BUNDLE("DCacheLoadReq")
-      .desc("Load lookup into the VIPT D-cache, issued in the same cycle as the matching DTLB request.")
+      .desc("Speculative cached load lookup into the VIPT D-cache, issued in the same cycle as the matching DTLB request. Uncacheable loads never use this path after their first (Uncacheable-answered) lookup.")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("lqIdx, lqGen", "UInt", "LQ entry and its allocation generation."),
           List("vaddr", "UInt(vAddrWidth)", "Load virtual address; set index from untranslated bits."),
-          List("size", "UInt(2)", "Access size."),
-          List("uncached", "Bool", "Re-issue of an uncacheable load at the ROB head (bypasses the array).")
+          List("size", "UInt(2)", "Access size.")
         )
       )
       .build()
@@ -230,6 +229,35 @@ object MemoryBundlesSpecs {
   val bndStoreDrainResp = spec {
     BUNDLE("StoreDrainResp")
       .desc("Completion of one committed cacheable store drain (the bytes are in the array). Never faults: cacheable regions are fill/writeback-fault-free by the paramPmaMap contract.")
+      .build()
+  }
+
+  val bndUncachedLoadReq = spec {
+    BUNDLE("UncachedLoadReq")
+      .desc("LSQ to D-cache uncached port: the single bus read of a granted uncacheable load. Physical address; no TLB pairing.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("lqIdx, lqGen", "UInt", "LQ entry and allocation generation (response reassociation)."),
+          List("paddr", "UInt(pAddrWidth)", "Physical address recorded from the first lookup's translation."),
+          List("size", "UInt(2)", "Access size (Get of that size).")
+        )
+      )
+      .uses(paramPAddrWidth)
+      .build()
+  }
+
+  val bndUncachedLoadResp = spec {
+    BUNDLE("UncachedLoadResp")
+      .desc("Bus answer of an uncached load, returned only after the TileLink AccessAckData.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("lqIdx, lqGen", "UInt", "Echo."),
+          List("data", "UInt(XLen)", "Raw loaded bytes (the LSQ sign/zero-extends)."),
+          List("accessFault", "Bool", "TileLink denied/corrupt: precise load access fault, the load is still at the ROB head.")
+        )
+      )
       .build()
   }
 

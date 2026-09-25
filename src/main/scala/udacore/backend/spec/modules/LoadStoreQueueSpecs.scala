@@ -38,6 +38,8 @@ object LoadStoreQueueSpecs {
         intfCommittedStoreOut,
         intfRobStatusIn,
         intfHeadMemGrantIn,
+        intfUncachedLoadReqOut,
+        intfUncachedLoadRespIn,
         intfUncachedStoreReqOut,
         intfUncachedStoreRespIn,
         intfStoreBufferEmptyIn,
@@ -55,7 +57,7 @@ object LoadStoreQueueSpecs {
         funcLsqRecovery,
         propPhysicalOrderingAuthority,
         propNoPassUnresolvedStore,
-        propNoSpeculativeStoreVisible,
+        propNoWrongPathStoreVisible,
         propWrongPathLoadNoResult,
         propLsqRecoveryKeepsOlder,
         propUncachedPerformedOnce
@@ -194,6 +196,22 @@ object LoadStoreQueueSpecs {
       .build()
   }
 
+  val intfUncachedLoadReqOut = spec {
+    INTERFACE("UncachedLoadReqOut")
+      .desc("The single bus read of a granted uncacheable load, to the DataCache uncached port (physical; no DTLB pairing).")
+      .uses(bndUncachedLoadReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedLoadRespIn = spec {
+    INTERFACE("UncachedLoadRespIn")
+      .desc("Bus answer of the uncached load (data or accessFault = denied).")
+      .uses(bndUncachedLoadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
   val intfUncachedStoreReqOut = spec {
     INTERFACE("UncachedStoreReqOut")
       .desc("The single bus write of a granted uncacheable store, to the DataCache uncached port (physical; bypasses the StoreBuffer and the array).")
@@ -326,17 +344,18 @@ object LoadStoreQueueSpecs {
     FUNCTION("UncacheableAtHead")
       .desc(
         "An uncacheable access is never performed speculatively and at most once. A load " +
-        "answered Uncacheable, or a store translated to a non-cacheable page with its data " +
+        "whose cached lookup was answered Uncacheable (recording its paddr from that " +
+        "lookup's translation), or a store translated to a non-cacheable page with its data " +
         "known, reports headExecute on MemResultOut and waits. On HeadMemGrant for its robTag, " +
         "and once StoreBufferEmpty holds (older committed stores are ordered before it), a load " +
-        "re-issues DCacheLoadReq with uncached set and completes with the value or a load access " +
-        "fault; a store issues UncachedStoreReq{paddr, data, mask}, keeps its SQ entry, and on " +
+        "issues UncachedLoadReq{lqIdx, lqGen, paddr, size} and on UncachedLoadResp completes " +
+        "with the extended value or a load access fault (tval = its vaddr); a store issues UncachedStoreReq{paddr, data, mask}, keeps its SQ entry, and on " +
         "UncachedStoreResp completes done (marked uncachedPerformed) or with a store access " +
         "fault (tval = its vaddr, held in the SQ entry). The later StoreCommit or ArchRedirect " +
         "then releases the entry."
       )
-      .uses(intfHeadMemGrantIn, intfStoreBufferEmptyIn, intfDCacheLoadReqOut,
-            intfUncachedStoreReqOut, intfUncachedStoreRespIn, intfMemResultOut)
+      .uses(intfHeadMemGrantIn, intfStoreBufferEmptyIn, intfUncachedLoadReqOut,
+            intfUncachedLoadRespIn, intfUncachedStoreReqOut, intfUncachedStoreRespIn, intfMemResultOut)
       .build()
   }
 
@@ -380,13 +399,17 @@ object LoadStoreQueueSpecs {
       .build()
   }
 
-  val propNoSpeculativeStoreVisible = spec {
-    PROPERTY("NoSpeculativeStoreVisible")
+  val propNoWrongPathStoreVisible = spec {
+    PROPERTY("NoWrongPathStoreVisible")
       .desc(
-        "No store leaves the SQ except through CommittedStoreOut in its commit cycle, so a " +
-        "wrong-path store can never reach the StoreBuffer, the D-cache, or the bus."
+        "A wrong-path store never becomes visible to the D-cache, the bus, or a later load " +
+        "outside forwarding. A cacheable store becomes visible only through CommittedStoreOut in " +
+        "its retirement cycle. An uncacheable store becomes visible before retirement only via " +
+        "UncachedStoreReq, and only when its robTag is the ROB head, its HeadMemGrant was " +
+        "received, no interrupt or debug request can be taken in front of it (grantInFlight), " +
+        "and the access is performed at most once (propUncachedPerformedOnce)."
       )
-      .uses(funcStoreCommitHandoff)
+      .uses(funcStoreCommitHandoff, funcUncacheableAtHead)
       .note("ADR-019 D-19.12. Simulation assert plus the wrong-path-store directed case.")
       .build()
   }

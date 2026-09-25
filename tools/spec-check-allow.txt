@@ -63,10 +63,10 @@ propSingleRecoveryPerCycle
 propTrapSingleWriter
 
 # WP-5 LoadStoreQueue asserts
+propNoWrongPathStoreVisible
 propUncachedPerformedOnce
 propLsqRecoveryKeepsOlder
 propNoPassUnresolvedStore
-propNoSpeculativeStoreVisible
 propPhysicalOrderingAuthority
 propWrongPathLoadNoResult
 

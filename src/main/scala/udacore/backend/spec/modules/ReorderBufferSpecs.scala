@@ -112,8 +112,11 @@ object ReorderBufferSpecs {
   val funcRobHeadOffer = spec {
     FUNCTION("RobHeadOffer")
       .desc(
-        "Offer the head entry on RobHeadOut when it is done (with or without an exception). " +
-        "The transfer of an exception-free entry is its retirement: the head advances by one. " +
+        "RobHeadOut.valid = head.valid && (head.done || head.headExecute): valid presents the " +
+        "head, only the transfer (valid && ready) dequeues it. A head with headExecute && !done " +
+        "is presented so the CommitUnit can observe it and grant its execution, but the " +
+        "CommitUnit holds ready low until the LSQ completion sets done (and clears headExecute). " +
+        "The transfer of a done, exception-free entry is its retirement: the head advances by one. " +
         "The transfer of an entry carrying an exception is a trap hand-off, not a retirement: " +
         "the head does NOT advance and the ROB offers nothing further (headLocked) until the " +
         "ArchRedirect RecoveryEvent naming that robTag empties the window (funcRobRecovery)."

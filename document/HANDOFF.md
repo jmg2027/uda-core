@@ -75,14 +75,26 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    - Owner decisions recorded: OQ-E waived (csr/CSR.scala unprotected, rewritten with the
      RTL); OQ-D decided (single-hart, non-coherent, no DMA/coherent agent in v0).
 
+6. Review round 3 (owner review of 8647d26) - spec freeze:
+   - P0 head presentation: RobHeadOut.valid = head.valid && (done || headExecute); a
+     headExecute && !done head is observed by the CommitUnit (ready held low) so it can send
+     HeadMemGrant; only a done head is ever transferred. Round 2 would have deadlocked.
+   - P0 uncached load path: symmetric to stores - LSQ -> DataCache UncachedLoadReq{lqIdx,
+     lqGen, paddr, size} / UncachedLoadResp{data, accessFault}; the paddr comes from the
+     first cached lookup's translation, so no DTLB pairing is needed. DCacheLoadReq is now
+     the speculative cached path only (its uncached field is removed).
+   - P1: propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible and restated for
+     the cacheable (commit-time) and granted-uncacheable (head-time) visibility rules.
+   - The owner declared spec freeze; the next work is RTL with assertions/tests.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
-- Review rounds 1 and 2 re-ran all gates below after the fixes (edge check now 7/59/36 edges).
+- Review rounds 1-3 re-ran all gates below after each fix; the numbers are from round 3.
 - `python3 tools/spec-check.py`: 0 errors, 6 warnings (localspec-coverage on protected
   CSR/Decoder/Debug/Trigger and Util - pre-existing).
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
-  edge of FrontendTop (7), BackendTop (55), CoreTop (34) matches a producer *Out and a
+  edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
 - `verif/bin/run.sh verif.spectest.RunSpecTests`: 8/8 PASS (6 pre-existing + 2 params).
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
@@ -94,15 +106,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 68 PROPERTYs, each pairs with its vertex's design assert when RTL lands.
+- spec-check-allow: 68 PROPERTYs (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
 - OQ-C: the ADR-008 N=1 PPA bar is superseded by ADR-019; confirm what (if any) PPA bar
   the v0 reference point should meet.
-- OQ-G: closed in review round 1 (uncacheable stores are performed at the ROB head;
-  cacheable regions are writeback-fault-free by PMA contract). The owner should confirm the
-  platform contract when the SoC memory map is chosen.
 - OQ-H (new): assembler protection blocks SFENCE.VMA / raw `.word` in `.scn`; allow adding
   mnemonics (or a `.word` directive) to `src/main/scala/assembler`?
 - OQ-I (new): confirm the ADR-015 D-15.4/15.5 reinterpretation (ISA-model equivalence,
@@ -111,6 +120,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Decided 2026-09-25: OQ-E waived (CSR.scala protection lifted for the ADR-019 rewrite; it
   still carries the legacy epoch input/meta until then, kept compiling by
   BackendParams.legacyCsrEpochWidth). OQ-D decided: v0 single-hart, non-coherent, no DMA.
+  OQ-G closed: uncacheable accesses execute at the ROB head under HeadMemGrant (precise
+  faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
+  the SoC memory map is chosen).
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -149,4 +161,5 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - In `.scn`, the assembler accepts `jalr x0, xN, 0` (not `0(xN)`) and decimal load/store
   offsets; unwritten memory reads 0x13, so PTE tables must write explicit zeros.
 - Chisel 3 vs 6 duality (sbt default chisel 3, verif gate 6.2.0) is unchanged.
-- Protected: csr/CSR.scala, src/main/scala/assembler/*, src/test/scala/{cluster,assembler}.
+- Protected: src/main/scala/assembler/*, src/test/scala/{cluster,assembler}. csr/CSR.scala is
+  no longer protected (OQ-E waived) and is rewritten with the Trap/Csr RTL.
