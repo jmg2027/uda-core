@@ -52,10 +52,28 @@ case class BackendTuningParams(
   )
 }
 
+/** The frontend contract values the backend payloads carry (DecodedUop.prediction,
+  * RecoveryEvent.ftqIdx/target, CfiOutcome.slot). They mirror FrontendContractParams /
+  * FrontendTuningParams (paramDecodeWidth, paramFetchWidth, paramFtqIdxWidth) and must equal
+  * them in any composed core; the backend never derives behavior from them beyond widths
+  * and the decode-packet lane count.
+  */
+case class BackendFrontendView(
+    decodeWidth: Int = 2, // DecodedPacket lanes (FrontendContractParams.decodeWidth)
+    fetchWidth: Int = 4,  // instructions per fetch block (fetchBytes / 4)
+    ftqDepth: Int = 16,   // FrontendTuningParams.ftqDepth
+    vAddrWidth: Int = 32  // Sv32 virtual address width
+) {
+  require(decodeWidth >= 1 && decodeWidth <= fetchWidth, "decodeWidth must be in 1..fetchWidth")
+  require(fetchWidth >= 1 && (fetchWidth & (fetchWidth - 1)) == 0, "fetchWidth must be a power of two")
+  require(ftqDepth >= 2 && (ftqDepth & (ftqDepth - 1)) == 0, "ftqDepth must be a power of two")
+}
+
 /** Complete backend parameter set. */
 case class BackendParams(
     contract: BackendContractParams = BackendContractParams(),
-    tuning: BackendTuningParams = BackendTuningParams()
+    tuning: BackendTuningParams = BackendTuningParams(),
+    frontend: BackendFrontendView = BackendFrontendView()
 ) {
   def xLen: Int             = contract.xLen
   def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
@@ -69,6 +87,13 @@ case class BackendParams(
   def physRegIdWidth: Int    = log2Ceil(tuning.integerPrfEntries)
   def checkpointIdWidth: Int = log2Ceil(tuning.branchCheckpointCount)
   def regIdWidth: Int        = 5
+  def prfEntries: Int        = tuning.integerPrfEntries
+  def checkpointCount: Int   = tuning.branchCheckpointCount
+
+  def decodeWidth: Int    = frontend.decodeWidth
+  def fetchSlotWidth: Int = log2Ceil(frontend.fetchWidth)
+  def ftqIdxWidth: Int    = log2(frontend.ftqDepth) + 1
+  def vAddrWidth: Int     = frontend.vAddrWidth
 
   /** Width of the legacy epoch meta field of the owner-protected CSR.scala
     * interface (OQ-E waived; removed when CSR.scala is rewritten). It has no ADR-019 recovery meaning. */

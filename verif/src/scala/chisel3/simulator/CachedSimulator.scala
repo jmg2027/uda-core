@@ -118,17 +118,31 @@ object CachedSimulator extends PeekPokeAPI {
     dirs.sortBy(-_.lastModified).drop(keepEntries).foreach(d => rmTree(d.toPath))
   }
 
+  /** The simulation log (the DUT's $display/$error output) of the most recent simulate() on
+   *  this thread, captured when the run ends - normally or by an exception such as a design
+   *  assertion's $fatal. Negative tests read it to attribute a stopped run to the assertion
+   *  they expect rather than to any other simulator exit. */
+  private val lastLog = new ThreadLocal[String] { override def initialValue(): String = "" }
+  def lastSimulationLog: String = lastLog.get
+
   def simulate[T <: RawModule](module: => T)(body: T => Unit): Unit = {
-    def run(simulation: Simulation, elaborated: ElaboratedModule[T]): Unit =
-      simulation.runElaboratedModule(elaboratedModule = elaborated) { m =>
-        body(m.wrapped)
-        m.completeSimulation()
-      }
+    def captureLog(wsPath: String): Unit = {
+      val f = Paths.get(wsPath, "workdir-default", "simulation-log.txt")
+      lastLog.set(try new String(Files.readAllBytes(f), StandardCharsets.UTF_8) catch { case _: Throwable => "" })
+    }
+    def runIn(wsPath: String, simulation: Simulation, elaborated: ElaboratedModule[T]): Unit =
+      try {
+        simulation.runElaboratedModule(elaboratedModule = elaborated) { m =>
+          body(m.wrapped)
+          m.completeSimulation()
+        }
+      } finally captureLog(wsPath)
+    lastLog.set("")
 
     if (cacheOff) {
       // Build-and-discard, the EphemeralSimulator behaviour.
       val tmp = Files.createTempDirectory("verif-sim")
-      try { val (sim, elab) = fullBuild(tmp.toString, module); run(sim, elab) }
+      try { val (sim, elab) = fullBuild(tmp.toString, module); runIn(tmp.toString, sim, elab) }
       finally rmTree(tmp)
       return
     }
@@ -148,7 +162,7 @@ object CachedSimulator extends PeekPokeAPI {
       val moduleInfo = ModuleInfo(name = dut.name, ports = ports.map(_._2))
       val simulation = svsim.WorkspaceReopen.simulation(backend)(
         ws.toAbsolutePath.toString, "default", commonSettings, backendSettings, moduleInfo)
-      run(simulation, new ElaboratedModule(dut, ports))
+      runIn(ws.toAbsolutePath.toString, simulation, new ElaboratedModule(dut, ports))
     } else {
       // Miss: full build in a private directory, run from there, then publish atomically. A
       // concurrent builder of the same hash can win the rename; the loser just discards its copy.
@@ -164,11 +178,14 @@ object CachedSimulator extends PeekPokeAPI {
             System.err.println(s"[simcache] build failed; full log: $tmp/workdir-default/compilation-log.txt")
             throw e
         }
-        run(sim, elab)
+        // The build is valid whatever the body does (a design assertion may stop the run), so
+        // it is published even when the run throws; the exception is rethrown afterwards.
+        val outcome = scala.util.Try(runIn(tmp.toString, sim, elab))
         try {
           Files.move(tmp, ws, StandardCopyOption.ATOMIC_MOVE)
           published = true
         } catch { case _: Throwable => /* lost the publish race or FS refused; keep cache as-is */ }
+        outcome.get
       } finally {
         if (!published && !keepForDebug) rmTree(tmp)
         prune()

@@ -25,8 +25,9 @@ abstract class SpecTest(val name: String, val verifies: Seq[String]) {
   /** Simulate one vertex (content-keyed workspace cache, same engine as the harness).
     * Applies reset before the body: without it RegInit state is whatever the backend
     * zero-fills, which is exactly the nondeterministic-corruption trap this harness
-    * once fell into (a wrong FAIL set that looked like an RTL bug was missing reset). */
-  protected def sim[T <: Module](gen: => T)(body: T => Seq[TCheck]): Seq[TCheck] = {
+    * once fell into (a wrong FAIL set that looked like an RTL bug was missing reset).
+    * Public so a suite's shared drivers can open simulations on behalf of its tests. */
+  def sim[T <: Module](gen: => T)(body: T => Seq[TCheck]): Seq[TCheck] = {
     var out: Seq[TCheck] = Nil
     CachedSimulator.simulate(gen) { dut =>
       dut.reset.poke(true.B)

@@ -85,7 +85,27 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
      the speculative cached path only (its uncached field is removed).
    - P1: propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible and restated for
      the cacheable (commit-time) and granted-uncacheable (head-time) visibility rules.
-   - The owner declared spec freeze; the next work is RTL with assertions/tests.
+   - The owner declared spec freeze at 242feaf; the next work is RTL with assertions/tests.
+7. RTL block 1 - RenameUnit (frozen spec unchanged):
+   - L1 SpecTests `verif/suites/spectest/RenameUnitSpecTests.scala` (7 tests) bind
+     funcRenameMap, funcFreeListAllocate, funcBranchCheckpoint, funcBranchRecoveryRestore,
+     propPhysRegConservation, propCheckpointReleasedOnce; observed PENDING x7 against the
+     typed-IO shell before any RTL.
+   - RTL `backend/design/modules/RenameUnit.scala`: sRAT/rRAT, FIFO free list
+     (FreeSlots = PRF - 32, tail = archHead + FreeSlots implicit), 4-slot checkpoint
+     pool, busy table, serialize gate, atomic ROB/RS/LSQ fork, both recovery kinds.
+     ADR-019 design bundles + RobOrder.{robOlder, recoveryKills} in
+     `backend/design/shared/BackendBundles.scala`; BackendFrontendView mirrors the
+     frontend widths (decodeWidth, fetchWidth, ftqDepth, vAddrWidth).
+   - @LocalSpec asserts for propPhysRegConservation and propCheckpointReleasedOnce; the
+     negative SpecTest checks require the named assertion text in the simulation log
+     (CachedSimulator.lastSimulationLog). Mutation controls (asserts off, snapshot before
+     own dest, kill not freeing, no head restore, commit pushing newPrd, rename in the
+     event cycle) each turned at least one test red.
+   - Implemented but only L2-bound (ooo_rename_checkpoint.scn, PENDING until CoreTop):
+     funcRobTagAllocate, funcBusyTable, funcAllocateAtomic, funcSerializeGate,
+     funcRetirementMapUpdate, funcArchRecoveryRestore, propCheckpointRestoreExact,
+     propRobTagConsecutive.
 
 ## Validation status (run this session)
 
@@ -96,7 +116,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 8/8 PASS (6 pre-existing + 2 params).
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 15/15 PASS (6 pre-existing + 2 params +
+  7 RenameUnit) after RTL block 1.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
@@ -106,7 +127,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 68 PROPERTYs (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+- spec-check-allow: 66 PROPERTYs (propPhysRegConservation and propCheckpointReleasedOnce
+  removed with the RenameUnit asserts) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -126,6 +148,13 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
+- RenameUnit implementation assumptions awaiting a spec ruling (reported, frozen spec
+  untouched): RobStatus.empty is a same-cycle view that already includes the previous
+  cycle's allocation; a CheckpointRelease whose owner the same-cycle RecoveryEvent kills
+  is ignored; an ArchRedirect restores sRAT from the rRAT including a same-cycle commit;
+  LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings are fixed in
+  BackendBundles.scala; the AllocateAtomic fork needs ROB/RS/LSQ ready independent of valid.
+
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
 - DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
@@ -137,8 +166,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-1. Spec frozen after review round 3; RTL starts with RenameUnit -> ReorderBuffer ->
-   RecoveryController -> CommitUnit.
+1. Spec frozen at 242feaf; RenameUnit RTL is green. Next: ReorderBuffer ->
+   RecoveryController -> CommitUnit, each red-first. RenameUnit spec ambiguities found
+   during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
    binding) -> RS/Dispatch/PublishMux/PRF/FU wrappers -> LSQ/StoreBuffer -> DataCache +

@@ -15,6 +15,10 @@ sealed protected trait HasBackendParams {
   def enableBitAlu: Boolean = params.enableBitAlu
   def robTagWidth: Int      = params.robTagWidth
   def physRegIdWidth: Int   = params.physRegIdWidth
+  def checkpointIdWidth: Int = params.checkpointIdWidth
+  def ftqIdxWidth: Int      = params.ftqIdxWidth
+  def fetchSlotWidth: Int   = params.fetchSlotWidth
+  def vAddrWidth: Int       = params.vAddrWidth
 
   /** Only the legacy csr/CSR.scala reads this (removed when it is rewritten). */
   def epochWidth: Int = params.legacyCsrEpochWidth
