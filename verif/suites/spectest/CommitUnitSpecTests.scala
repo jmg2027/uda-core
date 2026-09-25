@@ -469,6 +469,50 @@ object CommitUnitSpecTests {
     }
   }
 
+  /** ADR-019D E-5: a presented serialize head suppresses interrupt and debug sampling from its
+    * first presented cycle until it retires or traps; the pending request is taken at the next
+    * retire boundary (the following head). */
+  val interruptSerializeHead = new SpecTest("commit.interrupt.serializeHead", Seq("funcInterruptSampling")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.autoService = Some(1)
+      val classes = Seq(
+        ("CSR read", (s: Int) => csrRead(s), false),
+        ("CSR write", (s: Int) => csrWrite(s), true),
+        ("FENCE", (s: Int) => sys(s, SysOp.Fence), false),
+        ("FENCE.I", (s: Int) => sys(s, SysOp.FenceI), true),
+        ("SFENCE.VMA", (s: Int) => sys(s, SysOp.SfenceVma), true),
+        ("WFI", (s: Int) => sys(s, SysOp.Wfi), false),
+        ("MRET", (s: Int) => sys(s, SysOp.Mret), true),
+        ("SRET", (s: Int) => sys(s, SysOp.Sret), true)
+      )
+      var s = 0
+      classes.flatMap { case (name, mk, redirects) =>
+        d.rob += mk(s); d.rob += HE(s + 1, pc = 0x5000 + 4 * s)
+        // Both requests are already pending in the first cycle the serialize head is presented.
+        d.intPending = true; d.debugReq = true
+        val os = d.run(16).toSeq
+        val retIdx = os.indexWhere(o => o.headFire && o.headS.contains(s))
+        val before = if (retIdx < 0) os else os.take(retIdx + 1)
+        val preempted = before.exists(o => o.excV && (o.excSource == INTR || o.excSource == DBG))
+        val retired = retIdx >= 0 && (!redirects || os(retIdx).excSource == SYSOP)
+        // A retiring redirect holds until its ArchRedirect, which also kills the next head.
+        if (redirects && retIdx >= 0) { d.arch(s); d.rob += HE(s + 1, pc = 0x5000 + 4 * s) }
+        // The pending debug request (priority over the interrupt) is taken at the next head.
+        val next = (if (retIdx >= 0 && !redirects) os.drop(retIdx + 1) else Nil) ++ d.run(2).toSeq
+        val taken = next.exists(o => o.excF && o.excSource == DBG && o.exc._4 == tagOf(s + 1) && !o.headFire)
+        d.intPending = false; d.debugReq = false
+        d.arch(s + 1)
+        d.rob.clear(); s += 2
+        Seq(
+          chk(!preempted && retired, s"$name: pending interrupt/debug on its first presented cycle does not preempt it",
+            s"ret=$retIdx " + before.map(o => (o.headFire, o.excV, o.excSource)).mkString(" ")),
+          chk(taken, s"$name: the pending debug request is taken at the next retire boundary",
+            next.map(o => (o.headS, o.excF, o.excSource, o.exc._4)).mkString(" "))
+        )
+      }
+    }
+  }
+
   // ---- funcTrapHold -----------------------------------------------------------------------------
 
   val trapHold = new SpecTest("commit.trapHold", Seq("funcTrapHold")) {
@@ -728,6 +772,6 @@ object CommitUnitSpecTests {
   }
 
   val all: Seq[SpecTest] = Seq(commitHead, blockEnd, sysopRedirect, sysopMaintenance, sysopPredictionFault, trap,
-    interrupt, trapHold, trapHoldZeroLatency,
+    interrupt, interruptSerializeHead, trapHold, trapHoldZeroLatency,
     headMemGrant, retireStream, inOrder, noPastException, trapHoldProp, retireNonBlocking)
 }

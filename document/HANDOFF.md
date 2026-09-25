@@ -228,6 +228,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       arbitration - all red.
     - Gaps reported: debug-entry target PC (design parameter until the owner fixes the ROM
       address); DRet kind has no v0 SysOp producer.
+20. RTL block 10 - CommitUnit serialize-head sampling fix (ADR-019D E-5): sampling requires
+    `!head.serialize`, so a presented CSR read/write, FENCE, FENCE.I, SFENCE.VMA, WFI, MRET, or
+    SRET head is never preempted; the pending request is taken at the next boundary. New
+    directed test commit.interrupt.serializeHead (interrupt + debug pending on cycle 0 of each
+    class); red on the old RTL for all 8 classes; mutants (no suppression, CSR-only,
+    redirect-only) all red.
 
 ## Validation status (run this session)
 

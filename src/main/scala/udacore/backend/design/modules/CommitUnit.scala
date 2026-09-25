@@ -139,10 +139,12 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   private val dbgTake = io.debugReqIn.debugReq && !ic.debugMode
   private val intTake = ic.interruptPending && !ic.debugMode
 
-  /** An interrupt/debug hand-off is offered this cycle (sampled now, or latched earlier). */
+  /** An interrupt/debug hand-off is offered this cycle (sampled now, or latched earlier). A
+    * presented serialize head suppresses sampling from its first presented cycle until it
+    * retires or traps (ADR-019D E-5): a CSR write may already be staged in the CsrController. */
   @LocalSpec(funcInterruptSampling)
   val interruptSampling: Bool = {
-    val sampleOk = hv && !hold && !grantInFlight && seqState === Step.Idle
+    val sampleOk = hv && !head.serialize && !hold && !grantInFlight && seqState === Step.Idle
     !hold && (asyncLatched || (sampleOk && (dbgTake || intTake)))
   }
   private val takeAsync   = interruptSampling
