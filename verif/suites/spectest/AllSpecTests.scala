@@ -9,7 +9,7 @@ package verif.spectest
   */
 object RunSpecTests {
   val registry: Seq[SpecTest] =
-    UnitSpecTests.all ++ CsrSpecTests.all
+    UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

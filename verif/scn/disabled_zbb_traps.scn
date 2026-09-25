@@ -1,0 +1,17 @@
+# ADR-017 propDisabledExtensionTraps, v0 configuration probe: the bit-manipulation
+# extension is not contributed to decode in RV32IM, so ANDN (Zbb) must raise an
+# illegal-instruction trap and leave its destination unchanged.
+@name disabled-zbb-andn-traps-illegal
+@verifies propDisabledExtensionTraps funcExtensionDecodeContribution
+@maxcycles 4000
+li x5, 0x66
+li x6, 0xF0
+li x7, 0x0F
+jal x28, setvec
+handler: csrrs x20, mcause, x0
+jal x0, mcont
+setvec: csrrw x0, mtvec, x28
+andn x5, x6, x7
+addi x5, x0, 1
+mcont: check x20 == 2
+check x5 == 0x66

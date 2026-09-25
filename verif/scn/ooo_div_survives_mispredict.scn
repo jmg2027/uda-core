@@ -1,0 +1,21 @@
+# ADR-019 verification obligation: an older long-latency DIV survives a younger
+# mispredicted branch and retires. The taken branch is unpredicted (cold BTB), so it
+# recovers at execute while the DIV is still in flight; the wrong-path writes to x7 and
+# x9 must leave no architectural trace.
+@name ooo-div-survives-younger-mispredict
+@verifies propOlderSurvivesRecovery funcRobRecovery funcRecoveryKills funcIntegrateExternalDivider
+@verifies funcBranchResolve funcMispredictDetect funcBranchRecoveryRequest propRecoveryOnlyOnMispredict
+@verifies funcRecoverySelect funcRecoveryPublish propSingleRecoveryPerCycle funcRsRecovery propRsRecoveryKeepsOlder
+@verifies funcFetchPcRecovery funcFetchBufferRecovery funcDecodeRecovery funcFuRoute funcIntegrateExternalMultiplier
+@maxcycles 4000
+li x5, 1000
+li x6, 7
+li x9, 0
+div x7, x5, x6
+mul x10, x5, x6
+beq x0, x0, correct
+addi x7, x0, 1
+addi x9, x0, 1
+correct: check x7 == 142
+check x9 == 0
+check x10 == 7000

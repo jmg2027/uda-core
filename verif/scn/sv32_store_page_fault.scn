@@ -1,0 +1,55 @@
+# ADR-019 verification obligation: precise store page fault on a read-only page. The
+# load from the same page succeeds; the store raises cause 15 and never reaches memory.
+@name sv32-precise-store-page-fault
+@verifies funcSv32PermissionCheck funcAddressCapture funcStoreComplete propNoSpeculativeStoreVisible
+@maxcycles 20000
+# --- Sv32 setup (M-mode, identical in every sv32_*.scn) --------------------------
+# root table 0x90000: [0] identity 4 MiB megapage VRWXAD (covers program, results, tables)
+#                     [1] pointer to the level-0 table at 0x91000 (VA 0x400000..0x7FFFFF)
+# level-0 table:      [0] VA 0x400000 -> PA 0x92000 VRWAD (no X)
+#                     [1] VA 0x401000 invalid (explicit 0: unwritten memory reads 0x13)
+#                     [2] VA 0x402000 -> PA 0x93000 VRA (read-only)
+li x5, 0x90000
+li x6, 0xCF
+sw x6, 0(x5)
+li x6, 0x24401
+sw x6, 4(x5)
+li x7, 0x91000
+li x6, 0x248C7
+sw x6, 0(x7)
+sw x0, 4(x7)
+li x6, 0x24C43
+sw x6, 8(x7)
+li x6, 0x44
+li x8, 0x93000
+sw x6, 0(x8)
+# M-mode trap handler: x20 = mcause, x21 = mtval, then continue at mcont in M-mode
+jal x28, setvec
+handler: csrrs x20, mcause, x0
+csrrs x21, 0x343, x0
+jal x0, mcont
+setvec: csrrw x0, mtvec, x28
+# satp = Sv32 | ASID 0 | root PPN 0x90; mstatus.MPP = S
+li x6, 0x80000090
+csrrw x0, satp, x6
+li x6, 0x1800
+csrrc x0, mstatus, x6
+li x6, 0x800
+csrrs x0, mstatus, x6
+jal x29, gos
+# --- S-mode code ------------------------------------------------------------------
+lui x8, 0x402
+lw x17, 0(x8)
+li x12, 0x77
+sw x12, 0(x8)
+ecall
+gos: csrrw x0, mepc, x29
+mret
+# --- M-mode continuation after the trap -------------------------------------------
+mcont: addi x0, x0, 0
+check x20 == 15
+check x21 == 0x402000
+check x17 == 0x44
+li x15, 0x93000
+lw x16, 0(x15)
+check x16 == 0x44

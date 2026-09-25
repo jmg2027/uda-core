@@ -1,6 +1,6 @@
 # CSR read-modify-write (csrrc form): clear bits, then read back the modified value.
 @name csr-rmw-clrbits
-@verifies funcCsrExecuteAtCommit funcCsrWriteProtocol
+@verifies funcCsrExecuteAtCommit funcCsrWriteProtocol funcSerializeGate funcSerializingTag
 @maxcycles 200
 li x1, 0xFF
 csrrw x0, mscratch, x1

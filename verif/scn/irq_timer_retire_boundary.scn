@@ -1,0 +1,20 @@
+# Asynchronous interrupts join program order only at a retire boundary (ADR-004 D-4.5,
+# kept by ADR-019): an enabled machine-timer interrupt arriving during a tight loop is
+# taken with mcause = interrupt | 7 and the loop state is precise.
+@name irq-timer-retire-boundary
+@verifies funcInterruptSampling funcArchRecoveryRestore
+@irq t 400 200
+@maxcycles 8000
+jal x28, setvec
+handler: csrrs x20, mcause, x0
+csrrw x0, mie, x0
+jal x0, mcont
+setvec: csrrw x0, mtvec, x28
+li x6, 0x80
+csrrs x0, mie, x6
+li x6, 0x8
+csrrs x0, mstatus, x6
+li x5, 0
+loop: addi x5, x5, 1
+jal x0, loop
+mcont: check x20 == 0x80000007

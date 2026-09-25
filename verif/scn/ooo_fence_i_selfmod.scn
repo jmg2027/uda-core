@@ -1,0 +1,16 @@
+# FENCE.I with a non-coherent I-cache and write-back D-cache: a committed store that
+# patches an instruction becomes visible to fetch only through the FENCE.I sequence
+# (StoreBuffer drain, D-cache clean, I-cache invalidate, refetch). The patched word is
+# addi x5, x0, 7 (0x00700293) over addi x5, x0, 1.
+@name ooo-fence-i-self-modifying-code
+@verifies funcSystemOpSequencing funcICacheInvalidate funcDCacheCleanAll funcDrainFence funcDCacheWriteback
+@verifies funcICacheMissFill funcInstBusGet
+@maxcycles 8000
+li x6, 0x00700293
+jal x28, patch
+target: addi x5, x0, 1
+jal x0, after
+patch: sw x6, 0(x28)
+fence.i
+jalr x0, x28, 0
+after: check x5 == 7

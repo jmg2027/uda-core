@@ -1,0 +1,25 @@
+# ADR-019 verification obligation: multiple writes to one architectural register around
+# a mispredicted branch; sRAT and free list must recover with no leak or double free.
+# 64 iterations allocate several hundred physical registers from a 48-entry PRF, so a
+# leak deadlocks rename and a double free corrupts x5.
+@name ooo-rename-checkpoint-recovery
+@verifies propPhysRegConservation propCheckpointRestoreExact funcBranchRecoveryRestore funcBranchCheckpoint
+@verifies funcRenameMap funcFreeListAllocate funcRetirementMapUpdate funcRobTagAllocate propRobTagConsecutive
+@verifies funcBusyTable funcAllocateAtomic funcRobAllocate funcRobComplete funcRobHeadOffer propRobRetireInOrder
+@verifies funcCommitHead propCommitInOrder funcRsWakeup funcSelectOldestReady propRsIssueOnlyReady
+@verifies funcPublishArbitrate funcPublishFanout propSingleDrain funcReadAtSelect propRobCompletionTargetsLive
+@maxcycles 20000
+li x5, 0
+li x6, 0
+li x8, 64
+loop: addi x5, x5, 1
+addi x5, x5, 2
+andi x7, x6, 1
+beq x7, x0, even
+addi x5, x5, 100
+addi x5, x5, -100
+even: addi x5, x5, -2
+addi x6, x6, 1
+bne x6, x8, loop
+check x5 == 64
+check x6 == 64

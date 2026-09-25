@@ -1,0 +1,16 @@
+# Precise load address-misaligned exception (no misaligned-access support in v0):
+# mcause = 4, mtval = the misaligned virtual address, destination unchanged.
+@name mem-misaligned-load-trap
+@verifies funcAddressGenerate funcLoadComplete
+@maxcycles 4000
+li x9, 0x66
+jal x28, setvec
+handler: csrrs x20, mcause, x0
+csrrs x21, 0x343, x0
+jal x0, mcont
+setvec: csrrw x0, mtvec, x28
+lw x9, 258(x31)
+addi x9, x0, 1
+mcont: check x20 == 4
+check x21 == 0x80302
+check x9 == 0x66
