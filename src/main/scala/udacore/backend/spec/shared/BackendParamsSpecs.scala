@@ -4,172 +4,238 @@ import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ParamsSpecs._
-import udacore.memorysubsystem.spec.shared.MemorySubsystemParamsSpecs.paramStoreBufferDepth
-import udacore.core.spec.shared.CoreParamsSpecs.paramSerializingStageDepth
 
-/** Backend domain parameter specifications.
+/** Backend domain parameters and the shared program-order rule (ADR-019).
   *
-  * Defines parameters for instruction execution, commit, and memory operations.
-  * Parameters are organized in three tiers: Contract (must be specified by
-  * integrators), Tuning (performance optimization), and Private (internal
-  * implementation details).
+  * The values in the "v0" entries are the ADR-019 D-19.1 reference
+  * configuration. Every age comparison in the backend (ROB, RS, LSQ, FU
+  * pipelines, recovery) and the FTQ-index comparison in the frontend reference
+  * the single wrap-aware order function funcRobOlder defined here; no vertex
+  * restates its own ordering rule.
   */
 object BackendParamsSpecs {
 
-  // Contract Tier - Parent integrators must specify these
+  // ---- Contract tier ------------------------------------------------------
+
   val paramXLen = spec {
     PARAMETER("XLen")
-      .desc("Register and ALU width in bits")
-      .note("Contract tier - affects all execution units")
+      .desc("Integer register and datapath width in bits. The v0 configuration is 32 (RV32IM).")
+      .is(rawContractParams)
+      .entry("v0", "32")
       .build()
   }
 
-  val paramRegNum = spec {
-    PARAMETER("RegNum")
-      .desc("Number of architectural registers (32 or 16 for RVE)")
-      .note("Contract tier - affects register file size")
+  val paramArchRegNum = spec {
+    PARAMETER("ArchRegNum")
+      .desc(
+        "Architectural integer registers: 32. x0 is not renamed: it maps permanently to " +
+        "physical register p0, which reads zero, is never allocated, and is never freed."
+      )
+      .is(rawContractParams)
+      .entry("v0", "32")
       .build()
   }
 
-  val paramMemOpWidth = spec {
-    PARAMETER("MemOpWidth")
-      .desc("Memory operation data width")
-      .note("Contract tier - affects LSU interface")
+  // ---- Tuning tier (v0 reference values, ADR-019 D-19.1) -----------------
+
+  val paramRenameWidth = spec {
+    PARAMETER("RenameWidth")
+      .desc("Uops renamed and allocated (ROB, RS, LSQ, checkpoint, prd) per cycle.")
+      .is(rawTuningParams)
+      .entry("v0", "1")
       .build()
   }
 
-  // Tuning Tier - Performance optimization parameters
-  val paramExecutionUnits = spec {
-    PARAMETER("ExecutionUnits")
-      .desc("Configuration of execution units (ALU, Multiplier, etc.)")
-      .note("Tuning tier - affects instruction throughput")
+  val paramIssueWidth = spec {
+    PARAMETER("IssueWidth")
+      .desc("Uops selected out of order from the integer RS per cycle.")
+      .is(rawTuningParams)
+      .entry("v0", "1")
       .build()
   }
 
-  val paramReservationStations = spec {
-    PARAMETER("ReservationStations")
-      .desc("Number and size of reservation station entries")
-      .note("Tuning tier - affects out-of-order window")
+  val paramPublishWidth = spec {
+    PARAMETER("PublishWidth")
+      .desc(
+        "Results published per cycle (PRF write port, wakeup broadcast lane, ROB completion). " +
+        "ADR-014 single result lane is retained for v0."
+      )
+      .is(rawTuningParams)
+      .entry("v0", "1")
       .build()
   }
 
-  val paramLoadStoreQueue = spec {
-    PARAMETER("LoadStoreQueue")
-      .desc("Load-store queue sizing and organization")
-      .note("Tuning tier - affects memory-level parallelism")
+  val paramCommitWidth = spec {
+    PARAMETER("CommitWidth")
+      .desc("ROB entries retired per cycle, in program order from the ROB head.")
+      .is(rawTuningParams)
+      .entry("v0", "1")
       .build()
   }
 
-  // Private Tier - Internal implementation details
-  val paramBypassPaths = spec {
-    PARAMETER("BypassPaths")
-      .desc("Bypass network configuration")
-      .note("Private tier - implementation optimization")
+  val paramRobDepth = spec {
+    PARAMETER("RobDepth")
+      .desc("Reorder buffer entries (one per in-flight uop). Power of two.")
+      .is(rawTuningParams)
+      .entry("v0", "16")
       .build()
   }
 
-  val paramScoreboardEntries = spec {
-    PARAMETER("ScoreboardEntries")
-      .desc("Scoreboard size for dependency tracking")
-      .note("Private tier - implementation detail")
+  val paramIntegerPrfEntries = spec {
+    PARAMETER("IntegerPrfEntries")
+      .desc(
+        "Unified integer physical register file entries, including p0. Legality: " +
+        "IntegerPrfEntries >= ArchRegNum + RobDepth, so that with x0 unrenamed a free " +
+        "physical register exists whenever a ROB entry does (p0 + 31 committed mappings + " +
+        "RobDepth in-flight destinations)."
+      )
+      .is(rawTuningParams)
+      .entry("v0", "48")
+      .uses(paramArchRegNum, paramRobDepth)
       .build()
   }
 
-  // Unified Physical Register File parameters
-  val paramPhysicalRegNum = spec {
-    PARAMETER("PhysicalRegNum")
-      .desc("Total number of physical registers (architectural + speculative)")
-      .note("Tuning tier - typically 33 + N where N is speculative entries")
+  val paramIntegerRsEntries = spec {
+    PARAMETER("IntegerRsEntries")
+      .desc("Unified integer reservation station entries.")
+      .is(rawTuningParams)
+      .entry("v0", "8")
       .build()
   }
 
-  val paramSpeculativeRegNum = spec {
-    PARAMETER("SpeculativeRegNum")
-      .desc("Number of speculative physical registers for out-of-order execution")
-      .note("Tuning tier - determines OoO window size, scales from 1 (in-order) to 32+ (wide OoO)")
+  val paramLoadQueueDepth = spec {
+    PARAMETER("LoadQueueDepth")
+      .desc("Load queue entries (speculative loads in program order).")
+      .is(rawTuningParams)
+      .entry("v0", "8")
       .build()
   }
 
-  // ------------------------------------------------------------------------
-  // ADR-012 canonical tag width laws. WP-A OWNS these; WP-B/WP-C/WP-D import.
-  // ------------------------------------------------------------------------
+  val paramStoreQueueDepth = spec {
+    PARAMETER("StoreQueueDepth")
+      .desc("Store queue entries (speculative, not-yet-committed stores in program order).")
+      .is(rawTuningParams)
+      .entry("v0", "8")
+      .build()
+  }
 
-  // ADR-012 D-12.1: physical register id width; never a fixed 32.
-  val physRegIdWidth = spec {
+  val paramStoreBufferDepth = spec {
+    PARAMETER("StoreBufferDepth")
+      .desc(
+        "Committed store-drain buffer entries below the SQ. Only committed stores occupy it; " +
+        "a full buffer backpressures store commit."
+      )
+      .is(rawTuningParams)
+      .entry("v0", "4")
+      .build()
+  }
+
+  val paramBranchCheckpointCount = spec {
+    PARAMETER("BranchCheckpointCount")
+      .desc(
+        "Rename checkpoints available for unresolved or uncommitted control-flow uops. Rename " +
+        "backpressures a control-flow uop when none is free."
+      )
+      .is(rawTuningParams)
+      .entry("v0", "4")
+      .build()
+  }
+
+  // ---- Derived widths -----------------------------------------------------
+
+  val paramRobTagWidth = spec {
+    PARAMETER("RobTagWidth")
+      .desc(
+        "robTag = {wrap, idx}: idx is log2(RobDepth) bits naming the ROB slot, wrap is one " +
+        "phase bit toggled each time the allocation pointer passes the last slot."
+      )
+      .uses(paramRobDepth)
+      .entry("v0", "5 (1 wrap + 4 idx)")
+      .build()
+  }
+
+  val paramPhysRegIdWidth = spec {
     PARAMETER("PhysRegIdWidth")
-      .desc("Width of a physical register id: physRegIdWidth = log2Ceil(33 + SpeculativeRegNum), addressing the full PRF depth.")
-      .note(
-        "The PRF has 33 + N slots (32 architectural registers + the x0-hardwired slot + N speculative), consistent with PhysicalRegisterFile depth 33+N. log2Ceil(33+N): N=1 -> 6, N=32 -> log2Ceil(65) = 7. Never a fixed 32 (ADR-012 D-12.1)."
-      )
-      .uses(paramSpeculativeRegNum, paramPhysicalRegNum)
+      .desc("Physical register id width: log2Ceil(IntegerPrfEntries).")
+      .uses(paramIntegerPrfEntries)
+      .entry("v0", "6")
       .build()
   }
 
-  // ADR-002: the backend in-flight allocation FIFO window. WP-A OWNS this.
-  val paramAllocFifoDepth = spec {
-    PARAMETER("AllocFifoDepth")
-      .desc("Backend in-flight allocation FIFO window: the number of simultaneously in-flight uops the backend tracks (ADR-002).")
-      .note("Tuning tier - one term of the maxInFlight seqTag horizon (ADR-012 D-12.2).")
+  val paramCheckpointIdWidth = spec {
+    PARAMETER("CheckpointIdWidth")
+      .desc("Branch checkpoint id width: log2Ceil(BranchCheckpointCount).")
+      .uses(paramBranchCheckpointCount)
+      .entry("v0", "2")
       .build()
   }
 
-  // ADR-012 D-12.2: the maxInFlight closed form over EVERY seqTag horizon.
-  val maxInFlight = spec {
-    PARAMETER("MaxInFlight")
+  // ---- The shared program-order rule --------------------------------------
+
+  val funcRobOlder = spec {
+    FUNCTION("RobOlder")
       .desc(
-        "Maximum number of simultaneously LIVE seqTags, summed over every horizon that keys on it."
+        "The single wrap-aware order function. For two live circular-pointer tags a and b " +
+        "of the same order domain, robOlder(a, b) is true iff a was allocated before b: " +
+        "(a.wrap == b.wrap) ? (a.idx < b.idx) : (a.idx > b.idx). The comparison is exact " +
+        "whenever both tags are live in a window no larger than the pointer range, which " +
+        "RobDepth (and FtqDepth for the FTQ instance) guarantees by construction."
       )
-      .code(
-        "maxInFlight = allocFifoDepth + storeBufferDepth + serializingStageDepth"
+      .markdownTable(
+        List("Order domain", "Tag", "Users"),
+        List(
+          List("program order (primary)", "robTag", "ROB, RenameUnit, RS, FU pipelines, BranchUnit, LSQ, RecoveryController, CommitUnit"),
+          List("fetch-block order", "ftqIdx", "FetchTargetQueue recovery truncation")
+        )
       )
-      .uses(paramAllocFifoDepth, paramStoreBufferDepth, paramSerializingStageDepth)
-      .note("allocFifoDepth: backend in-flight window (ADR-002).")
+      .uses(paramRobTagWidth)
       .note(
-        "storeBufferDepth: committed-but-undrained stores (ADR-003 D-3.5); published by WP-B via api (read-only)."
-      )
-      .note(
-        "serializingStageDepth: staged CSR/system writes (ADR-004); published by WP-D via api (read-only)."
-      )
-      .note(
-        "A store's seqTag is not recycled until the store buffer drains that entry; the width covers every live token including committed store-buffer entries and staged CSR writes (ADR-012 D-12.2)."
+        "Replaces ADR-012 seqOlder. robTag lifetime is exactly the ROB lifetime: an entry " +
+        "leaves the order domain at commit (committed stores in the StoreBuffer are older " +
+        "than every live uop by construction and need no age compare) or when a RecoveryEvent " +
+        "kills it. A naive unsigned '<' on tags is forbidden."
       )
       .build()
   }
 
-  // ADR-012 D-12.1: canonical in-flight identifier width.
-  val seqWidth = spec {
-    PARAMETER("SeqWidth")
-      .desc("Canonical in-flight tag width: seqWidth = log2Ceil(maxInFlight).")
-      .note(
-        "seqTag unifies the former 32-bit uopId and seq into one key; the verif-only order counter (ADR-010) stays a separate 64b field and is NOT a hardware key (ADR-012 D-12.1)."
-      )
-      .uses(maxInFlight)
-      .build()
-  }
-
-  // ADR-012 D-12.3: wrap-aware modular age compare.
-  val funcSeqOlder = spec {
-    FUNCTION("SeqOlder")
+  val funcRecoveryKills = spec {
+    FUNCTION("RecoveryKills")
       .desc(
-        "Wrap-aware modular age compare seqOlder(a, b, oldestLive): true iff seqTag a is older than b within the bounded live range [oldestLive, newestLive]."
+        "The common younger-than predicate every speculative holder applies to a RecoveryEvent " +
+        "e: an entry with tag t is killed iff e.kind == ArchRedirect, or " +
+        "(e.kind == BranchMispredict and robOlder(e.robTag, t)). The recovering branch itself " +
+        "(t == e.robTag) and every older entry survive a branch recovery."
       )
+      .uses(funcRobOlder)
       .note(
-        "All age comparisons (e.g. store-buffer forwarding entry.seqTag < load.seqTag, ADR-003 D-3.9) use this modular order, never a naive unsigned '<' (ADR-012 D-12.3)."
+        "Every holder evaluates the predicate in the same cycle it observes the event, for " +
+        "every entry and every token it holds on an outgoing edge (valid && !ready), so no " +
+        "killed uop's completion can reach a reallocated tag. After any RecoveryEvent the " +
+        "next allocated robTag is e.robTag + 1 (ADR-019 D-19.9)."
       )
-      .uses(seqWidth, maxInFlight)
       .build()
   }
 
-  // ADR-012 D-12.2 verification obligation: tag uniqueness over all horizons.
-  val propTagUniqueness = spec {
-    PROPERTY("TagUniqueness")
+  val propRobTagUniqueness = spec {
+    PROPERTY("RobTagUniqueness")
       .desc(
-        "No two live tokens share a seqTag across the backend in-flight window, the store-buffer horizon, and the CSR staging horizon."
+        "No two live uops share a robTag, and the number of live robTags never exceeds " +
+        "RobDepth, so funcRobOlder is exact for every pair of live tags."
       )
-      .note(
-        "seqTag MUST NOT be reused until every horizon has released it (ADR-012 D-12.2). Runtime simulation monitor; pair with a design assert (ADR-015 D-15.3)."
+      .uses(paramRobTagWidth, funcRobOlder)
+      .note("Simulation assert in the ROB (ADR-015 D-15.3).")
+      .build()
+  }
+
+  val propPrfSizingCoversRob = spec {
+    PROPERTY("PrfSizingCoversRob")
+      .desc(
+        "Elaboration legality: IntegerPrfEntries >= ArchRegNum + RobDepth and RobDepth is a " +
+        "power of two, so rename never waits for a physical register while the ROB has a " +
+        "free entry."
       )
-      .uses(seqWidth, maxInFlight)
+      .uses(paramIntegerPrfEntries, paramRobDepth, paramArchRegNum)
+      .note("Elaboration require in BackendParams (ADR-015 D-15.3).")
       .build()
   }
 }

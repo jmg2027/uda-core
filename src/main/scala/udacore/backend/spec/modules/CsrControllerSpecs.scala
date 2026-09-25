@@ -5,12 +5,19 @@ import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
+import udacore.core.spec.shared.CoreBundlesSpecs.bndInterrupt
 
+/** CsrController: Zicsr datapath, M/S/U CSR state, and the committed views it
+  * publishes (ADR-004 as re-based by ADR-019; ADR-017 CSR map contributions).
+  */
 object CsrControllerSpecs {
   val contCsrController = spec {
     CONTRACT("CsrController")
       .desc(
-        "CSR controller services software CSR read/modify/write requests. Per ADR-004 the CSR node computes NO exception and self-writes NO trap CSR; the TrapController is the single trap owner and the CSR only applies the TrapController's CSRTrapWrite verbatim."
+        "Services CSRRW/CSRRS/CSRRC(I) for M- and S-mode CSRs, applies the TrapController's " +
+        "CSRTrapWrite verbatim, and publishes three committed-state views: the trap snapshot, " +
+        "the pending-and-enabled interrupt view, and the translation context used by the MMU. " +
+        "It computes no exception routing and no trap encoding (ADR-004)."
       )
       .has(
         intfCsrReqIn,
@@ -18,24 +25,32 @@ object CsrControllerSpecs {
         intfCsrTrapReadOut,
         intfCsrTrapWriteIn,
         intfCommitGrantIn,
+        intfInterruptIn,
+        intfInterruptCtrlOut,
+        intfTranslationContextOut,
         funcCsrExecuteAtCommit,
-        funcSerializingClass,
+        funcCsrAccessCheck,
+        funcSupervisorCsrs,
+        funcTranslationContextPublish,
         funcCsrMapContribution,
         propNoSpeculativeCsrWrite
       )
       .uses(rawExtensionContribution)
       .note(
-        "ADR-004 D-4.3: the CSR-internal trap writer and the internal exception encoder are deleted; owner sign-off tracked as OQ-E. This spec change does NOT edit csr/CSR.scala design code."
+        "Recovery stance: a CSR uop is renamed only into an empty ROB (funcSerializeGate), so it " +
+        "is never younger than a live branch and is never killed by a BranchMispredict; an " +
+        "ArchRedirect can only follow its own commit."
       )
       .note(
-        "ADR-004 D-4.1: the CSR node retains ONLY the commit-gated software CSRRW/RS/RC datapath; the old CSR value rides the publish bus as the rd writeback."
+        "The owner-protected csr/CSR.scala (OQ-E) still carries an epoch input and meta field " +
+        "from the superseded machine; the ADR-019 contract does not use them."
       )
       .build()
   }
 
   val intfCsrReqIn = spec {
     INTERFACE("CSRReqIn")
-      .desc("CSR request stream entering the controller.")
+      .desc("CSR operations from DispatchUnit.")
       .uses(bndCsrReq)
       .is(rawReadyValidIntf)
       .build()
@@ -43,9 +58,7 @@ object CsrControllerSpecs {
 
   val intfCsrResultOut = spec {
     INTERFACE("CSRResultOut")
-      .desc(
-        "CSR execution result stream emitted toward the publish multiplexer; carries the OLD CSR value as the rd writeback (ADR-004 D-4.1)."
-      )
+      .desc("Old CSR value as the rd writeback (or an illegal-instruction exception) toward PublishMux.")
       .uses(bndCsrResult)
       .is(rawReadyValidIntf)
       .build()
@@ -53,17 +66,16 @@ object CsrControllerSpecs {
 
   val intfCsrTrapReadOut = spec {
     INTERFACE("CSRTrapReadOut")
-      .desc("Live CSR trap snapshot emitted toward the trap controller.")
+      .desc("Live trap-CSR snapshot to the TrapController.")
       .uses(bndCsrTrapRead)
-      .is(rawReadyValidIntf)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4.")
       .build()
   }
 
   val intfCsrTrapWriteIn = spec {
     INTERFACE("CSRTrapWriteIn")
-      .desc(
-        "Trap-driven CSR write stream entering the controller; the CSR applies it verbatim under trapWriteFire as its only trap-driven mutation (ADR-004 D-4.3)."
-      )
+      .desc("Trap/return application packets from the TrapController; the only trap-driven mutation path.")
       .uses(bndCsrTrapWrite)
       .is(rawReadyValidIntf)
       .build()
@@ -71,72 +83,99 @@ object CsrControllerSpecs {
 
   val intfCommitGrantIn = spec {
     INTERFACE("CommitGrantIn")
-      .desc(
-        "Per-uop commit strobe (commitGrant view of the unified commit broadcast) qualifying every architectural CSR write."
-      )
+      .desc("Commit strobe from the CommitUnit qualifying every software CSR write.")
       .uses(bndCommitBroadcast)
       .is(rawNoDecoupled)
-      .note(
-        "ADR-012: commitGrant is a projected view {seqTag, epoch, valid} of bndCommitBroadcast keyed by the canonical seqTag (WP-A). The CSR node ANDs commitGrant.valid into every register write-enable; no grant, no write."
-      )
+      .note("rawNoDecoupled class 4.")
+      .build()
+  }
+
+  val intfInterruptIn = spec {
+    INTERFACE("InterruptIn")
+      .desc("Raw interrupt lines feeding mip.")
+      .uses(bndInterrupt)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2.")
+      .build()
+  }
+
+  val intfInterruptCtrlOut = spec {
+    INTERFACE("InterruptCtrlOut")
+      .desc("Pending-and-enabled interrupt view to the CommitUnit.")
+      .uses(bndInterruptCtrl)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2/4.")
+      .build()
+  }
+
+  val intfTranslationContextOut = spec {
+    INTERFACE("TranslationContextOut")
+      .desc("Committed satp/priv/MPRV/SUM/MXR view to the ITLB, DTLB, and PTW.")
+      .uses(bndTranslationContext)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4: changes only at a commit that is followed by an ArchRedirect.")
       .build()
   }
 
   val funcCsrExecuteAtCommit = spec {
     FUNCTION("CsrExecuteAtCommit")
       .desc(
-        "A CSR uop reads the architectural value at its FU visit and returns the OLD value as the rd writeback CSRRW/RS/RC owe; the intended write is staged and applied ONLY on the matching commitGrant strobe."
+        "A CSR uop reads the architectural value when it executes (it is the only live uop) and " +
+        "returns the old value as its result; its write is staged and applied only on the " +
+        "CommitGrant for its robTag. Every committed CSR write is followed by a Refetch."
       )
       .uses(intfCsrReqIn, intfCsrResultOut, intfCommitGrantIn)
-      .note(
-        "ADR-004 D-4.1: no CSR register is mutated during the FU visit. At N=1 the FU visit and commitGrant coincide; the cost is one AND term on the existing write-enable."
+      .build()
+  }
+
+  val funcCsrAccessCheck = spec {
+    FUNCTION("CsrAccessCheck")
+      .desc(
+        "An access to a CSR that does not exist, whose privilege field exceeds the current " +
+        "privilege, that writes a read-only CSR, or that touches satp in S-mode with " +
+        "mstatus.TVM set, completes with an illegal-instruction exception and no staged write."
       )
-      .entry(
-        "rule",
-        "csr_write_enable = decoded_wen AND commitGrant.valid AND (commitGrant.seqTag == req.seqTag) AND (req.epoch == globalEpoch)"
+      .uses(intfCsrResultOut)
+      .build()
+  }
+
+  val funcSupervisorCsrs = spec {
+    FUNCTION("SupervisorCsrs")
+      .desc(
+        "Implement the S-mode CSRs for v0: sstatus and sie/sip as restricted views of " +
+        "mstatus and mie/mip, stvec, sscratch, sepc, scause, stval, scounteren, satp, and the " +
+        "M-mode medeleg, mideleg, mcounteren; mstatus MPRV, SUM, MXR, TVM, TW, TSR, MPP, SPP are " +
+        "WARL fields with the v0 legal values."
       )
       .build()
   }
 
-  val funcSerializingClass = spec {
-    FUNCTION("SerializingClass")
+  val funcTranslationContextPublish = spec {
+    FUNCTION("TranslationContextPublish")
       .desc(
-        "CSR, mret, dret, wfi, fence, fence.i, ecall, and ebreak carry a serializing bit; at most one serializing uop is in flight so a CSR read never observes a not-yet-committed CSR write."
+        "Drive TranslationContext every cycle from the committed satp, privilege, and mstatus " +
+        "fields; dataPriv = MPRV ? MPP : priv. The view changes only when a committed CSR write " +
+        "or trap/xRET application changes those fields."
       )
-      .uses(intfCsrReqIn, intfCommitGrantIn)
-      .note(
-        "ADR-004 D-4.2: dispatch grants the CSR/system edge ready only when no serializing uop is outstanding, tracked by a 1-bit scoreboard set at dispatch and cleared at commitGrant. Ready backpressure only; no node-internal stall counter. Decode-side tagging is a WP-A backend mechanic."
+      .uses(intfTranslationContextOut)
+      .build()
+  }
+
+  val funcCsrMapContribution = spec {
+    FUNCTION("CsrMapContribution")
+      .desc(
+        "The Zicsr address map is the base machine and supervisor map plus each enabled " +
+        "extension's Map[Int, Csr] contribution, merged into the one CsrAccess.readFromCsr " +
+        "call this vertex owns. Contributions add addresses, never a second write path."
       )
       .build()
   }
 
   val propNoSpeculativeCsrWrite = spec {
     PROPERTY("NoSpeculativeCsrWrite")
-      .desc(
-        "An architectural CSR register write-enable asserts only when the retiring uop holds the matching commitGrant and its epoch equals the global epoch."
-      )
+      .desc("An architectural CSR register write-enable asserts only in the cycle CommitGrant names the writing uop's robTag.")
       .uses(intfCommitGrantIn)
-      .note(
-        "ADR-004 verification: monitor that csr_reg_write_enable implies commitGrant.valid and commitGrant.seqTag == req.seqTag and req.epoch == globalEpoch. Simulation-assert per ADR-015 D-15.3, paired with an @LocalSpec design assert when the CSR body lands."
-      )
-      .build()
-  }
-
-  // ADR-017 D-17.3: extension CSRs enter through the single merged map.
-  val funcCsrMapContribution = spec {
-    FUNCTION("CsrMapContribution")
-      .desc(
-        "The Zicsr address map is assembled from the base machine map plus each enabled " +
-        "extension's Map[Int, Csr] contribution (and optional contiguous banks), merged " +
-        "into the one CsrAccess.readFromCsr call this vertex owns. No extension " +
-        "instantiates its own Zicsr access path; per-CSR WARL semantics ride each " +
-        "contributed Csr's legalize (common/system/csr library, propCsrLegalizeTotal)."
-      )
-      .note(
-        "Imported from the main line's CSRImpl.csrMap contribution shape; the commit-time " +
-        "strobe discipline (ADR-004, intfCommitGrantIn) is unchanged - contributions add " +
-        "ADDRESSES, never a second write path."
-      )
+      .note("Simulation assert, paired when the CSR body is rewritten (OQ-E).")
       .build()
   }
 }

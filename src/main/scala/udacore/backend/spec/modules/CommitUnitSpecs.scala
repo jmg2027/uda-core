@@ -6,177 +6,256 @@ import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs._
+import udacore.core.spec.shared.MemoryBundlesSpecs.{bndCacheMaintenance, bndTlbFlush}
 
+/** CommitUnit: in-order retirement from the ROB head, precise traps, and the
+  * commit-head system-operation sequencer (ADR-019 D-19.7/D-19.8; ADR-004;
+  * ADR-010; ADR-012 commit broadcast concept).
+  */
 object CommitUnitSpecs {
   val contCommitUnit = spec {
     CONTRACT("CommitUnit")
       .desc(
-        "Commit unit tracks in-order retirement, updates map table, frees old physical registers."
+        "Consumes the ROB head in program order. A done, exception-free head retires by firing " +
+        "every commit-broadcast view it needs in one cycle: rRAT update and oldPrd free, SQ " +
+        "head handoff for stores, FTQ block commit, CSR commit grant, and the retire token. A " +
+        "head with an exception, a pending interrupt at a retire boundary, or a serializing " +
+        "system operation is handed to the TrapController, which produces the architectural " +
+        "redirect. CommitUnit also sequences fence, fence.i, and sfence.vma maintenance."
       )
       .has(
-        intfDecodedUopAllocIn,
-        intfCommitResultIn,
-        intfMapTableUpdateOut,
-        intfPhysicalRegFreeOut,
+        intfRobHeadIn,
+        intfRenameCommitOut,
+        intfStoreCommitOut,
+        intfFtqCommitOut,
+        intfCommitGrantOut,
         intfExceptionOut,
         intfInterruptCtrlIn,
-        intfArchMapRestoreOut,
-        intfCommitBroadcastOut,
         intfRetireStreamOut,
-        funcArchMapMaintain,
-        funcCompletionScoreboard,
+        intfStoreBufferDrainReqOut,
+        intfStoreBufferDrainRespIn,
+        intfICacheInvalidateOut,
+        intfDCacheCleanReqOut,
+        intfDCacheCleanRespIn,
+        intfSfenceVmaOut,
+        funcCommitHead,
+        funcPreciseTrapHandoff,
         funcInterruptSampling,
+        funcBlockEndCommit,
+        funcSystemOpSequencing,
         propCommitInOrder,
-        propRetireNonBlocking,
-        propFreeListConservation
+        propNoCommitPastException,
+        propRetireNonBlocking
       )
-      .note("Tracks instruction completion in program order")
-      .note("On commit: updates architectural map table in rename unit")
-      .note("Frees old physical register to free list")
-      .note("No data writeback - mapping update only")
-      .note("CommitUnit is the single owner of the architectural map and the unified commit broadcast (ADR-002 D-2.2, ADR-012 D-12.4).")
+      .uses(paramCommitWidth, bndCommitBroadcast)
+      .note(
+        "Recovery stance: CommitUnit only ever handles the oldest live uop, which no " +
+        "BranchMispredict can kill; an ArchRedirect it caused ends its current sequence."
+      )
       .build()
   }
 
-  val intfDecodedUopAllocIn = spec {
-    INTERFACE("DecodedUopAllocIn")
-      .desc("Allocation bookkeeping input.")
-      .uses(bndDecodedUopAlloc)
+  val intfRobHeadIn = spec {
+    INTERFACE("RobHeadIn")
+      .desc("The ROB head entry; accepting it retires the entry or hands its trap to the TrapController.")
+      .uses(bndRobHead)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfCommitResultIn = spec {
-    INTERFACE("CommitResultIn")
-      .desc("Commit result input.")
-      .uses(bndCommitResult)
+  val intfRenameCommitOut = spec {
+    INTERFACE("RenameCommitOut")
+      .desc("RenameCommit view to RenameUnit (rRAT update, oldPrd free, checkpoint release).")
+      .uses(bndCommitBroadcast)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfMapTableUpdateOut = spec {
-    INTERFACE("MapTableUpdateOut")
-      .desc("Map table update output to rename unit.")
-      .uses(bndMapTableUpdate)
+  val intfStoreCommitOut = spec {
+    INTERFACE("StoreCommitOut")
+      .desc("StoreCommit view to the LoadStoreQueue for a retiring store; its transfer completes only with the SQ-to-StoreBuffer handoff.")
+      .uses(bndCommitBroadcast)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfPhysicalRegFreeOut = spec {
-    INTERFACE("PhysicalRegFreeOut")
-      .desc("Physical register free output to rename unit.")
-      .uses(bndPhysicalRegFree)
+  val intfFtqCommitOut = spec {
+    INTERFACE("FtqCommitOut")
+      .desc("FtqCommit to the frontend FetchTargetQueue when a blockEnd uop retires.")
+      .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfCommitGrantOut = spec {
+    INTERFACE("CommitGrantOut")
+      .desc("Commit strobe {robTag, valid} qualifying the CSR write of the retiring CSR uop.")
+      .uses(bndCommitBroadcast)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4.")
       .build()
   }
 
   val intfExceptionOut = spec {
     INTERFACE("ExceptionOut")
-      .desc("Exception notification output.")
+      .desc("Trap, interrupt, xRET, or Refetch hand-off to the TrapController.")
       .uses(bndException)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  // ADR-004 D-4.5: interrupt control view sampled at the commit boundary.
   val intfInterruptCtrlIn = spec {
     INTERFACE("InterruptCtrlIn")
-      .desc("Interrupt pending/enable control view from the CSR, sampled at a retire boundary.")
+      .desc("Pending-and-enabled interrupt view from the CsrController.")
       .uses(bndInterruptCtrl)
       .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2 (derived from asynchronous lines) sampled only at a retire boundary.")
       .build()
   }
 
-  // ADR-001 D-1.1: CommitUnit is the source of recovery truth.
-  val intfArchMapRestoreOut = spec {
-    INTERFACE("ArchMapRestoreOut")
-      .desc("Architectural (retirement) map snapshot broadcast to RenameUnit for same-cycle recovery.")
-      .uses(bndArchMapSnapshot)
-      .is(rawNoDecoupled)
-      .note("Rides combinationally with the epoch; 0-stage forever (ADR-006 commit/redirect path).")
-      .build()
-  }
-
-  // ADR-012 D-12.4: the single unified commit broadcast, driven by CommitUnit.
-  val intfCommitBroadcastOut = spec {
-    INTERFACE("CommitBroadcastOut")
-      .desc("The single in-order commit event, fanned to all consumers as field-projected views.")
-      .uses(bndCommitBroadcast)
-      .note("Drives StoreCommit -> StoreBuffer, commitGrant -> CSR, map-update+free -> Rename, retireTrigger -> retire stream (ADR-012 D-12.4).")
-      .is(rawReadyValidIntf)
-      .build()
-  }
-
-  // ADR-010 D-10.1/D-10.3: verification retire stream, gated by usingRvvi.
   val intfRetireStreamOut = spec {
     INTERFACE("RetireStreamOut")
-      .desc("One verification retire token per in-order retirement (ADR-010 D-10.1).")
+      .desc("One verification retire token per retirement or trap entry (ADR-010), elaborated only when usingRvvi.")
       .uses(bndRetireToken)
       .is(rawReadyValidIntf)
-      .note("Gated by the usingRvvi elaboration knob (WP-D CoreParams, default false); the port, the commit-time wdata PRF read, and the 64b order counter all fold away when false (ADR-010 D-10.3).")
-      .note("Observation-only: ready tied high in the harness, commit progress independent of it (ADR-010 D-10.2).")
+      .note("Observation-only: ready is tied high by the harness; commit never waits on it (propRetireNonBlocking).")
       .build()
   }
 
-  // ADR-002 D-2.2: CommitUnit maintains the architectural map in program order.
-  val funcArchMapMaintain = spec {
-    FUNCTION("ArchMapMaintain")
-      .desc("Maintain the architectural (retirement) map: on head retire, point the retiring arch reg at its new prd and free the old prd.")
-      .note("The architectural map is the ADR-001 recovery source of truth; updated only at the alloc-FIFO head (ADR-002 D-2.2/D-2.4).")
-      .uses(intfDecodedUopAllocIn, intfCommitResultIn, intfArchMapRestoreOut)
+  val intfStoreBufferDrainReqOut = spec {
+    INTERFACE("StoreBufferDrainReqOut")
+      .desc("Drain request to the StoreBuffer for FENCE, FENCE.I, and SFENCE.VMA.")
+      .is(rawReadyValidIntf)
       .build()
   }
 
-  // ADR-002 D-2.4: architectural state changes only at the FIFO head, in order.
-  val propCommitInOrder = spec {
-    PROPERTY("CommitInOrder")
-      .desc("Architectural map updates, physical-register frees, CSR side effects, and store visibility occur only at the alloc-FIFO head, in FIFO order.")
-      .note("Precise exceptions follow: the head is the precise architectural point (ADR-002 D-2.4). Pair with a design assert.")
-      .uses(intfDecodedUopAllocIn, intfCommitResultIn, intfExceptionOut)
+  val intfStoreBufferDrainRespIn = spec {
+    INTERFACE("StoreBufferDrainRespIn")
+      .desc("Completes when every committed store older than the request has been written to the D-cache or bus.")
+      .is(rawReadyValidIntf)
       .build()
   }
 
-  // ADR-002 D-2.3: the only per-uop state commit needs.
-  val funcCompletionScoreboard = spec {
-    FUNCTION("CompletionScoreboard")
-      .desc("Per-in-flight-uop done bit set by PublishResult, cleared at retire; head retires when done and epoch-matched.")
-      .note("Size = SpeculativeRegNum (N); degenerates to a single valid bit at N=1 (ADR-002 D-2.3).")
-      .uses(paramSpeculativeRegNum)
+  val intfICacheInvalidateOut = spec {
+    INTERFACE("ICacheInvalidateOut")
+      .desc("FENCE.I I-cache invalidate-all token; fires when the invalidate is durable.")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
       .build()
   }
 
-  // ADR-004 D-4.5: interrupts join program order at the commit boundary.
+  val intfDCacheCleanReqOut = spec {
+    INTERFACE("DCacheCleanReqOut")
+      .desc("FENCE.I D-cache clean-all request (the I-side is not coherent with the D-cache).")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfDCacheCleanRespIn = spec {
+    INTERFACE("DCacheCleanRespIn")
+      .desc("D-cache clean-all completion: every dirty line has been written back.")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfSfenceVmaOut = spec {
+    INTERFACE("SfenceVmaOut")
+      .desc("SFENCE.VMA token to the PageTableWalker, which flushes both TLBs; fires when the flush is durable.")
+      .uses(bndTlbFlush)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val funcCommitHead = spec {
+    FUNCTION("CommitHead")
+      .desc(
+        "A done head with no exception, no pending interrupt, no sysOp, and no " +
+        "predictionFault retires when all of its views are ready in the same cycle: " +
+        "RenameCommit always; StoreCommit if isStore; FtqCommit if blockEnd; CommitGrant if a " +
+        "CSR uop; the retire token when usingRvvi. Otherwise the head waits."
+      )
+      .uses(intfRobHeadIn, intfRenameCommitOut, intfStoreCommitOut, intfFtqCommitOut, intfCommitGrantOut)
+      .build()
+  }
+
+  val funcPreciseTrapHandoff = spec {
+    FUNCTION("PreciseTrapHandoff")
+      .desc(
+        "A head whose entry carries an exception is not retired: CommitUnit sends " +
+        "Exception{Sync, cause, tval, pc, robTag, ftqIdx} and emits a trap retire token. No " +
+        "younger uop has updated architectural state, so the trap is precise; the " +
+        "TrapController's ArchRedirect then discards the whole window."
+      )
+      .uses(intfExceptionOut, intfRetireStreamOut)
+      .build()
+  }
+
   val funcInterruptSampling = spec {
     FUNCTION("InterruptSampling")
-      .desc("Sample enabled+pending interrupts at a retire boundary with no synchronous exception and not in debug mode; emit Exception{source=Interrupt, cause, pc=next-uncommitted PC}.")
-      .note("Consumed only at the head, so epoch===globalEpoch holds by construction; interrupts never alias across the epoch wrap (ADR-004 D-4.5).")
-      .uses(intfInterruptCtrlIn, intfCommitResultIn, intfExceptionOut)
+      .desc(
+        "At a retire boundary (before offering the next head for retirement), if an enabled " +
+        "interrupt is pending for the current privilege (mip & mie, mideleg, MIE/SIE, priv) " +
+        "and not in debug mode, send Exception{Interrupt, cause, pc = head pc, robTag = head}. " +
+        "Interrupts are never taken in the middle of a serialization sequence."
+      )
+      .uses(intfInterruptCtrlIn, intfExceptionOut)
       .build()
   }
 
-  // ADR-010 D-10.2: the retire port never stalls commit.
+  val funcBlockEndCommit = spec {
+    FUNCTION("BlockEndCommit")
+      .desc(
+        "When a blockEnd uop retires, send FtqCommit{ftqIdx, exit}, where exit is the uop's " +
+        "cfiOutcome if it is a taken control-flow uop and cfiType None otherwise."
+      )
+      .uses(intfFtqCommitOut)
+      .build()
+  }
+
+  val funcSystemOpSequencing = spec {
+    FUNCTION("SystemOpSequencing")
+      .desc(
+        "For a head with sysOp: FENCE drains the StoreBuffer, then retires. FENCE.I drains the " +
+        "StoreBuffer, cleans the D-cache, invalidates the I-cache, retires, and sends " +
+        "Exception{SysOp, Refetch}. SFENCE.VMA drains the StoreBuffer, sends the TLB flush, " +
+        "retires, and sends Refetch. A retiring CSR write, and a predictionFault uop, retire " +
+        "and send Refetch. MRET/SRET retire and send XRet. WFI retires and waits for a pending " +
+        "interrupt (or debug request) before the next head is offered."
+      )
+      .uses(intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfICacheInvalidateOut,
+            intfDCacheCleanReqOut, intfDCacheCleanRespIn, intfSfenceVmaOut, intfExceptionOut)
+      .note("SFENCE.VMA drains committed stores first so a page-table store is visible to the next walk; v0 flushes every TLB entry for every encoding (ADR-019 D-19.6).")
+      .build()
+  }
+
+  val propCommitInOrder = spec {
+    PROPERTY("CommitInOrder")
+      .desc(
+        "rRAT updates, prd frees, CSR writes, store handoffs to the StoreBuffer, and FTQ " +
+        "releases happen only for the ROB head, in robTag order, one uop per cycle (v0)."
+      )
+      .uses(intfRobHeadIn)
+      .note("Simulation assert.")
+      .build()
+  }
+
+  val propNoCommitPastException = spec {
+    PROPERTY("NoCommitPastException")
+      .desc(
+        "No uop younger than a head with an exception ever fires a commit-broadcast view; the " +
+        "next event after the exception hand-off is the ArchRedirect RecoveryEvent that names it."
+      )
+      .uses(funcPreciseTrapHandoff)
+      .build()
+  }
+
   val propRetireNonBlocking = spec {
     PROPERTY("RetireNonBlocking")
-      .desc("The retire stream is observation-only: whenever the retire token is valid its sink is always ready, so commit progress never depends on the retire port draining.")
-      .note("Pair with a design assert (ADR-010 D-10.2, ADR-015 D-15.3).")
+      .desc("Whenever the retire token is valid its sink is ready, so commit progress never depends on the retire port.")
       .uses(intfRetireStreamOut)
-      .build()
-  }
-
-  // ADR-001 D-1.1/D-1.2: CommitUnit is the sole owner of the free list, so the
-  // architectural map image and the free mask must partition the PRF exactly.
-  val propFreeListConservation = spec {
-    PROPERTY("FreeListConservation")
-      .desc(
-        "After any epoch-change (recovery) cycle, the union of the restored architectural map image (the physical registers named by mapPhys) and the free mask covers every physical register in the PRF exactly once: no physical register is both mapped and free (no double-free) and none is neither mapped nor free (no leak)."
-      )
-      .note(
-        "CommitUnit is the single free-list owner: the architectural map is the ADR-001 recovery source of truth, restored combinationally with the epoch on redirect (ADR-001 D-1.1/D-1.2, ADR-012 D-12.4)."
-      )
-      .note(
-        "Verification obligation: pair with a design assert evaluated on the recovery cycle that the mapPhys image and freeMask are disjoint and jointly cover the 33+N PRF slots. At N=1 the map/free partition is the trivial single-slot case."
-      )
-      .uses(intfArchMapRestoreOut, intfPhysicalRegFreeOut)
+      .note("ADR-010 D-10.2; simulation assert.")
       .build()
   }
 }

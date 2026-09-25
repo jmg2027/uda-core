@@ -1,142 +1,79 @@
 package udacore.backend.design.shared
 
-import udacore.backend.spec.shared.BackendParamsSpecs
+import framework.macros.LocalSpec
+import udacore.backend.spec.shared.BackendParamsSpecs._
 
-/** Backend domain parameter implementation.
+/** Backend domain parameters (ADR-019 v0 reference values as defaults).
   *
-  * Implements the three-tier parameter architecture defined in
-  * BackendParamsSpecs. Organizes parameters for instruction execution, commit,
-  * and memory operations.
+  * Implements BackendParamsSpecs: three tiers, with the window sizes of the
+  * explicit-ROB machine in the tuning tier.
   */
 
-/** Contract-tier parameters that parent integrators must specify. These form
-  * the interface contract between backend and system integration.
-  */
+/** Contract tier. */
+@LocalSpec(paramXLen)
 case class BackendContractParams(
-    xLen: Int,       // Width of an integer register in bits
-    iLen: Int,       // Maximum Instruction length supported by an implementation
-    regNum: Int,     // Number of architectural registers (32 or 16 for RVE)
-    memOpWidth: Int, // Memory operation data width
-    hartId: Int, // Hart identifier matches zero by default
-    enableMulDiv: Boolean, // Enable multiplication and division
-    enableBitAlu: Boolean // Enable bitwise ALU operations
+    xLen: Int = 32,              // RV32 (ADR-019 D-19.1)
+    regNum: Int = 32,            // architectural integer registers
+    hartId: Int = 0,
+    enableMulDiv: Boolean = true, // M extension (v0: on)
+    enableBitAlu: Boolean = false // bit-manipulation contribution (v0: off, ADR-017)
 ) {
-  require(xLen > 0, "XLen must be positive")
-  require(
-    xLen == 32 || xLen == 64,
-    "XLen must be 32 or 64"
-  )
-  require(
-    regNum == 16 || regNum == 32,
-    "Register number must be 16 (RVE) or 32"
-  )
-  require(
-    iLen ==  32,
-    "Instruction length must be 32"
-  )
-  require(memOpWidth > 0, "Memory operation width must be positive")
+  require(xLen == 32, "v0 is RV32IM: xLen must be 32 (RV64 needs a later ADR)")
+  require(regNum == 32, "ArchRegNum must be 32")
   require(hartId >= 0, "Hart ID must be non-negative")
-  require(
-    Set(8, 16, 32, 64).contains(memOpWidth),
-    "Memory operation width must be 8, 16, 32, or 64 bits"
+}
+
+/** Tuning tier: the ADR-019 D-19.1 reference window. */
+@LocalSpec(paramRobDepth)
+case class BackendTuningParams(
+    renameWidth: Int = 1,
+    issueWidth: Int = 1,
+    publishWidth: Int = 1,
+    commitWidth: Int = 1,
+    robDepth: Int = 16,
+    integerPrfEntries: Int = 48,
+    integerRsEntries: Int = 8,
+    loadQueueDepth: Int = 8,
+    storeQueueDepth: Int = 8,
+    storeBufferDepth: Int = 4,
+    branchCheckpointCount: Int = 4
+) {
+  require(renameWidth == 1 && commitWidth == 1 && publishWidth == 1,
+    "v0 supports rename/commit/publish width 1 only (ADR-014 single lane)")
+  require(issueWidth >= 1, "issue width must be positive")
+  require(integerRsEntries >= 1 && loadQueueDepth >= 1 && storeQueueDepth >= 1 && storeBufferDepth >= 1,
+    "queue depths must be positive")
+  require(branchCheckpointCount >= 1, "at least one branch checkpoint is required")
+
+  @LocalSpec(propPrfSizingCoversRob)
+  val prfSizingCoversRob: Unit = require(
+    robDepth >= 2 && (robDepth & (robDepth - 1)) == 0 && integerPrfEntries >= 32 + robDepth,
+    "PrfSizingCoversRob: robDepth must be a power of two and integerPrfEntries >= ArchRegNum + robDepth"
   )
 }
 
-/** Tuning-tier parameters for performance optimization. Parent integrators and
-  * subsystem leads can adjust these.
-  */
-case class BackendTuningParams(
-    executionUnits: Int = 2,      // Number of execution units
-    reservationStations: Int = 8, // Number of reservation station entries
-    loadStoreQueueSize: Int = 16, // Load-store queue sizing
-    epochWidth: Int = 2           // Epoch counter width
-) {
-  require(executionUnits > 0, "Execution units must be positive")
-  require(reservationStations > 0, "Reservation stations must be positive")
-  require(loadStoreQueueSize > 0, "Load-store queue size must be positive")
-  require(epochWidth > 0, "Epoch width must be positive")
-}
-
-/** Private-tier parameters for internal implementation details. Only backend
-  * subsystem implementers should modify these.
-  */
-case class BackendPrivateParams(
-    bypassPaths: Int = 4,       // Number of bypass paths
-    scoreboardEntries: Int = 32 // Scoreboard size for dependency tracking
-) {
-  require(bypassPaths > 0, "Bypass paths must be positive")
-  require(scoreboardEntries > 0, "Scoreboard entries must be positive")
-}
-
-/** Complete backend parameter bundle combining all tiers. This is the resolved
-  * parameter set used by backend implementation.
-  */
+/** Complete backend parameter set. */
 case class BackendParams(
-    contract: BackendContractParams,
-    tuning: BackendTuningParams = BackendTuningParams(),
-    privateParams: BackendPrivateParams = BackendPrivateParams()
+    contract: BackendContractParams = BackendContractParams(),
+    tuning: BackendTuningParams = BackendTuningParams()
 ) {
-  // Convenience accessors for frequently used parameters
-  def xLen: Int           = contract.xLen
-  def iLen: Int           = contract.iLen
-  def regNum: Int         = contract.regNum
-  def memOpWidth: Int     = contract.memOpWidth
-  def hartId: Int    = contract.hartId
+  def xLen: Int             = contract.xLen
+  def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
+  def regNum: Int           = contract.regNum
+  def hartId: Int           = contract.hartId
   def enableMulDiv: Boolean = contract.enableMulDiv
   def enableBitAlu: Boolean = contract.enableBitAlu
-  def executionUnits: Int = tuning.executionUnits
-  def epochWidth: Int     = tuning.epochWidth
 
-  // Parameter derivations
-  def regIdWidth: Int = if (regNum == 16) 4 else 5
-  def isRVE: Boolean  = regNum == 16
-}
+  def robDepth: Int          = tuning.robDepth
+  def robTagWidth: Int       = log2(robDepth) + 1
+  def physRegIdWidth: Int    = log2Ceil(tuning.integerPrfEntries)
+  def checkpointIdWidth: Int = log2Ceil(tuning.branchCheckpointCount)
+  def regIdWidth: Int        = 5
 
-object BackendParams {
+  /** Width of the legacy epoch meta field of the owner-protected CSR.scala
+    * interface (OQ-E). It has no ADR-019 recovery meaning. */
+  def legacyCsrEpochWidth: Int = 1
 
-  /** Create BackendParams with only contract parameters specified. Uses default
-    * values for tuning and private parameters.
-    */
-  def minimal(
-      xLen: Int,
-      iLen: Int,
-      regNum: Int,
-      memOpWidth: Int,
-      hartId: Int
-  ): BackendParams = {
-    BackendParams(
-      contract = BackendContractParams(
-        xLen,
-        iLen,
-        regNum,
-        memOpWidth,
-        hartId,
-        enableMulDiv = false,
-        enableBitAlu = false
-      )
-    )
-  }
-
-  /** Create BackendParams with contract and tuning parameters. Uses default
-    * values for private parameters.
-    */
-  def tuned(
-      xLen: Int,
-      iLen: Int,
-      regNum: Int,
-      memOpWidth: Int,
-      hartId: Int,
-      enableMulDiv: Boolean,
-      enableBitAlu: Boolean,
-      executionUnits: Int,
-      epochWidth: Int = 2
-  ): BackendParams = {
-    BackendParams(
-      contract = BackendContractParams(xLen, iLen, regNum, memOpWidth, hartId, enableMulDiv, enableBitAlu),
-      tuning = BackendTuningParams(
-        executionUnits = executionUnits,
-        epochWidth = epochWidth
-      )
-    )
-  }
+  private def log2(x: Int): Int     = Integer.numberOfTrailingZeros(x)
+  private def log2Ceil(x: Int): Int = if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)
 }

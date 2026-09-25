@@ -2,22 +2,19 @@ package udacore.frontend.design.shared
 
 import chisel3._
 
-/** Frontend domain parameter access trait */
+/** Frontend domain parameter access trait. */
 trait HasFrontendParams {
   val params: FrontendParams
 
-  // Frontend-specific parameter access
-  def fetchWidth: Int             = params.fetchWidth
-  def instructionCacheSize: Int   = params.instructionCacheSize
-  def instAddrWidth: Int          = params.instAddrWidth
-  def fetchTargetWidth: Int       = params.fetchTargetWidth
-  def pcWidth: Int                = params.pcWidth
-  def epochWidth: Int             = params.epochWidth
-  def branchPredictorEntries: Int = params.branchPredictorEntries
+  def fetchBytes: Int  = params.fetchBytes
+  def fetchWidth: Int  = params.fetchWidth
+  def decodeWidth: Int = params.decodeWidth
+  def vAddrWidth: Int  = params.vAddrWidth
+  def ghrLength: Int   = params.ghrLength
+  def ftqDepth: Int    = params.ftqDepth
 
-  // Frontend constants
-  val bytesize: Int = 8
-  val instLen: Int  = params.instLen
+  // Fixed-width ISA (ADR-019 D-19.3): every instruction is one 32-bit word.
+  val instBits: Int = 32
 }
 
 /** Frontend domain abstract classes */

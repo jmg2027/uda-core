@@ -7,65 +7,34 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs._
 
-/** Physical Register File specifications for Unified PRF architecture.
-  *
-  * The PhysicalRegisterFile serves as a unified storage for both architectural
-  * and speculative register state. It eliminates the need for separate
-  * architectural and virtual register files by using a map table approach
-  * where commit updates mappings rather than copying data.
-  */
+/** PhysicalRegisterFile: the unified integer PRF (ADR-019 D-19.7/D-19.8). */
 object PhysicalRegisterFileSpecs {
   val contPhysicalRegisterFile = spec {
     CONTRACT("PhysicalRegisterFile")
       .desc(
-        "Unified physical register file for speculative and committed register state."
-      )
-      .note(
-        "Total entries: 33 (architectural baseline) + N (speculative), parametric via SpeculativeRegNum"
-      )
-      .note("Each entry: valid bit and data, keyed by physical tag")
-      .note(
-        "Epoch stance: epoch-FREE by construction (not an epoch-holding vertex, not in " +
-        "propEpochVertexEnumeration). PRF data carries no epoch tag: wrong-path values " +
-        "become unreachable when RenameUnit restores the architectural map on redirect " +
-        "(ADR-001) and their physical registers return via free-list reconstruction; the " +
-        "in-flight uops referencing them die by epoch in RS/PublishMux. A per-entry epoch " +
-        "tag would be redundant state on the ADR-008 N=1 fold-away path."
-      )
-      .note(
-        "No separate architectural/virtual distinction - mapping managed by RenameUnit"
+        "IntegerPrfEntries registers holding every speculative and committed integer value. " +
+        "The ROB is data-less, so the PRF is the only value store: commit changes the rRAT " +
+        "mapping, never copies data. p0 always reads zero and is never written."
       )
       .has(
         intfPhysicalRegWriteIn,
         intfRegisterFileReadReqIn,
         intfRegisterFileReadRespOut,
         funcReadAtSelect,
-        propPrfPortsVsN
+        propPrfPortsFixed
       )
-      .build()
-  }
-
-  // ADR-002 / ADR-010: read ports are a function of issue width plus verif commit ports.
-  val funcReadAtSelect = spec {
-    FUNCTION("ReadAtSelect")
-      .desc("Operands are read at RS select time; read ports = issueWidth*2 plus commitWidth commit-time ports when usingRvvi.")
-      .note("The extra commit-time wdata read ports exist only in the verif build (usingRvvi=true, WP-D CoreParams); base folds them away (ADR-010 D-10.3).")
-      .uses(paramSpeculativeRegNum)
-      .build()
-  }
-
-  // ADR-012 / ADR-010 / P01: PRF depth scales with N; read ports do not.
-  val propPrfPortsVsN = spec {
-    PROPERTY("PrfPortsVsN")
-      .desc("PRF depth = 33 + SpeculativeRegNum; read ports are a function of issue width plus the verif commit ports, NOT of N.")
-      .note("Closes critique m1: widening the window grows depth, not read-port count (ADR-010 consequences). Pair with an elaboration require.")
-      .uses(paramSpeculativeRegNum, paramPhysicalRegNum)
+      .uses(paramIntegerPrfEntries, paramPublishWidth, paramIssueWidth)
+      .note(
+        "Recovery stance: recovery-exempt. Values of killed producers become unreachable when " +
+        "rename restores its map, and their prds return through the free list; the PRF itself " +
+        "holds no program-order state and observes no RecoveryEvent."
+      )
       .build()
   }
 
   val intfPhysicalRegWriteIn = spec {
     INTERFACE("PhysicalRegWriteIn")
-      .desc("Physical register write input.")
+      .desc("One write per cycle from PublishMux (PublishWidth = 1).")
       .uses(bndPhysicalRegWrite)
       .is(rawReadyValidIntf)
       .build()
@@ -73,7 +42,7 @@ object PhysicalRegisterFileSpecs {
 
   val intfRegisterFileReadReqIn = spec {
     INTERFACE("RegisterFileReadReqIn")
-      .desc("Physical register read request input.")
+      .desc("Operand read requests from the ReservationStation.")
       .uses(bndRegisterFileReadReq)
       .is(rawReadyValidIntf)
       .build()
@@ -81,9 +50,29 @@ object PhysicalRegisterFileSpecs {
 
   val intfRegisterFileReadRespOut = spec {
     INTERFACE("RegisterFileReadRespOut")
-      .desc("Physical register read response output.")
+      .desc("Operand values to the ReservationStation.")
       .uses(bndRegisterFileReadResp)
       .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val funcReadAtSelect = spec {
+    FUNCTION("ReadAtSelect")
+      .desc(
+        "Operands are read when the RS selects a uop: 2 x IssueWidth read ports, plus " +
+        "CommitWidth commit-time read ports that exist only when usingRvvi elaborates the " +
+        "retire stream (ADR-010 D-10.3). A read in the same cycle as a write to the same prd " +
+        "returns the new value."
+      )
+      .uses(intfRegisterFileReadReqIn, intfRegisterFileReadRespOut)
+      .build()
+  }
+
+  val propPrfPortsFixed = spec {
+    PROPERTY("PrfPortsFixed")
+      .desc("PRF depth is IntegerPrfEntries; read/write port counts depend only on IssueWidth, PublishWidth, and CommitWidth, never on ROB or PRF depth.")
+      .uses(paramIntegerPrfEntries)
+      .note("Elaboration require.")
       .build()
   }
 }

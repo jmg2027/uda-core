@@ -16,10 +16,11 @@ case class Cycle(i: Int, reqAddr: Long, pc: Long, valid: Boolean, instRaw: Long,
  *  signals and return per-cycle samples - waveform-as-numbers for the ai Trace entrypoint.
  *
  *  Port status: the tap set is bound to concrete vertex signals (a UDACoreProbe wrapper module
- *  tapping FetchUnit/IssueQueue/RedirectUnit/CommitUnit vals) once those vertices carry RTL;
- *  it lands together with the CoreHarness binding. Candidate rebuild taps: the fetched packet
- *  (pc, instRaw, valid), globalEpoch and redirect fire (the rebuild's flush equivalents), the
- *  commit-head seqTag, and per-unit busy. Until then trace() raises [[HarnessNotReady]].
+ *  tapping FetchBuffer/RecoveryController/ReorderBuffer/CommitUnit vals) once those vertices
+ *  carry RTL; it lands together with the CoreHarness binding. Candidate ADR-019 taps: the
+ *  fetch packet (pc, instRaw, valid), the RecoveryEvent (valid, kind, robTag - the flush
+ *  equivalent), the ROB head robTag, and per-unit busy. Until then trace() raises
+ *  [[HarnessNotReady]].
  */
 object Probe {
   val taps = Seq("pc", "instRaw", "expInst", "valid", "flush", "jump", "xcpt", "stall",

@@ -16,17 +16,11 @@ trait HasCoreParams {
   def dataWidth: Int   = params.dataWidth
   def vAddrWidth: Int  = params.vAddrWidth
   def pAddrWidth: Int  = params.pAddrWidth
-  def hartId: Int = params.hartId
-  def epochWidth: Int  = params.epochWidth
-  def commitWidth: Int = params.commitWidth
+  def hartId: Int      = params.hartId
 
   // Derived widths
-  def instAddrWidth: Int    = vAddrWidth
-  def fetchTargetWidth: Int = instAddrWidth
-  def pcWidth: Int          = vAddrWidth
-  def dataAddrWidth: Int    = pAddrWidth
-  def xLen: Int             = dataWidth
-  def pcLen: Int            = xLen
+  def pcWidth: Int = vAddrWidth
+  def xLen: Int    = dataWidth
 }
 
 /** Core domain abstract classes */

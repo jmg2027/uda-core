@@ -16,7 +16,7 @@ class BootSequencer(bootCycles: Int = 2, val params: CoreParams)
     @LocalSpec(intfBootAddrIn)
     val bootAddrIn = Input(UInt(vAddrWidth.W))
 
-    @LocalSpec(intfBootOut)
+    @LocalSpec(intfBootAddrOut)
     val bootOut = Decoupled(UInt(vAddrWidth.W))
   })
 

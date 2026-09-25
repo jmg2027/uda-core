@@ -23,8 +23,11 @@ Checks
    *Module should carry an @LocalSpec annotation.
 4. rawtop-wiring-only (ERROR): a design file bound to a rawTop CONTRACT must
    contain no when(/switch(/RegInit( - rawTops are :<>= wiring only.
-5. reg-queue-epoch (WARN): a design file that instantiates Queue( or RegEnable(
-   should mention "epoch" somewhere in the same file (eager-filter discipline).
+5. reg-queue-recovery (WARN): a design file that instantiates Queue( or
+   RegEnable( should state its recovery stance somewhere in the same file: a
+   RecoveryEvent/recovery reference, a transaction generation tag, or a
+   recovery-exempt classification (ADR-019 D-19.10 re-base of the ADR-005
+   eager-filter discipline; the old "mentions epoch" test is superseded).
 
 Heuristics (documented, approximate matching is acceptable per ADR-015 D-15.2)
 -----------------------------------------------------------------------------
@@ -354,33 +357,33 @@ def check_rawtop_wiring(rawtop_contracts, findings):
     return err
 
 
-def check_reg_queue_epoch(findings):
+REG_QUEUE_RE = re.compile(r"(?<![A-Za-z0-9_])(Queue|RegEnable)\(")
+RECOVERY_STANCE_RE = re.compile(r"recover|generation|recovery-exempt", re.IGNORECASE)
+
+
+def check_reg_queue_recovery(findings):
     warn = 0
     for path in walk_scala():
         if is_spec_path(path):
             continue
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             text = fh.read()
-        mentions_epoch = "epoch" in text.lower()
-        if mentions_epoch:
+        if RECOVERY_STANCE_RE.search(text):
             continue
-        for token in ("Queue(", "RegEnable("):
-            idx = text.find(token)
-            if idx != -1:
-                findings.append(
-                    Finding(
-                        "reg-queue-epoch",
-                        "WARNING",
-                        path,
-                        line_of(text, idx),
-                        "file instantiates '{}' but never mentions 'epoch' - "
-                        "confirm the state is epoch-filtered or epoch-exempt".format(
-                            token
-                        ),
-                    )
+        m = REG_QUEUE_RE.search(text)
+        if m:
+            findings.append(
+                Finding(
+                    "reg-queue-recovery",
+                    "WARNING",
+                    path,
+                    line_of(text, m.start()),
+                    "file instantiates '{}(' but states no recovery stance - confirm "
+                    "RecoveryEvent handling, a transaction generation tag, or a "
+                    "recovery-exempt classification (ADR-019)".format(m.group(1)),
                 )
-                warn += 1
-                break
+            )
+            warn += 1
     return warn
 
 
@@ -511,8 +514,8 @@ def main():
     r_err = check_rawtop_wiring(rawtop_contracts, findings)
     counts["rawtop-wiring-only"] = (0, r_err)
 
-    q_warn = check_reg_queue_epoch(findings)
-    counts["reg-queue-epoch"] = (q_warn, 0)
+    q_warn = check_reg_queue_recovery(findings)
+    counts["reg-queue-recovery"] = (q_warn, 0)
 
     t_err = check_spec_test_coverage(findings)
     counts["spec-test-coverage"] = (0, t_err)
@@ -533,7 +536,7 @@ def main():
         "property-to-assertion",
         "localspec-coverage",
         "rawtop-wiring-only",
-        "reg-queue-epoch",
+        "reg-queue-recovery",
         "spec-test-coverage",
     ):
         w, e = counts[chk]

@@ -4,141 +4,181 @@ import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
-import udacore.core.spec.shared.CoreBundlesSpecs.{bndGlobalEpoch, bndDebugReq}
+import udacore.frontend.spec.shared.FrontendBundlesSpecs.bndFetchPacket
+import udacore.core.spec.shared.CoreBundlesSpecs.{bndDebugReq, bndInterrupt}
+import udacore.core.spec.shared.MemoryBundlesSpecs._
 
+/** BackendTop: explicit-ROB out-of-order backend (ADR-019 D-19.7..D-19.9).
+  *
+  * decode(2) -> rename(1) -> {ROB, RS, LSQ} -> select -> execute (OoO) ->
+  * publish -> ROB completion -> in-order commit. Execute-time branch recovery
+  * and commit-head architectural redirects meet in the RecoveryController,
+  * whose RecoveryEvent is the only squash fact in the core.
+  */
 object BackendTopSpecs {
   val contBackendTop = spec {
     CONTRACT("BackendTop")
-      .desc("""Backend top level contract.
-              | Wires the execution graph: decode -> rename -> reservation
-              | station -> dispatch -> functional units -> publish -> commit,
-              | with the trap/CSR pair and the redirect merge. Owns the
-              | backend boundary edges (instruction issue in, memory op
-              | req/resp, store commit out, redirect out) and receives the
-              | global epoch broadcast plus the raw interrupt/debug lines.
-              | rawTop: vertex instantiation and :<>= edge wiring only.
+      .desc("""Backend top level contract (rawTop: vertex instantiation and :<>= wiring only).
+              | DecodeUnit decodes two instructions per cycle; RenameUnit allocates one uop per
+              | cycle into the ReorderBuffer, the ReservationStation, and the LoadStoreQueue;
+              | the RS selects ready uops out of order; execution units and the LSQ publish
+              | through the single PublishMux lane into the PRF, the wakeup broadcast, and ROB
+              | completion; CommitUnit retires from the ROB head in order. The BranchUnit and
+              | the TrapController request recovery from the RecoveryController, which
+              | broadcasts the RecoveryEvent to every speculative holder here and in the frontend.
+              | Memory translation and caches are CoreTop-level vertices reached over the
+              | DTLB/D-cache/StoreBuffer boundary edges.
               """)
       .is(rawTop)
       .has(
-        intfInstructionIssueIn,
-        intfGlobalEpochIn,
+        intfFetchPacketIn,
         intfInterruptIn,
         intfDebugReqIn,
-        intfMemoryOpRespIn,
-        intfRedirectOut,
-        intfMemoryOpReqOut,
-        intfStoreCommitOut
+        intfDtlbStoreRespIn,
+        intfDtlbRefillIn,
+        intfDCacheLoadRespIn,
+        intfStoreDrainRespIn,
+        intfDCacheCleanRespIn,
+        intfRecoveryEventOut,
+        intfFtqCommitOut,
+        intfDtlbReqOut,
+        intfDCacheLoadReqOut,
+        intfStoreDrainReqOut,
+        intfTranslationContextOut,
+        intfSfenceVmaOut,
+        intfICacheInvalidateOut,
+        intfDCacheCleanReqOut,
+        intfRetireStreamOut
       )
+      .uses(propGraphConsistency)
       .draw(
         "mermaid",
         """
-        graph LR
+    graph LR
     %% Legend
-    %% -.-> : Normal Wire (scalar signals, epoch)
-    %% Normal Wires are forbidden except for from or to outside core top
-    %% --> : Decoupled Edge (ready/valid)
-    %% [] : Normal Module
-    %% [[]] : Top Module (rawTop)
+    %% -.-> : rawNoDecoupled (RecoveryEvent class 6, wakeup class 5, committed views class 4, async class 2)
+    %% --> : Decoupled edge (ready/valid)
+    %% [] : vertex   [[]] : rawTop
 
-    %% Inputs
     subgraph inputs_group[Inputs]
         in_anchor:::hidden
-        issue@{shape: text, label: InstructionIssue}
-        ep@{shape: text, label: GlobalEpoch}
+        packet@{shape: text, label: FetchPacket}
         irq@{shape: text, label: Interrupt}
         debugreq@{shape: text, label: DebugReq}
-        memres@{shape: text, label: MemoryOpResp}
+        dtlbsresp@{shape: text, label: DtlbStoreResp}
+        dtlbrefill@{shape: text, label: DtlbRefill}
+        dcresp@{shape: text, label: DCacheLoadResp}
+        sdresp@{shape: text, label: StoreDrainResp}
+        dccresp@{shape: text, label: DCacheCleanResp}
     end
 
     dec[DecodeUnit]
     rn[RenameUnit]
+    rob[ReorderBuffer]
     rs[ReservationStation]
+    prf[PhysicalRegisterFile]
     dis[DispatchUnit]
-    %% Functional Units
-    alu[ALU]
-    balu[BitALU]
+    alu[AluUnit]
+    balu[BitAluUnit]
     mul[MultiplierUnit]
     div[DividerUnit]
-    agu[AddressGenerationUnit]
     bru[BranchUnit]
-    csr[CSRController]
-
+    agu[AddressGenerationUnit]
+    csr[CsrController]
     pub[PublishMux]
-    prf[PhysicalRegisterFile]
-
-    trap[TrapController]
+    lsq[LoadStoreQueue]
+    sb[StoreBuffer]
     com[CommitUnit]
-    ru[RedirectUnit]
+    trap[TrapController]
+    rc[RecoveryController]
 
-    issue -- InstructionIssue --> dec
-    irq -. Interrupt .-> trap
-    debugreq -. DebugReq .-> trap
+    packet --> dec
+    irq -.-> csr
+    debugreq -.-> trap
+    dtlbsresp --> lsq
+    dtlbrefill --> lsq
+    dcresp --> lsq
+    sdresp --> sb
+    dccresp --> com
 
-    %% Epoch signals are globally injected to nodes where epoch filtering is needed
-    ep -.-> BackendTop
-
-    %% Unified PRF Architecture: Map Table based, no data writeback on commit
-    %% PublishMux is Result Bus for all FU outputs
     subgraph BackendTop
         direction LR
-        dec -- DecodedUop --> rn
-        rn -- RenamedUop --> rs
+        dec -- DecodedPacket --> rn
+        rn -- RobAlloc --> rob
+        rn -- RsAlloc --> rs
+        rn -- LsqAlloc --> lsq
 
-        %% RS <-> PRF (operand read)
         rs -- RegisterFileReadReq --> prf
         prf -- RegisterFileReadResp --> rs
+        rs -- IssuedUop --> dis
 
-        rs -- DispatchedUop --> dis
-
-        rn -- DecodedUopAlloc --> com
-
-        %% Dispatch to Functional Units
-        dis -- ALUReq --> alu
-        dis -- BitALUReq --> balu
+        dis -- AluReq --> alu
+        dis -- BitAluReq --> balu
         dis -- MultiplierReq --> mul
         dis -- DividerReq --> div
         dis -- BranchUnitReq --> bru
-        dis -- CSRReq --> csr
         dis -- AddressGenerationReq --> agu
+        dis -- CsrReq --> csr
 
-        %% All FU results to PublishMux (Result Bus)
-        alu -- ALUResult --> pub
-        balu -- BitALUResult --> pub
+        agu -- MemAddress --> lsq
+
+        alu -- AluResult --> pub
+        balu -- BitAluResult --> pub
         mul -- MultiplierResult --> pub
         div -- DividerResult --> pub
-        bru -- BranchUnitResult --> pub
-        csr -- CSRResult --> pub
-        memres -- MemoryOpResp --> pub
+        bru -- BranchResult --> pub
+        csr -- CsrResult --> pub
+        lsq -- MemResult --> pub
 
-        %% PublishMux outputs
         pub -- PhysicalRegWrite --> prf
-        pub -- WakeupBroadcast --> rs
-        pub -- PublishResult --> com
+        pub -. WakeupBroadcast .-> rs & rn
+        pub -- RobCompletion --> rob
 
-        %% Commit feedback to Rename (no data writeback)
-        com -- MapTableUpdate --> rn
-        com -- PhysicalRegFree --> rn
+        rob -- RobHead --> com
+        rob -. RobStatus .-> rn & lsq
 
-        %% ADR-001: architectural-map snapshot restores the speculative map on redirect
-        com -. ArchMapRestore .-> rn
+        com -- RenameCommit --> rn
+        com -- StoreCommit --> lsq
+        lsq -- CommittedStore --> sb
+        lsq -- StoreForwardQuery --> sb
+        sb -- StoreForwardData --> lsq
+        com -- StoreBufferDrainReq --> sb
+        sb -- StoreBufferDrainResp --> com
+        com -. CommitGrant .-> csr
+        csr -. InterruptCtrl .-> com
 
-        csr -- CSRTrapRead --> trap
-        trap -- CSRTrapWrite --> csr
         com -- Exception --> trap
-        trap -- Redirect --> ru
-        %% ADR-013 D-13.3: branch-mispredict producer wired into the redirect merge
-        bru -- Mispredict --> ru
+        csr -. CSRTrapRead .-> trap
+        trap -- CSRTrapWrite --> csr
+
+        trap -- ArchRedirect --> rc
+        bru -- BranchResolution --> rc
+        rc -. RecoveryEvent .-> dec & rn & rob & rs & dis
+        rc -. RecoveryEvent .-> alu & balu & mul & div & bru & agu & lsq
     end
 
-    agu -- MemoryOpReq --> memreq
-    ru -- RedirectOut --> redirect
-    %% ADR-012/ADR-003: StoreCommit view of the unified commit broadcast to the memory subsystem
-    com -- StoreCommit --> storecommit
+    rc -.-> recovery
+    com --> ftqcommit
+    lsq --> dtlbreq
+    lsq --> dcreq
+    sb --> sdreq
+    csr -.-> tctx
+    com --> sfence
+    com --> icinv
+    com --> dccreq
+    com --> retire
 
     subgraph outputs_group[Outputs]
-        redirect@{shape: text, label: RedirectOut}
-        memreq@{shape: text, label: MemoryOpReq}
-        storecommit@{shape: text, label: StoreCommit}
+        recovery@{shape: text, label: RecoveryEvent}
+        ftqcommit@{shape: text, label: FtqCommit}
+        dtlbreq@{shape: text, label: DtlbReq}
+        dcreq@{shape: text, label: DCacheLoadReq}
+        sdreq@{shape: text, label: StoreDrainReq}
+        tctx@{shape: text, label: TranslationContext}
+        sfence@{shape: text, label: SfenceVma}
+        icinv@{shape: text, label: ICacheInvalidate}
+        dccreq@{shape: text, label: DCacheCleanReq}
+        retire@{shape: text, label: RetireStream}
     end
 
     style inputs_group fill:transparent,stroke:transparent
@@ -146,92 +186,177 @@ object BackendTopSpecs {
         """.stripMargin
       )
       .note(
-        "Unified PRF architecture: single physical register file eliminates writeback on commit"
+        "Edge reconciliation (propGraphConsistency) by child INTERFACE: DecodeUnit." +
+        "DecodedPacketOut -> RenameUnit.DecodedPacketIn; RenameUnit.{RobAllocOut, RsAllocOut, " +
+        "LsqAllocOut} -> {ReorderBuffer.RobAllocIn, ReservationStation.RsAllocIn, " +
+        "LoadStoreQueue.LsqAllocIn}; RS.RegisterFileReadReqOut <-> PRF.RegisterFileRead*; " +
+        "RS.IssuedUopOut -> DispatchUnit.IssuedUopIn; DispatchUnit.*ReqOut -> each unit's " +
+        "*ReqIn; AGU.MemAddressOut -> LSQ.MemAddressIn; unit *ResultOut and LSQ.MemResultOut -> " +
+        "PublishMux.*ResultIn/MemResultIn; PublishMux.{PhysicalRegWriteOut, " +
+        "WakeupBroadcastOut, RobCompletionOut} -> PRF/RS+Rename/ROB; ROB.RobHeadOut -> " +
+        "CommitUnit.RobHeadIn; ROB.RobStatusOut -> Rename/LSQ.RobStatusIn; CommitUnit." +
+        "{RenameCommitOut, StoreCommitOut, StoreBufferDrainReqOut, CommitGrantOut} -> " +
+        "Rename.RenameCommitIn, LSQ.StoreCommitIn, StoreBuffer.StoreBufferDrainReqIn, Csr.CommitGrantIn; " +
+        "StoreBuffer.StoreBufferDrainRespOut -> CommitUnit.StoreBufferDrainRespIn; LSQ.{CommittedStoreOut, " +
+        "StoreForwardQueryOut} -> StoreBuffer; StoreBuffer.StoreForwardDataOut -> LSQ; " +
+        "CommitUnit.ExceptionOut -> Trap.ExceptionIn; Csr.CSRTrapReadOut -> Trap; " +
+        "Trap.CSRTrapWriteOut -> Csr; Trap.ArchRedirectOut and BranchUnit." +
+        "BranchResolutionOut -> RecoveryController; RecoveryController.RecoveryEventOut -> " +
+        "every *RecoveryEventIn and the boundary."
       )
       .note(
-        "Map table approach: commit updates mapping only, no data copy required"
+        "BitAluUnit and its edges elaborate only when the bit-manipulation extension is " +
+        "enabled (ADR-017); the v0 reference configuration omits them."
       )
-      .note(
-        "PublishMux is Result Bus: unified collection point for all FU results"
-      )
-      .note(
-        "Wakeup mechanism: PublishMux broadcasts prd to RS for dependency resolution"
-      )
-      .note(
-        "Scalability: N speculative registers scales from 1 (in-order) to 32+ (wide OoO)"
-      )
-      .note(
-        "After timing synthesis each edge can be analyzed for critical path and pipelined easily"
-      )
-      .note("It should be highly parameterized")
       .build()
   }
 
-  // Backend Top Interfaces (from mermaid diagram)
-  val intfInstructionIssueIn = spec {
-    INTERFACE("InstructionIssueIn")
-      .desc("Instruction issue input from frontend.")
-      .uses(bndInstructionIssue)
+  val intfFetchPacketIn = spec {
+    INTERFACE("FetchPacketIn")
+      .desc("Instruction packets from the frontend FetchBuffer, wired to DecodeUnit.")
+      .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
-      .build()
-  }
-
-  val intfGlobalEpochIn = spec {
-    INTERFACE("GlobalEpochIn")
-      .desc("Global epoch broadcast input.")
-      .uses(bndGlobalEpoch)
-      .is(rawNoDecoupled)
       .build()
   }
 
   val intfInterruptIn = spec {
     INTERFACE("InterruptIn")
-      .desc("Interrupt signal input.")
+      .desc("Raw interrupt lines, wired to the CsrController mip.")
       .uses(bndInterrupt)
       .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2.")
       .build()
   }
 
   val intfDebugReqIn = spec {
     INTERFACE("DebugReqIn")
-      .desc("Debug request signal input.")
+      .desc("Debug request line, wired to the TrapController.")
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
-      .note("TrapController processes debug request and generates redirect to debug handler address")
+      .note("rawNoDecoupled class 2.")
       .build()
   }
 
-  val intfMemoryOpRespIn = spec {
-    INTERFACE("MemoryOpRespIn")
-      .desc("Memory operation response input.")
-      .uses(bndMemoryOpResp)
+  val intfDtlbStoreRespIn = spec {
+    INTERFACE("DtlbStoreRespIn")
+      .desc("DataTlb answers for store-address translations, wired to the LSQ.")
+      .uses(bndTranslation)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfRedirectOut = spec {
-    INTERFACE("RedirectOut")
-      .desc("Redirect command output.")
-      .uses(bndRedirectOut)
+  val intfDtlbRefillIn = spec {
+    INTERFACE("DtlbRefillIn")
+      .desc("DataTlb refill notices, wired to the LSQ.")
+      .uses(bndWalkResp)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfMemoryOpReqOut = spec {
-    INTERFACE("MemoryOpReqOut")
-      .desc("Memory operation request output.")
-      .uses(bndMemoryOpReq)
+  val intfDCacheLoadRespIn = spec {
+    INTERFACE("DCacheLoadRespIn")
+      .desc("DataCache load answers, wired to the LSQ.")
+      .uses(bndDCacheLoadResp)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  // ADR-012 D-12.4 / ADR-003 D-3.3: StoreCommit view of the unified commit broadcast.
-  val intfStoreCommitOut = spec {
-    INTERFACE("StoreCommitOut")
-      .desc("StoreCommit {seqTag, epoch} projected view of the unified commit broadcast, driven to the memory subsystem store buffer.")
-      .uses(bndCommitBroadcast)
+  val intfStoreDrainRespIn = spec {
+    INTERFACE("StoreDrainRespIn")
+      .desc("DataCache store-drain completions, wired to the StoreBuffer.")
+      .uses(bndStoreDrainResp)
       .is(rawReadyValidIntf)
-      .note("CoreTop wires this to MemorySubsystem.storeCommitIn (WP-D CoreTop); only committed head stores drain (ADR-003 D-3.3).")
+      .build()
+  }
+
+  val intfDCacheCleanRespIn = spec {
+    INTERFACE("DCacheCleanRespIn")
+      .desc("DataCache clean-all completion, wired to the CommitUnit.")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfRecoveryEventOut = spec {
+    INTERFACE("RecoveryEventOut")
+      .desc("The RecoveryEvent broadcast toward the frontend.")
+      .uses(bndRecoveryEvent)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 6.")
+      .build()
+  }
+
+  val intfFtqCommitOut = spec {
+    INTERFACE("FtqCommitOut")
+      .desc("Block-commit notices to the frontend FetchTargetQueue.")
+      .uses(bndFtqCommit)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfDtlbReqOut = spec {
+    INTERFACE("DtlbReqOut")
+      .desc("LSQ translation requests to the CoreTop-level DataTlb.")
+      .uses(bndTranslateReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfDCacheLoadReqOut = spec {
+    INTERFACE("DCacheLoadReqOut")
+      .desc("LSQ load lookups to the CoreTop-level DataCache.")
+      .uses(bndDCacheLoadReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfStoreDrainReqOut = spec {
+    INTERFACE("StoreDrainReqOut")
+      .desc("Committed store drains from the StoreBuffer to the DataCache.")
+      .uses(bndStoreDrainReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfTranslationContextOut = spec {
+    INTERFACE("TranslationContextOut")
+      .desc("Committed translation context from the CsrController to the ITLB, DTLB, and PTW.")
+      .uses(bndTranslationContext)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4.")
+      .build()
+  }
+
+  val intfSfenceVmaOut = spec {
+    INTERFACE("SfenceVmaOut")
+      .desc("SFENCE.VMA tokens from the CommitUnit to the PageTableWalker.")
+      .uses(bndTlbFlush)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfICacheInvalidateOut = spec {
+    INTERFACE("ICacheInvalidateOut")
+      .desc("FENCE.I invalidate tokens from the CommitUnit to the InstructionCache.")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfRetireStreamOut = spec {
+    INTERFACE("RetireStreamOut")
+      .desc("Verification retire stream from the CommitUnit (ADR-010), elaborated only when usingRvvi.")
+      .uses(bndRetireToken)
+      .is(rawReadyValidIntf)
+      .note("Observation-only: the harness ties ready high (propRetireNonBlocking).")
+      .build()
+  }
+
+  val intfDCacheCleanReqOut = spec {
+    INTERFACE("DCacheCleanReqOut")
+      .desc("FENCE.I clean-all requests from the CommitUnit to the DataCache.")
+      .uses(bndCacheMaintenance)
+      .is(rawReadyValidIntf)
       .build()
   }
 }

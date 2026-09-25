@@ -4,124 +4,111 @@ import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ParamsSpecs._
-// WP-D publishes the canonical epoch width (ADR-005 D-5.3); consumed read-only.
-import udacore.core.spec.shared.CoreParamsSpecs.paramEpochWidth
 
-/** Frontend domain parameter specifications.
+/** Frontend domain parameters (ADR-019 D-19.1/D-19.2/D-19.3).
   *
-  * Defines the parameter specifications for the frontend instruction pipeline.
-  * Parameters are organized in three tiers: Contract (must be specified by
-  * integrators), Tuning (performance optimization), and Private (internal
-  * implementation details).
+  * Instructions are fixed 32-bit words at 4-byte aligned PCs; there is no
+  * 16-bit slot, instruction-length field, or compressed-instruction parameter.
+  * The "v0" entries are the reference configuration.
   */
 object FrontendParamsSpecs {
 
-  // Contract Tier - Parent integrators must specify these
+  // ---- Contract tier --------------------------------------------------------
 
-  // ADR-009 D-9.8: memDataWidth is the physical program-memory data-port width;
-  // it is the bus contract parents wire and it sets slotsPerBeat.
-  val paramMemDataWidth = spec {
-    PARAMETER("MemDataWidth")
+  val paramFetchBytes = spec {
+    PARAMETER("FetchBytes")
       .desc(
-        "Program-memory data-port width in bits (32/64/128). Sets slotsPerBeat = MemDataWidth/16 and fetchStride = MemDataWidth/8 bytes."
+        "Fetch-block size in bytes. A fetch block is the naturally aligned FetchBytes region " +
+        "containing the fetch PC; fetch starting mid-block covers only the slots at or after the PC."
       )
-      .note(
-        "Contract tier - the physical program-memory bus width parents must wire. ADR-009 D-9.8 recommends this live in a shared api/ param because the memory subsystem also needs the bus width."
-      )
-      .note("Elaboration require: memDataWidth % 16 == 0 (a whole number of half-words).")
+      .is(rawContractParams)
+      .entry("v0", "16")
       .build()
   }
 
-  // ADR-009 D-9.8: slotsPerBeat is derived, the upper bound on fetchWidth.
-  val paramSlotsPerBeat = spec {
-    PARAMETER("SlotsPerBeat")
-      .desc("Derived: MemDataWidth/16. The number of 16-bit slots a fetch beat can hold; the upper bound on fetchWidth.")
-      .note("Derived tier - not independently set; a function of MemDataWidth.")
-      .uses(paramMemDataWidth)
-      .build()
-  }
-
-  // ADR-009 D-9.8: fetchWidth is the instruction bandwidth, bounded by slotsPerBeat.
   val paramFetchWidth = spec {
     PARAMETER("FetchWidth")
+      .desc("Instruction slots per fetch block: FetchBytes / 4.")
+      .is(rawContractParams)
+      .uses(paramFetchBytes)
+      .entry("v0", "4")
+      .build()
+  }
+
+  val paramDecodeWidth = spec {
+    PARAMETER("DecodeWidth")
+      .desc("Instructions delivered from the fetch buffer to DecodeUnit per cycle.")
+      .is(rawContractParams)
+      .entry("v0", "2")
+      .build()
+  }
+
+  // ---- Tuning tier ------------------------------------------------------------
+
+  val paramBtbGeometry = spec {
+    PARAMETER("BtbGeometry")
       .desc(
-        "Maximum number of instruction slots the frontend produces and the issue queue enqueues per cycle. Bounded: fetchWidth <= slotsPerBeat = MemDataWidth/16."
+        "BTB sets, ways, and tag bits. Entries are indexed and tagged by fetch-block address; " +
+        "each entry tracks one control-flow instruction of its block (slot, type, target). " +
+        "v0 uses full tags so a BTB hit on a non-CFI slot occurs only after code modification."
       )
-      .note(
-        "Contract tier - the instruction bandwidth. ADR-009 D-9.8 splits the former conflated fetchWidth into MemDataWidth (bus) and this (instructions). Base config fetchWidth=1; NextPcGen never widens (one PC/cycle regardless)."
+      .is(rawTuningParams)
+      .entry("v0", "64 sets x 2 ways, full tag")
+      .build()
+  }
+
+  val paramTageGeometry = spec {
+    PARAMETER("TageGeometry")
+      .desc(
+        "TAGE base bimodal table size, number of tagged tables, per-table entries, tag bits, " +
+        "geometric history lengths, and counter widths."
       )
-      .uses(paramSlotsPerBeat)
+      .is(rawTuningParams)
+      .entry("v0", "bimodal 1024 x 2b; 4 tagged tables x 256 entries, 8-bit tags, 3-bit ctr, 2-bit useful; histories 8/16/32/64")
       .build()
   }
 
-  val paramInstructionCacheSize = spec {
-    PARAMETER("InstructionCacheSize")
-      .desc("Size of instruction cache in bytes")
-      .note("Contract tier - affects memory hierarchy")
+  val paramGhrLength = spec {
+    PARAMETER("GhrLength")
+      .desc("Speculative global history length in bits: the longest TAGE history.")
+      .is(rawTuningParams)
+      .uses(paramTageGeometry)
+      .entry("v0", "64")
       .build()
   }
 
-  // Tuning Tier - Performance optimization parameters
-  val paramBranchPredictorEntries = spec {
-    PARAMETER("BranchPredictorEntries")
-      .desc("Number of entries in branch predictor")
-      .note("Tuning tier - affects prediction accuracy")
+  val paramRasDepth = spec {
+    PARAMETER("RasDepth")
+      .desc("Return address stack entries (circular; overflow overwrites the oldest).")
+      .is(rawTuningParams)
+      .entry("v0", "8")
       .build()
   }
 
-  val paramPrefetchDepth = spec {
-    PARAMETER("PrefetchDepth")
-      .desc("Instruction prefetch queue depth")
-      .note("Tuning tier - affects fetch bandwidth utilization")
+  val paramFtqDepth = spec {
+    PARAMETER("FtqDepth")
+      .desc(
+        "Fetch target queue entries, one per fetch block from prediction until the block's " +
+        "last instruction commits. Power of two. FTQ-full backpressures prediction."
+      )
+      .is(rawTuningParams)
+      .entry("v0", "16")
       .build()
   }
 
-  // Private Tier - Internal implementation details
-  val paramAlignmentStages = spec {
-    PARAMETER("AlignmentStages")
-      .desc("Number of pipeline stages for instruction alignment")
-      .note("Private tier - implementation detail")
+  val paramFtqIdxWidth = spec {
+    PARAMETER("FtqIdxWidth")
+      .desc("ftqIdx = {wrap, idx} over FtqDepth, ordered by the funcRobOlder rule.")
+      .uses(paramFtqDepth)
+      .entry("v0", "5 (1 wrap + 4 idx)")
       .build()
   }
 
-  val paramDecodeLatency = spec {
-    PARAMETER("DecodeLatency")
-      .desc("Instruction decode latency in cycles")
-      .note("Private tier - affects pipeline depth")
-      .build()
-  }
-
-  // Program-memory address width (instruction address bus). Contract tier.
-  val paramProgramMemoryAddrWidth = spec {
-    PARAMETER("ProgramMemoryAddrWidth")
-      .desc("Program-memory (instruction) address width in bits. Sizes every frontend PC/target/addr field.")
-      .note("Contract tier - the instruction address bus width. RISC-V instruction addresses are 2-byte aligned minimum (ADR-009 section 5.5).")
-      .build()
-  }
-
-  // Program-memory data width == the fetch beat width. Aliases MemDataWidth.
-  val paramProgramMemoryDataWidth = spec {
-    PARAMETER("ProgramMemoryDataWidth")
-      .desc("Program-memory response data width in bits: one fetch beat. Equal to MemDataWidth (ADR-009 D-9.8).")
-      .note("Contract tier - the fetch beat width; sizes ExternalProgramMemoryResp.data and FetchResponse.data.")
-      .uses(paramMemDataWidth)
-      .build()
-  }
-
-  // Redirect cause code width (branch / trap / memory-order encodings).
-  val paramRedirectCauseWidth = spec {
-    PARAMETER("RedirectCauseWidth")
-      .desc("Width of the redirect cause code carried on the Redirect bundle (branch / trap / memory-order class).")
-      .note("Contract tier - fixed by the redirect merge priority ladder (ADR-013).")
-      .build()
-  }
-
-  // Frontend view of the global epoch width. Derived from WP-D paramEpochWidth.
-  val paramGlobalEpochWidth = spec {
-    PARAMETER("GlobalEpochWidth")
-      .desc("Width of the epoch tag stamped on every frontend token. Equal to the core-wide EpochWidth (ADR-005 D-5.3, default 2).")
-      .note("Contract tier - mirrors WP-D CoreParamsSpecs.paramEpochWidth; the frontend consumes the same core-wide epoch width and stamps it via NextPcGen (funcEpochStamp).")
-      .uses(paramEpochWidth)
+  val paramFetchBufferEntries = spec {
+    PARAMETER("FetchBufferEntries")
+      .desc("Instruction entries in the fetch buffer between the FetchUnit and DecodeUnit.")
+      .is(rawTuningParams)
+      .entry("v0", "8")
       .build()
   }
 }

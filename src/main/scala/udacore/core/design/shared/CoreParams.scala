@@ -4,200 +4,122 @@ import framework.macros.LocalSpec
 import udacore.common.tilelink.TLLinkParams
 import udacore.core.spec.shared.CoreParamsSpecs._
 
-/** Core domain parameter implementation.
+/** Core domain parameters (ADR-019 v0 reference values as defaults).
   *
-  * Implements the three-tier parameter architecture defined in CoreParamsSpecs.
-  * This serves as a template for parameter organization across all domains.
+  * Implements CoreParamsSpecs. The v0 machine always has both L1 caches, both
+  * TLBs, and the shared PTW; geometry is a parameter, presence is not. Cache
+  * presence and data-link coherence are independent (ADR-019 D-19.13).
   */
 
-/** Privilege-mode ladder accommodation (ADR-016, capPrivilegeModes). M-mode is
-  * always present; each optional mode requires the one below it.
-  */
+/** Privilege-mode set. v0 requires M + S + U. */
 @LocalSpec(paramPrivilegeModes)
 case class PrivilegeParams(
-    usingUser: Boolean = false,       // U-mode
-    usingSupervisor: Boolean = false, // S-mode (satp / Sv translation)
-    usingHypervisor: Boolean = false  // H-extension (VS/VU, two-stage translation)
+    usingUser: Boolean = true,
+    usingSupervisor: Boolean = true,
+    usingHypervisor: Boolean = false
 ) {
   require(!usingSupervisor || usingUser, "S-mode requires U-mode")
   require(!usingHypervisor || usingSupervisor, "H-extension requires S-mode")
 }
 
-/** Cache geometry accommodation (ADR-016, capCacheHierarchy). None = the TCM
-  * point (bus adapter attaches directly); Some = a cache vertex on that side.
-  */
-@LocalSpec(paramCacheGeometry)
+/** L1 cache geometry (VIPT). */
+@LocalSpec(paramICacheGeometry)
 case class CacheParams(
-    sets: Int,
-    ways: Int,
-    blockBytes: Int
+    sets: Int = 64,
+    ways: Int = 4,
+    blockBytes: Int = 64,
+    mshrs: Int = 1,
+    targetsPerMshr: Int = 1
 ) {
   require(sets > 0 && (sets & (sets - 1)) == 0, "Cache sets must be a power of two")
   require(ways > 0, "Cache ways must be positive")
   require(
-    blockBytes >= 8 && (blockBytes & (blockBytes - 1)) == 0,
-    "Cache block bytes must be a power of two >= 8"
+    blockBytes >= 16 && (blockBytes & (blockBytes - 1)) == 0,
+    "Cache block bytes must be a power of two >= 16 (one fetch block)"
   )
+  require(mshrs >= 1 && targetsPerMshr >= 1, "at least one miss context and target")
+
+  @LocalSpec(propViptGeometryLegal)
+  val viptGeometryLegal: Unit = require(
+    sets * blockBytes <= 4096,
+    "ViptGeometryLegal: sets * blockBytes must not exceed the 4 KiB Sv32 page (VIPT without synonyms)"
+  )
+
   def sizeBytes: Int = sets * ways * blockBytes
 }
 
-/** TLB geometry accommodation (ADR-016, capAddressTranslation). Elaborates only
-  * with S-mode (satp); the Sv scheme follows xLen.
-  */
+/** TLB geometry (fully associative). */
 @LocalSpec(paramTlbGeometry)
 case class TlbParams(
-    entries: Int
+    entries: Int = 16
 ) {
   require(entries > 0, "TLB entries must be positive")
 }
 
-/** Contract-tier parameters that parent integrators must specify. These form
-  * the interface contract between core and system integration.
-  */
+/** Contract tier. */
 case class CoreContractParams(
-    dataWidth: Int,   // Core data width in bits = XLEN (32 or 64)
-    vAddrWidth: Int,  // Virtual address width
-    pAddrWidth: Int,  // Physical address width
-    hartId: Int,      // Hart identifier field
-    privilege: PrivilegeParams = PrivilegeParams(),  // ADR-016: U/S/H accommodation
-    icache: Option[CacheParams] = None,              // ADR-016: I-side cache vertex
-    dcache: Option[CacheParams] = None,              // ADR-016: coherent D-side cache vertex
-    itlb: Option[TlbParams] = None,                  // ADR-016: fetch translation
-    dtlb: Option[TlbParams] = None,                  // ADR-016: data translation
-    dataBusSourceIds: Int = 2                        // TileLink source ids on the data link
+    dataWidth: Int = 32,   // XLEN (v0: 32)
+    vAddrWidth: Int = 32,  // Sv32 virtual address
+    pAddrWidth: Int = 34,  // Sv32 physical address
+    hartId: Int = 0,
+    privilege: PrivilegeParams = PrivilegeParams(),
+    icache: CacheParams = CacheParams(),
+    dcache: CacheParams = CacheParams(mshrs = 2, targetsPerMshr = 2),
+    itlb: TlbParams = TlbParams(),
+    dtlb: TlbParams = TlbParams(),
+    @LocalSpec(paramDataCoherence)
+    dataCoherence: Boolean = false // TL-C only when true; never implied by the D-cache
 ) {
-  require(
-    dataWidth == 32 || dataWidth == 64,
-    "Data width (XLEN) must be 32 or 64"
-  )
-  require(vAddrWidth > 0, "Virtual address width must be positive")
-  require(
-    pAddrWidth >= vAddrWidth,
-    "Physical address must be >= virtual address"
-  )
+  require(dataWidth == 32, "v0 is RV32IM: dataWidth (XLEN) must be 32")
+  require(vAddrWidth == 32 && pAddrWidth == 34, "v0 is Sv32: 32-bit VA, 34-bit PA")
   require(hartId >= 0, "Hart ID must be non-negative")
-  require(
-    itlb.isEmpty && dtlb.isEmpty || privilege.usingSupervisor,
-    "TLBs require S-mode (satp owns translation enablement)"
-  )
-  require(dataBusSourceIds >= 1, "Data bus needs at least one source id")
+  require(privilege.usingSupervisor, "Sv32 translation requires S-mode (satp)")
+  require(!dataCoherence, "TL-C data coherence is not part of v0 (ADR-019 D-19.13)")
 }
 
-/** Tuning-tier parameters for performance optimization. Parent integrators and
-  * subsystem leads can adjust these.
-  */
+/** Tuning tier. */
 case class CoreTuningParams(
-    epochWidth: Int = 2,          // Epoch counter width
-    commitWidth: Int = 1,         // Instructions committed per cycle
-    robDepth: Int = 0,            // Reorder buffer depth (0 = in-order)
-    speculativeRegNum: Int = 1,   // Window/speculation axis N (ADR-008/ADR-015)
-    usingRvvi: Boolean = false    // Verification retire stream (ADR-010), default off
+    ptwOutstanding: Int = 1,
+    usingRvvi: Boolean = false // verification retire stream (ADR-010), default off
 ) {
-  require(epochWidth > 0, "Epoch width must be positive")
-  require(commitWidth > 0, "Commit width must be positive")
-  require(robDepth >= 0, "ROB depth must be non-negative")
-  require(speculativeRegNum >= 1, "SpeculativeRegNum (N) must be >= 1")
-  // ADR-005 D-5.3: epoch must be wide enough for maxSurvivableGenerations=1 (eager filtering).
-  require(
-    (1 << epochWidth) > 1 + 1,
-    "epochWidth too narrow for the eager-filter wrap bound (require (1<<epochWidth) > maxSurvivableGenerations+1)"
-  )
+  require(ptwOutstanding == 1, "v0 PTW has one outstanding walk")
 }
 
-/** Private-tier parameters for internal implementation. Only core subsystem
-  * owners should modify these.
-  */
+/** Private tier. */
 case class CorePrivateParams(
-    bootCycles: Int = 8,           // Boot sequence cycles
-    debugFeatures: Boolean = false, // Debug infrastructure enable
-    serializingStageDepth: Int = 1  // In-flight serializing (CSR/system) uops (ADR-004 D-4.2)
-) {
-  require(serializingStageDepth >= 1, "SerializingStageDepth must be >= 1")
-}
+    bootCycles: Int = 8,
+    debugFeatures: Boolean = false
+)
 
-/** Complete core parameter bundle combining all tiers. This is the resolved
-  * parameter set used by core implementation.
-  */
+/** Complete core parameter set. */
 case class CoreParams(
-    contract: CoreContractParams,
+    contract: CoreContractParams = CoreContractParams(),
     tuning: CoreTuningParams = CoreTuningParams(),
     priv: CorePrivateParams = CorePrivateParams()
 ) {
-  // Convenience accessors for frequently used parameters
-  def dataWidth: Int   = contract.dataWidth
-  def vAddrWidth: Int  = contract.vAddrWidth
-  def pAddrWidth: Int  = contract.pAddrWidth
-  def hartId: Int = contract.hartId
-  def epochWidth: Int  = tuning.epochWidth
-  def commitWidth: Int = tuning.commitWidth
-  def speculativeRegNum: Int = tuning.speculativeRegNum
-  def usingRvvi: Boolean     = tuning.usingRvvi
+  def dataWidth: Int     = contract.dataWidth
+  def vAddrWidth: Int    = contract.vAddrWidth
+  def pAddrWidth: Int    = contract.pAddrWidth
+  def hartId: Int        = contract.hartId
+  def usingRvvi: Boolean = tuning.usingRvvi
 
-  // ADR-016 accommodation accessors
   def usingUser: Boolean       = contract.privilege.usingUser
   def usingSupervisor: Boolean = contract.privilege.usingSupervisor
-  def usingHypervisor: Boolean = contract.privilege.usingHypervisor
-  def usingVm: Boolean         = contract.itlb.nonEmpty || contract.dtlb.nonEmpty
 
-  // Published read-only for WP-A maxInFlight derivation (ADR-004 D-4.2 / ADR-012).
-  def serializingStageDepth: Int = priv.serializingStageDepth
-
-  // Parameter derivations
-  def epochMask: Long        = (1L << epochWidth) - 1
-  def maxCommitPerCycle: Int = commitWidth
-
-  // ADR-016: TileLink link geometry for the two CoreTop boundary links. The
-  // instruction link is uncoherent (hasBCE=false, single fill stream); the data
-  // link turns coherent exactly when a DCache is configured. Beat width follows
-  // XLEN; a configured cache raises maxTransferBytes to its block (burst fills).
+  // ADR-016 single link derivation, amended by ADR-019 D-19.13: hasBCE follows
+  // the coherence parameter, never cache presence.
+  @LocalSpec(paramTLLinkDerivation)
   def instBusParams: TLLinkParams = TLLinkParams.forMaster(
     addressBits = pAddrWidth,
     dataBits = dataWidth,
-    maxTransferBytes = contract.icache.map(_.blockBytes).getOrElse(dataWidth / 8),
+    maxTransferBytes = contract.icache.blockBytes,
     sourceIds = 1
   )
   def dataBusParams: TLLinkParams = TLLinkParams.forMaster(
     addressBits = pAddrWidth,
     dataBits = dataWidth,
-    maxTransferBytes = contract.dcache.map(_.blockBytes).getOrElse(dataWidth / 8),
-    sourceIds = contract.dataBusSourceIds,
-    hasBCE = contract.dcache.nonEmpty
+    maxTransferBytes = contract.dcache.blockBytes,
+    sourceIds = contract.dcache.mshrs + 2, // fills + writeback + uncached
+    hasBCE = contract.dataCoherence
   )
-}
-
-object CoreParams {
-
-  /** Create CoreParams with only contract parameters specified. Uses default
-    * values for tuning and private parameters.
-    */
-  def minimal(
-      dataWidth: Int,
-      vAddrWidth: Int,
-      pAddrWidth: Int,
-      hartId: Int
-  ): CoreParams = {
-    CoreParams(
-      contract = CoreContractParams(dataWidth, vAddrWidth, pAddrWidth, hartId)
-    )
-  }
-
-  /** Create CoreParams with contract and tuning parameters. Uses default values
-    * for private parameters.
-    */
-  def tuned(
-      dataWidth: Int,
-      vAddrWidth: Int,
-      pAddrWidth: Int,
-      hartId: Int,
-      epochWidth: Int = 2,
-      commitWidth: Int = 1,
-      robDepth: Int = 0,
-      speculativeRegNum: Int = 1,
-      usingRvvi: Boolean = false
-  ): CoreParams = {
-    CoreParams(
-      contract = CoreContractParams(dataWidth, vAddrWidth, pAddrWidth, hartId),
-      tuning = CoreTuningParams(epochWidth, commitWidth, robDepth, speculativeRegNum, usingRvvi)
-    )
-  }
 }

@@ -9,26 +9,27 @@ import udacore.common.tilelink.TileLinkSpecs._
 import udacore.core.spec.shared.CoreBundlesSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
 
-/** Core raw top specifications.
+/** CoreTop: the ADR-019 conventional OoO core graph.
   *
-  * The CoreTop vertex encapsulates frontend, backend, epoch control, and boot
-  * sequencing and exposes only the interfaces required for system integration.
+  * The frontend and backend rawTops, the MMU (ITLB, DTLB, shared PTW), the VIPT
+  * L1 caches, the boot sequencer, and the two TileLink bus adapters. CoreTop is
+  * wiring only; its boundary is unchanged from ADR-016: boot/enable statics,
+  * interrupt/debug lines, and two TileLink master links.
   */
-
 object CoreTopSpecs {
   val contCoreTop = spec {
     CONTRACT("CoreTop")
-      .desc("""Core top level contract
-              | Core top level graph description
-              | Interface with External System
-              | Program memory, Data memory, Interrupt signals
-              | Provide debug and power management surfaces for system integration
-              | Instantiate and Connect Top level components
-              | Manage uop flow by Global Epoch value
-              | BootSequencer owns boot sequence and hart enable wiring
+      .desc("""Core top level contract (rawTop: vertex instantiation and :<>= wiring only).
+              | BootSequencer seeds the frontend fetch PC. FrontendTop predicts and fetches through
+              | the InstructionTlb and the VIPT InstructionCache; BackendTop decodes, renames,
+              | executes out of order, and commits in order, reaching memory through the DataTlb,
+              | the VIPT DataCache, and its committed StoreBuffer. The shared PageTableWalker
+              | serves both TLBs with physical PTE reads through the DataCache. InstBusAdapter and
+              | DataBusAdapter bridge the caches to the two TileLink links. The backend
+              | RecoveryEvent is the single selective-recovery broadcast back into the frontend.
               """)
       .is(rawTop)
-      .uses(rawUdacoreProduct, rawUDAMethodology, rawParametricISA)
+      .uses(rawUdacoreProduct, rawUDAMethodology, rawParametricISA, rawReferencePipeline, propGraphConsistency)
       .has(
         intfBootAddrIn,
         intfHartEnIn,
@@ -36,33 +37,23 @@ object CoreTopSpecs {
         intfDebugReqIn,
         intfInstBus,
         intfDataBus,
+        intfRetireStreamOut,
         capPrivilegeModes,
         capAddressTranslation,
         capCacheHierarchy,
-        funcBootSequencing,
-        funcGlobalEpochManagement,
-        funcFrontendBackendDataflow,
-        funcMemorySubsystemIntegration,
-        funcStoreCommitCrossEdge,
-        funcExternalMemoryBridge,
-        funcInterruptDebugIntegration,
-        propEpochBasedSpeculation,
-        propUnifiedDataflowArchitecture,
-        propFrontendBackendSeparation,
-        propParametricConfiguration
+        capDataCoherence,
+        rawSelectiveRecoveryDoctrine,
+        rawUnifiedDataflowDoctrine
       )
       .draw(
         "mermaid",
         """
       | graph LR
       |     %% Legend
-      |     %% -.-> : Normal Wire
-      |     %% Normal Wires are forbidden except for from or to outside core top
-      |     %% --> : Decoupled Edge
-      |     %% [] : Normal Module
-      |     %% [[]] : Top Module (rawTop)
+      |     %% -.-> : rawNoDecoupled (boundary statics/async lines, RecoveryEvent, committed views)
+      |     %% --> : Decoupled edge (ready/valid)
+      |     %% [] : vertex   [[]] : rawTop
       |
-      |     %% Inputs
       |     subgraph inputs_group[Inputs]
       |         in_anchor:::hidden
       |         bootaddr@{shape: text, label: BootAddr}
@@ -70,51 +61,103 @@ object CoreTopSpecs {
       |         irq@{shape: text, label: Interrupt}
       |         debugreq@{shape: text, label: DebugReq}
       |     end
-      |     bootaddr -.-> BootSequencer
-      |     en -.-> BootSequencer
-      |     irq -.-> be[[BackendTop]]
+      |
+      |     boot[BootSequencer]
+      |     fe[[FrontendTop]]
+      |     be[[BackendTop]]
+      |     itlb[InstructionTlb]
+      |     ic[InstructionCache]
+      |     dtlb[DataTlb]
+      |     dc[DataCache]
+      |     ptw[PageTableWalker]
+      |     iba[InstBusAdapter]
+      |     dba[DataBusAdapter]
+      |
+      |     bootaddr -.-> boot
+      |     en -.-> boot
+      |     irq -.-> be
       |     debugreq -.-> be
       |
-  |     subgraph CoreTop
+      |     subgraph CoreTop
       |         direction LR
-      |         BootSequencer --BootAddr--> fe[[FrontendTop]]
-      |         fe -- InstructionIssue --> be
-      |         be -- Redirect --> fe & ep
-      |         be -- MemoryOpReq --> me[[MemorySubsystemTop]]
-      |         be -- StoreCommit --> me
-      |         me -- MemoryOpResp --> be
-      |         ep[GlobalEpochUnit] -. GlobalEpoch .-> fe & be & me
-      |         fe -- ProgMemReq --> iba[InstBusAdapter]
-      |         iba -- ProgMemResp --> fe
-      |         me -- DataMemReq --> dba[DataBusAdapter]
-      |         dba -- DataMemResp --> me
-      |     end
+      |         boot -- BootAddr --> fe
+      |         fe -- FetchPacket --> be
+      |         be -- FtqCommit --> fe
+      |         be -. RecoveryEvent .-> fe
       |
+      |         fe -- ITlbReq --> itlb
+      |         fe -- ICacheReq --> ic
+      |         itlb -- ICacheTranslation --> ic
+      |         ic -- ICacheResp --> fe
+      |         be -- ICacheInvalidate --> ic
       |
-      |     subgraph outputs_group[Outputs]
-      |         instbus@{shape: text, label: InstBus}
-      |         databus@{shape: text, label: DataBus}
+      |         be -- DtlbReq --> dtlb
+      |         be -- DCacheLoadReq --> dc
+      |         dtlb -- DCacheTranslation --> dc
+      |         dc -- DCacheLoadResp --> be
+      |         dtlb -- DtlbStoreResp --> be
+      |         dtlb -- DtlbRefill --> be
+      |         be -- StoreDrainReq --> dc
+      |         dc -- StoreDrainResp --> be
+      |         be -- DCacheCleanReq --> dc
+      |         dc -- DCacheCleanResp --> be
+      |
+      |         itlb -- ItlbWalkReq --> ptw
+      |         ptw -- ItlbWalkResp --> itlb
+      |         dtlb -- DtlbWalkReq --> ptw
+      |         ptw -- DtlbWalkResp --> dtlb
+      |         ptw -- PtwMemReq --> dc
+      |         dc -- PtwMemResp --> ptw
+      |         be -- SfenceVma --> ptw
+      |         ptw -- ItlbFlush --> itlb
+      |         ptw -- DtlbFlush --> dtlb
+      |         be -. TranslationContext .-> itlb & dtlb
+      |
+      |         ic -- InstMemReq --> iba
+      |         iba -- InstMemResp --> ic
+      |         dc -- DataMemReq --> dba
+      |         dba -- DataMemResp --> dc
       |     end
       |
       |     iba --> instbus
       |     dba --> databus
+      |     be --> retire
       |
+      |     subgraph outputs_group[Outputs]
+      |         instbus@{shape: text, label: InstBus}
+      |         databus@{shape: text, label: DataBus}
+      |         retire@{shape: text, label: RetireStream}
+      |     end
       |
       |     style inputs_group fill:transparent,stroke:transparent
       |     style outputs_group fill:transparent,stroke:transparent
       """
       )
-      .note("Roadmap (not yet in the base machine): power state management.")
-      .note("Roadmap (not yet in the base machine): configurable CLIC support.")
+      .note(
+        "Edge reconciliation (propGraphConsistency) by child INTERFACE: BootSequencer.BootAddrOut " +
+        "-> FrontendTop.BootAddrIn; FrontendTop.FetchPacketOut -> BackendTop.FetchPacketIn; " +
+        "BackendTop.{FtqCommitOut, RecoveryEventOut} -> FrontendTop.{FtqCommitIn, " +
+        "RecoveryEventIn}; FrontendTop.{ITlbReqOut, ICacheReqOut} -> InstructionTlb.ITlbReqIn, " +
+        "InstructionCache.ICacheReqIn; InstructionTlb.ICacheTranslationOut -> " +
+        "InstructionCache.ICacheTranslationIn; InstructionCache.ICacheRespOut -> " +
+        "FrontendTop.ICacheRespIn; BackendTop.{DtlbReqOut, DCacheLoadReqOut, StoreDrainReqOut, " +
+        "DCacheCleanReqOut, ICacheInvalidateOut, SfenceVmaOut, TranslationContextOut} -> " +
+        "DataTlb/DataCache/InstructionCache/PageTableWalker/both TLBs; DataTlb." +
+        "{DCacheTranslationOut, DtlbStoreRespOut, DtlbRefillOut}; DataCache.{DCacheLoadRespOut, " +
+        "StoreDrainRespOut, DCacheCleanRespOut} -> BackendTop; TLB walk and flush edges <-> " +
+        "PageTableWalker; PageTableWalker.PtwMemReqOut <-> DataCache.PtwMemReqIn/RespOut; cache " +
+        "memory edges <-> bus adapters; adapters -> InstBus/DataBus."
+      )
+      .note("Roadmap (not in v0): power management, CLIC, TL-C coherence, RV64, compressed instructions.")
       .build()
   }
 
-  // External System Interfaces (from mermaid diagram)
   val intfBootAddrIn = spec {
     INTERFACE("BootAddrIn")
       .desc("Boot address input.")
       .uses(bndBootAddr)
       .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 3.")
       .build()
   }
 
@@ -123,258 +166,118 @@ object CoreTopSpecs {
       .desc("Hart enable signal input.")
       .uses(bndHartEnable)
       .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 3.")
       .build()
   }
 
   val intfInterruptIn = spec {
     INTERFACE("InterruptIn")
-      .desc("Interrupt signal input.")
+      .desc("Interrupt source lines, wired to BackendTop.")
       .uses(bndInterrupt)
       .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2.")
       .build()
   }
 
   val intfDebugReqIn = spec {
     INTERFACE("DebugReqIn")
-      .desc("Debug request signal input.")
+      .desc("Debug request line, wired to BackendTop.")
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
-      .note("Debug module triggers debug entry through CSR-based redirect mechanism")
+      .note("rawNoDecoupled class 2.")
       .build()
   }
 
   val intfInstBus = spec {
     INTERFACE("InstBus")
-      .desc(
-        "Instruction TileLink link (master view). InstBusAdapter translates the frontend's " +
-        "ProgMemReq/ProgMemResp edges into Get requests on channel A and consumes " +
-        "AccessAckData on channel D."
-      )
-      .uses(contTileLink)
+      .desc("Instruction TileLink master link, driven by the InstBusAdapter (Get only; TL-UH line fills).")
+      .uses(contTileLink, paramTLLinkDerivation)
       .is(rawReadyValidIntf)
-      .note(
-        "TL-UL at the uncached base point; the same link carries TL-UH bursts once an " +
-        "instruction cache vertex fills whole blocks (hasBCE stays false - the I-side never " +
-        "needs coherence ownership)."
-      )
       .build()
   }
 
   val intfDataBus = spec {
     INTERFACE("DataBus")
-      .desc(
-        "Data TileLink link (master view). DataBusAdapter translates the memory subsystem's " +
-        "DataMemReq/DataMemResp edges into Get/Put on A/D; with a coherent data cache " +
-        "configured the link elaborates B/C/E and speaks Acquire/Probe/Release (TL-C)."
-      )
-      .uses(contTileLink)
+      .desc("Data TileLink master link, driven by the DataBusAdapter (TL-UH in v0; TL-C only when DataCoherence).")
+      .uses(contTileLink, paramTLLinkDerivation, paramDataCoherence)
       .is(rawReadyValidIntf)
-      .note(
-        "ADR-016: D-channel denied/corrupt is the only bus-side fault source; the adapter " +
-        "converts it to the core's access-fault exception at the originating txnId/seqTag."
-      )
       .build()
   }
 
-  // Capability accommodations (ADR-016): parameter/spec seams that later vertices
-  // plug into without a boundary change. None of these elaborate hardware today.
+  val intfRetireStreamOut = spec {
+    INTERFACE("RetireStreamOut")
+      .desc(
+        "Verification-only retire stream (ADR-010), wired from BackendTop and elaborated only " +
+        "when usingRvvi; it is the harness observation point for propIsaRetireEquivalence and " +
+        "is absent from the product boundary."
+      )
+      .uses(paramUsingRvvi)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
   val capPrivilegeModes = spec {
     CAPABILITY("PrivilegeModes")
       .desc(
-        "Privilege-mode accommodation: M-mode always; U, S, and H modes are elaboration-time " +
-        "options (PrivilegeParams). CSR ownership stays with TrapController (ADR-004), which " +
-        "gains the per-mode trap/return files as the modes are enabled."
+        "M, S, and U modes (v0). Privilege-dependent behavior enters at exactly three seams: " +
+        "DecodeUnit (privileged-instruction legality), TrapController/CsrController (trap " +
+        "routing, delegation, xRET, CSR access), and the TLBs (translation mode and permission)."
       )
-      .note("Legality: S requires U; H requires S (enforced by a PrivilegeParams require).")
-      .note(
-        "Mode-dependent behavior enters at exactly two seams: TrapController (trap routing, " +
-        "xRET, CSR views) and the TLB vertices (permission checks) - no other vertex may " +
-        "branch on privilege."
-      )
+      .uses(paramPrivilegeModes)
       .build()
   }
 
   val capAddressTranslation = spec {
     CAPABILITY("AddressTranslation")
       .desc(
-        "Translation accommodation: optional ITLB/DTLB vertices sit on the ProgMemReq and " +
-        "DataMemReq edges in front of the bus adapters, backed by a shared PTW that issues " +
-        "its walks through the DataBusAdapter. Sv scheme follows xLen (Sv32 at 32, Sv39+ at 64)."
+        "Sv32 through the InstructionTlb, the DataTlb, and the shared PageTableWalker, all " +
+        "present in v0. Translation faults are precise and never appear on the TileLink boundary."
       )
-      .note(
-        "Translation faults are raised in-core by the TLB vertices and never appear on the " +
-        "TileLink boundary; requires S-mode (satp) to elaborate."
+      .uses(
+        udacore.core.spec.modules.InstructionTlbSpecs.contInstructionTlb,
+        udacore.core.spec.modules.DataTlbSpecs.contDataTlb,
+        udacore.core.spec.modules.PageTableWalkerSpecs.contPageTableWalker
       )
       .build()
   }
 
   val capCacheHierarchy = spec {
     CAPABILITY("CacheHierarchy")
-      .desc(
-        "Cache accommodation: optional ICache/DCache vertices replace the direct " +
-        "adapter attachment on their respective edges. The ICache fills over TL-UH bursts; " +
-        "the DCache owns lines coherently over TL-C (hasBCE), including Probe service on " +
-        "channel B independent of core progress (TLChannelPriority)."
-      )
+      .desc("VIPT L1 InstructionCache and DataCache, both present in v0 (16 KiB, 4-way, 64-byte lines).")
       .uses(
         udacore.core.spec.modules.InstructionCacheSpecs.contInstructionCache,
         udacore.core.spec.modules.DataCacheSpecs.contDataCache
       )
-      .note(
-        "CacheParams (sets/ways/blockBytes) are contract-tier options defaulting to None " +
-        "(the TCM point); the StoreBuffer drain contract (ADR-003) is unchanged - the cache " +
-        "sits below it. Full vertex contracts: core/spec/modules/InstructionCacheSpecs.scala " +
-        "and DataCacheSpecs.scala."
+      .build()
+  }
+
+  val capDataCoherence = spec {
+    CAPABILITY("DataCoherence")
+      .desc(
+        "Coherence is a separate capability from cache presence (ADR-019 D-19.13). v0 is " +
+        "non-coherent TL-UH; enabling TL-C later changes only the DataCache/DataBusAdapter " +
+        "internals and the link parameters, never the backend, LSQ, or MMU interfaces."
+      )
+      .uses(paramDataCoherence)
+      .build()
+  }
+
+  val rawSelectiveRecoveryDoctrine = spec {
+    RAW("SelectiveRecovery", "DOCTRINE")
+      .desc(
+        "Branch mispredictions are recovered at execute: the RecoveryEvent names the recovering " +
+        "branch by robTag and every speculative holder discards only younger work, so older " +
+        "correct-path uops survive. Commit-head architectural redirects discard the whole " +
+        "window. There is no global epoch and no flush wire."
       )
       .build()
   }
 
-  // Core Top Functions
-  val funcBootSequencing = spec {
-    FUNCTION("BootSequencing")
+  val rawUnifiedDataflowDoctrine = spec {
+    RAW("UnifiedDataflow", "DOCTRINE")
       .desc(
-        "BootSequencer coordinates hart enable and boot address delivery to frontend pipeline."
-      )
-      .note(
-        "Boot sequence ensures frontend receives valid start address synchronized with hart enable pulse."
-      )
-      .build()
-  }
-
-  val funcGlobalEpochManagement = spec {
-    FUNCTION("GlobalEpochManagement")
-      .desc(
-        "GlobalEpochUnit maintains global epoch counter and broadcasts epoch value to all pipeline stages."
-      )
-      .note(
-        "Epoch increments on redirect events, enabling automatic invalidation of stale pipeline tokens."
-      )
-      .note(
-        "No explicit flush signals required - epoch mismatch filters tokens automatically."
-      )
-      .build()
-  }
-
-  val funcFrontendBackendDataflow = spec {
-    FUNCTION("FrontendBackendDataflow")
-      .desc(
-        "CoreTop wires instruction issue from frontend to backend and redirect feedback from backend to frontend."
-      )
-      .note(
-        "All inter-domain edges use Decoupled protocol with ready/valid handshake."
-      )
-      .note(
-        "Exception: epoch broadcast uses rawNoDecoupled as it is globally injected wire."
-      )
-      .build()
-  }
-
-  val funcMemorySubsystemIntegration = spec {
-    FUNCTION("MemorySubsystemIntegration")
-      .desc(
-        "CoreTop connects backend memory operation requests to memory subsystem and routes responses back."
-      )
-      .note(
-        "Memory subsystem handles load/store unit operations and external data memory interface."
-      )
-      .build()
-  }
-
-  val funcStoreCommitCrossEdge = spec {
-    FUNCTION("StoreCommitCrossEdge")
-      .desc(
-        "CoreTop wires BackendTop.storeCommitOut to MemorySubsystem.storeCommitIn as a Decoupled edge so the store buffer drains only committed stores in seqTag order."
-      )
-      .note(
-        "ADR-003/ADR-013: the StoreCommit edge carries the bndCommitBroadcast StoreCommit view {seqTag, epoch}. Connected with the :<>= operator in the CoreTop rawTop body; committed store-buffer entries are epoch-exempt (ADR-005 D-5.2)."
-      )
-      .build()
-  }
-
-  val funcExternalMemoryBridge = spec {
-    FUNCTION("ExternalMemoryBridge")
-      .desc(
-        "CoreTop instantiates the InstBusAdapter and DataBusAdapter vertices, which bridge " +
-        "the internal ProgMemReq/Resp and DataMemReq/Resp edges onto the two TileLink links " +
-        "(intfInstBus / intfDataBus)."
-      )
-      .note(
-        "The adapters own source-id allocation (txnId <-> a.source), size/mask formation, and " +
-        "D-channel denied/corrupt -> access-fault conversion. They are ordinary vertices: " +
-        "pure dataflow, epoch-blind (requests already committed to the bus must complete)."
-      )
-      .note(
-        "Cache and TLB vertices, when configured, splice into these internal edges " +
-        "(capAddressTranslation / capCacheHierarchy); the TileLink boundary itself never changes."
-      )
-      .build()
-  }
-
-  val funcInterruptDebugIntegration = spec {
-    FUNCTION("InterruptDebugIntegration")
-      .desc(
-        "CoreTop delivers interrupt and debug request signals directly to backend trap controller."
-      )
-      .note(
-        "Interrupt signals (external, timer, software) bypass Decoupled protocol as they are async events."
-      )
-      .note(
-        "Debug request triggers trap controller to generate redirect to debug handler."
-      )
-      .build()
-  }
-
-  // Core Top Doctrine (design philosophy, not machine-checkable properties;
-  // RAW/DOCTRINE per the arbitration ruling - see propGraphConsistency owners).
-  val propEpochBasedSpeculation = spec {
-    RAW("EpochBasedSpeculation", "DOCTRINE")
-      .desc(
-        "Core implements epoch-based speculation instead of traditional flush signal approach."
-      )
-      .note(
-        "When speculation fails, epoch counter increments and stale data is automatically filtered."
-      )
-      .note(
-        "Every pipeline token carries epoch value for comparison with global epoch."
-      )
-      .build()
-  }
-
-  val propUnifiedDataflowArchitecture = spec {
-    RAW("UnifiedDataflowArchitecture", "DOCTRINE")
-      .desc(
-        "All components are vertices in dataflow graph connected by ready/valid edges."
-      )
-      .note(
-        "Function and performance characteristics are completely separated through graph-native design."
-      )
-      .note(
-        "Raw top modules contain only wiring using :<>= operator, no behavioral logic."
-      )
-      .build()
-  }
-
-  val propFrontendBackendSeparation = spec {
-    RAW("FrontendBackendSeparation", "DOCTRINE")
-      .desc(
-        "Frontend handles PC generation and instruction fetch, backend handles execution and redirect generation."
-      )
-      .note(
-        "Clean interface boundary with explicit redirect and epoch signals enables independent optimization."
-      )
-      .build()
-  }
-
-  val propParametricConfiguration = spec {
-    RAW("ParametricConfiguration", "DOCTRINE")
-      .desc(
-        "Core top exposes parametric interfaces allowing system-level configuration."
-      )
-      .note(
-        "Memory bus widths, cache sizes, queue depths are configurable through CoreParams."
-      )
-      .note(
-        "ISA extensions (M, C) can be enabled/disabled via parameters."
+        "All components are vertices connected by ready/valid edges; rawTop modules contain " +
+        "only :<>= wiring; broadcast facts use only the sanctioned rawNoDecoupled classes."
       )
       .build()
   }

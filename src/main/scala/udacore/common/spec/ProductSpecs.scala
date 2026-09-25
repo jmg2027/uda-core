@@ -3,72 +3,67 @@ package udacore.common.spec
 import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
-import udacore.core.spec.shared.CoreParamsSpecs.paramSpeculativeRegNum
 
-/** Product-level narrative specifications for UDACore.
+/** Product-level narrative specifications for UDACore (ADR-019 root).
   *
-  * These RAW specs provide human-readable descriptions of product
-  * characteristics that can be referenced by implementation specs and used for
-  * documentation generation. They bridge the gap between technical
-  * specifications and product documentation.
+  * These RAW specs describe the product the implementation specs serve. They
+  * are referenced by CoreTop and used for documentation generation.
   */
 object ProductSpecs {
 
   val rawUdacoreProduct = spec {
     RAW("UDACoreProduct", "product.identity")
       .desc("""
-        |UDACore is a RISC-V implementation demonstrating Unified Dataflow Architecture (UDA) methodology.
-        |Instead of traditional pipeline stages, independent vertices connected by ready/valid edges
-        |form a graph-native design that achieves complete separation of function and performance.
-        |It is a personal research vehicle, independent of any company line: XLEN-parametric, with a
-        |standard TileLink memory boundary and accommodation seams for caches, TLBs, and the full
-        |privilege-mode ladder (ADR-016).
+        |UDACore is a personal, conventional out-of-order RISC-V core built with the Unified
+        |Dataflow Architecture (UDA) engineering discipline: independent vertices connected by
+        |ready/valid edges, specified in the Scala spec DSL before any RTL is written. The v0
+        |machine has a PC-indexed BTB+TAGE+RAS frontend with an FTQ, an explicit data-less ROB,
+        |sRAT/rRAT renaming over a unified PRF, a reservation station, a load/store queue,
+        |execute-time selective branch recovery, VIPT L1 caches, and an Sv32 MMU. Its system
+        |boundary is two TileLink master links (ADR-016 as amended by ADR-019).
         """.stripMargin)
-      .note("Core product identity for UDACore project")
+      .note("Core product identity for UDACore (ADR-019 D-19.1).")
       .build()
   }
 
   val rawUDAMethodology = spec {
     RAW("UDAMethodology", "product.methodology")
       .desc("""
-        |UDA treats pipelines as "dataflow paths" rather than "stage registers" - a paradigm shift
-        |in CPU design thinking. Epoch-based control manages speculation without flush signals,
-        |while each vertex operates independently, allowing registers to be freely added or removed
-        |from edges without affecting functional correctness.
+        |UDA treats the pipeline as dataflow paths: every token-moving connection is a ready/valid
+        |edge, stalls are backpressure, and registers may be added or removed on an edge without
+        |changing function. Speculation is recovered by one broadcast fact, the RecoveryEvent,
+        |from which every speculative holder derives its own younger-than invalidation using a
+        |single wrap-aware ROB-order rule. There are no ad-hoc flush wires and no global-epoch
+        |squash: older correct-path work always survives a younger branch misprediction.
         """.stripMargin)
-      .note(
-        "Foundational design philosophy distinguishing UDACore from traditional CPU designs"
-      )
+      .note("ADR-019 D-19.9/D-19.14 re-base of the UDA method onto selective recovery.")
       .build()
   }
 
   val rawParametricISA = spec {
     RAW("ParametricISA", "product.isa")
       .desc("""
-        |This core is XLEN-parametric: the base integer ISA is RV32I or RV64I selected by
-        |CoreParams.dataWidth, with configurable M (multiply/divide) and C (compressed) extensions
-        |determined at elaboration time. Privilege modes beyond M (U, S, H) and address translation
-        |are elaboration-time accommodations (ADR-016): the parameter and spec seams exist so
-        |enabling them is additive, never a boundary change. The parameter system enables selective
-        |feature generation for area efficiency while maintaining ISA compliance.
+        |The v0 architectural point is RV32IM with M, S, and U privilege modes and Sv32 virtual
+        |memory. Every instruction is a fixed 32-bit word at a 4-byte aligned PC: the C extension
+        |is not fetched, decoded, expanded, or represented anywhere in the frontend. Further
+        |extensions (bit-manipulation, A, F, RV64) are ADR-017 contributions that later ADRs may
+        |enable; none is part of v0.
         """.stripMargin)
-      .note("ISA support is determined by CoreParams at elaboration time")
-      .note(
-        "The shipped decode tables and assembler currently cover RV32; RV64 decode is part of " +
-        "the accommodation debt tracked in ADR-016, not a silent claim."
-      )
+      .note("ADR-019 D-19.1/D-19.3. XLEN remains a parameter, but only XLEN=32 is a v0 configuration.")
       .build()
   }
 
-  val rawMinimalPipeline = spec {
-    RAW("MinimalPipeline", "product.pipeline")
+  val rawReferencePipeline = spec {
+    RAW("ReferencePipeline", "product.pipeline")
       .desc("""
-        |UDACore provides a minimal 2-stage pipeline as the baseline configuration for area efficiency.
-        |However, UDA characteristics allow pipeline depth adjustment by adding registers between vertices
-        |or implementing multi-cycle operation within vertices for performance tuning.
+        |v0 reference configuration: 16-byte / 4-instruction fetch block, decode width 2, rename
+        |width 1, one issue per cycle out of order from an 8-entry integer RS, commit width 1,
+        |16-entry ROB, 48-entry integer PRF, LQ8 + SQ8, 16 KiB 4-way 64-byte-line VIPT I-cache and
+        |D-cache, 16-entry ITLB and DTLB, a shared Sv32 PTW, two D-cache MSHRs with hit-under-miss.
         """.stripMargin)
       .note(
-        "Pipeline depth is configurable while maintaining functional correctness"
+        "Widths and depths are tuning parameters; these values define the v0 reference point, " +
+        "not permanent maxima (ADR-019 D-19.1)."
       )
       .build()
   }
@@ -97,87 +92,25 @@ object ProductSpecs {
       .build()
   }
 
-  // WP-D OWNS: the single canonical N=1 forbidden-structure list (ADR-008 D-8.1).
-  // backend / memory / frontend packages all .uses this rather than restating it.
-  val propN1ForbiddenStructures = spec {
-    PROPERTY("N1ForbiddenStructures")
-      .desc(
-        "The single canonical list of structures that MUST have ZERO instances in the emitted N=1 (SpeculativeRegNum=1) netlist. A structural grep hit is a hard build failure independent of the PPA percentages."
-      )
-      .markdownTable(
-        List("Forbidden structure (emitted module/cell)", "Owning package", "Rationale"),
-        List(
-          List("Wakeup CAM / RS match matrix (ReservationStation match cells)", "backend", "no OoO wakeup at N=1"),
-          List("Free-list allocation encoder (RenameUnit free-list priority encoder)", "backend", "N=1 uses a single free bit, no multi-entry encoder"),
-          List("Map CAM / multi-entry rename map (RenameUnit map CAM)", "backend", "N=1 uses a degenerate direct-indexed map, never a CAM (ADR-008 D-8.2)"),
-          List("Multi-producer publish arbiter tree (PublishMux arbiter beyond one producer)", "backend", "base publish is a single arbitrated result bus (ADR-014)"),
-          List("Store-buffer byte-mask forwarding CAM (StoreBuffer forwarding CAM)", "memory", "no associative forwarding search at N=1"),
-          List("Multi-entry issue queue beyond the irreducible skid depth (IssueQueue)", "frontend", "N=1 keeps only the skid buffer floor (ADR-008 D-8.3)"),
-          List("Load outstanding table (MemoryController outstanding tracker)", "memory", "single-outstanding at base, txnId width 0"),
-          List("32-bit seq / uopId field", "backend", "seqTag reduces to its N=1 width (ADR-012)"),
-          List("64-bit retire order counter", "core/verif", "folds away when usingRvvi=false (ADR-010 D-10.3)")
-        )
-      )
-      .uses(paramSpeculativeRegNum)
-      .note(
-        "ADR-008 D-8.1 / critique V-MA-4/MA-4: this is the single owned artifact; backend, memory, and frontend packages .uses it rather than restating divergent lists. The degenerate direct-indexed map (~32 x physRegIdWidth flops) plus a single free bit is NOT forbidden (ADR-008 D-8.2)."
-      )
-      .build()
-  }
-
   val contConfigRegistry = spec {
     CONTRACT("ConfigRegistry")
       .desc(
-        "Single source of named elaboration configs for the synth/STA/verif instrument; sta.sh/synth.sh/EmitCore consume it by name. SpeculativeRegNum is a required enumerable axis so a PPA delta is attributable to window size and nothing else."
+        "Single source of named elaboration configurations for the synth/STA/verif instruments; " +
+        "sta.sh/EmitCore/the verif harness consume it by name. Each name differs from the v0 " +
+        "reference in exactly one axis so a measured delta is attributable."
       )
-      .uses(paramSpeculativeRegNum)
       .markdownTable(
-        List("Config name", "SpeculativeRegNum", "usingRvvi", "purpose"),
+        List("Config name", "Differs from v0 reference in", "Purpose"),
         List(
-          List("n1", "1", "false", "in-order point; OoO structures must fold away"),
-          List("n8", "8", "false", "mid OoO PPA point"),
-          List("n32", "32", "false", "wide OoO PPA point"),
-          List("n1_rvvi", "1", "true", "verif build at N=1 (harness on)"),
-          List("n8_rvvi", "8", "true", "verif build at N=8 (harness on)"),
-          List("verif", "8", "true", "default differential-equivalence pair partner")
+          List("default", "nothing (usingRvvi=false)", "v0 reference product point"),
+          List("verif", "usingRvvi=true", "harness build: retire stream elaborated for ISA-model comparison"),
+          List("minimal", "usingRvvi=true, faster boot", "fast directed-test build")
         )
       )
       .note(
-        "ADR-015 D-15.5: one-axis-per-name discipline copied from main EmitCore.configByName. N=1 configs are the elaboration-away acceptance vehicle (propN1FoldsOoO)."
-      )
-      .build()
-  }
-
-  val propN1FoldsOoO = spec {
-    PROPERTY("N1FoldsOoO")
-      .desc(
-        "At SpeculativeRegNum=1 the OoO fabric must not survive into the netlist: the wakeup CAM, publish arbiter, free list, and rename map degenerate to constants/wires or a degenerate direct-indexed map."
-      )
-      .uses(propN1ForbiddenStructures, paramSpeculativeRegNum)
-      .note(
-        "ADR-008 D-8.1: acceptance is STRUCTURAL, mirroring main's feedthrough-check: synthesize n1, then assert the CAM/arbiter cell classes and the speculative-tag flop count are zero per propN1ForbiddenStructures."
-      )
-      .build()
-  }
-
-  val propN1PpaBar = spec {
-    PROPERTY("N1PpaAcceptance")
-      .desc(
-        "At SpeculativeRegNum=1 the core must be competitive with a scoreboard in-order baseline: area within reference +10%, DFF within reference +10%, OOC worst-slack frequency within reference -5%, AND pass the structural grep (propN1ForbiddenStructures)."
-      )
-      .uses(propN1ForbiddenStructures)
-      .markdownTable(
-        List("Metric", "Bar"),
-        List(
-          List("baseline", "shipped main core, 64-entry TNP bank and RVVI stripped, re-measured in yosys 0.33 + sky130 HD OOC (~310-330k um^2, ~8000 DFF, ~46 MHz)"),
-          List("area", "<= reference + 10%"),
-          List("dff", "<= reference + 10%"),
-          List("freq", ">= reference - 5% (OOC worst-slack)"),
-          List("structural", "ZERO forbidden structures; tags at N=1 width")
-        )
-      )
-      .note(
-        "ADR-008 D-8.3: the structural clause is a hard gate independent of the percentages; the +10% envelope absorbs the degenerate direct-indexed map (ADR-008 D-8.2). Include the M-extension in the reference so the percentage is tight; the irreducible N=1 issue-queue skid floor is in the reference envelope, not counted as tax. OQ-C carries the +10% vs within-parity call."
+        "ADR-015 D-15.5 one-axis-per-name discipline, re-based by ADR-019: the old " +
+        "SpeculativeRegNum axis (n1/n8/n32) no longer exists. Future axes (ROB depth, cache " +
+        "geometry, coherence enable) are added as separate names, never folded together."
       )
       .build()
   }

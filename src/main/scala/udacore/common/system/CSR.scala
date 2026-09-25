@@ -69,9 +69,10 @@ object CSR {
 
   class MISA extends CSRReg {
     override def default: UInt = {
-      // Fixed RISC-V 32-bit base ISA with standard extensions
+      // ADR-019 v0 architectural point: RV32 base integer + multiply/divide +
+      // supervisor + user. No A, F, D, or C (compressed) extension is implemented.
       val isaString =
-        "IMAFDCSU" // Base integer + multiply/divide + atomics + float + double + compressed + supervisor + user
+        "IMSU"
       val isaMax = (BigInt(log2Ceil(32) - 4) << (32 - 2)) |
         isaString
           .map(x => 1 << (x - 'A'))

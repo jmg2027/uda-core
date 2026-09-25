@@ -1,135 +1,58 @@
 package udacore.frontend.design.shared
 
-import udacore.frontend.spec.shared.FrontendParamsSpecs
+import framework.macros.LocalSpec
+import udacore.frontend.spec.shared.FrontendParamsSpecs._
 
-/** Frontend domain parameter implementation.
+/** Frontend domain parameters (ADR-019 v0 reference values as defaults).
   *
-  * Implements the three-tier parameter architecture defined in
-  * FrontendParamsSpecs. Organizes parameters for instruction fetch, decode, and
-  * prediction.
+  * Implements FrontendParamsSpecs. Instructions are fixed 32-bit words; there
+  * is no compressed-instruction or half-word slot parameter.
   */
 
-/** Contract-tier parameters that parent integrators must specify. These form
-  * the interface contract between frontend and system integration.
-  */
+/** Contract tier: fetch-block geometry and the decode delivery width. */
+@LocalSpec(paramFetchBytes)
 case class FrontendContractParams(
-    fetchWidth: Int,           // Instruction slots produced per cycle (ADR-009 D-9.8)
-    instructionCacheSize: Int, // Size of instruction cache in bytes
-    instAddrWidth: Int,        // Instruction address width in bits
-    memDataWidth: Int = 32     // Program-memory data-port (beat) width, ADR-009 D-9.8
+    fetchBytes: Int = 16, // fetch block bytes (ADR-019 D-19.1)
+    decodeWidth: Int = 2, // instructions per cycle into DecodeUnit
+    vAddrWidth: Int = 32  // Sv32 virtual address width
 ) {
-  require(fetchWidth > 0, "Fetch width must be positive")
-  require(instructionCacheSize > 0, "Instruction cache size must be positive")
-  require(instAddrWidth > 0, "Instruction address width must be positive")
-  require(
-    (instructionCacheSize & (instructionCacheSize - 1)) == 0,
-    "Instruction cache size must be power of 2"
-  )
-  // ADR-009 D-9.8: memDataWidth is a whole number of half-words; fetchWidth is
-  // bounded by slotsPerBeat = memDataWidth/16.
-  require(
-    memDataWidth % 16 == 0,
-    "memDataWidth must be a whole number of half-words (memDataWidth % 16 == 0)"
-  )
-  require(
-    fetchWidth <= memDataWidth / 16,
-    "fetchWidth cannot exceed slotsPerBeat = memDataWidth/16 (ADR-009 D-9.8)"
-  )
-  // ADR-009 D-9.6 G5: the P03 prefetchDepth <= 2^epochWidth-1 wrap require is
-  // WITHDRAWN; the outstanding fetch latch is an enumerated eager-filter vertex
-  // (ADR-005 D-5.2) so a fetch dies at the first redirect and never wraps.
+  require(fetchBytes >= 4 && (fetchBytes & (fetchBytes - 1)) == 0, "fetchBytes must be a power of two >= 4")
+  require(decodeWidth >= 1 && decodeWidth <= fetchBytes / 4, "decodeWidth must be in 1..fetchWidth")
+  require(vAddrWidth == 32, "v0 is Sv32: vAddrWidth must be 32")
 }
 
-/** Tuning-tier parameters for performance optimization. Parent integrators and
-  * subsystem leads can adjust these.
-  */
+/** Tuning tier: predictor, FTQ, and fetch-buffer sizing. */
+@LocalSpec(paramTageGeometry)
 case class FrontendTuningParams(
-    branchPredictorEntries: Int = 256, // Number of entries in branch predictor
-    prefetchDepth: Int = 4,            // Instruction prefetch queue depth
-    epochWidth: Int = 2                // Epoch counter width
+    btbSets: Int = 64,
+    btbWays: Int = 2,
+    bimodalEntries: Int = 1024,
+    tageTableEntries: Int = 256,
+    tageTagBits: Int = 8,
+    tageHistoryLengths: Seq[Int] = Seq(8, 16, 32, 64),
+    rasDepth: Int = 8,
+    ftqDepth: Int = 16,
+    fetchBufferEntries: Int = 8
 ) {
-  require(
-    branchPredictorEntries > 0,
-    "Branch predictor entries must be positive"
-  )
-  require(prefetchDepth > 0, "Prefetch depth must be positive")
-  require(epochWidth > 0, "Epoch width must be positive")
-  require(
-    (branchPredictorEntries & (branchPredictorEntries - 1)) == 0,
-    "Branch predictor entries must be power of 2"
-  )
+  private def pow2(x: Int) = x > 0 && (x & (x - 1)) == 0
+  require(pow2(btbSets) && btbWays >= 1, "BTB sets must be a power of two, ways >= 1")
+  require(pow2(bimodalEntries) && pow2(tageTableEntries), "TAGE table sizes must be powers of two")
+  require(tageHistoryLengths.nonEmpty && tageHistoryLengths == tageHistoryLengths.sorted.distinct,
+    "TAGE history lengths must be strictly increasing (geometric in the reference)")
+  require(rasDepth >= 1, "RAS depth must be positive")
+  require(pow2(ftqDepth), "FTQ depth must be a power of two (wrap-aware ftqIdx)")
+  require(fetchBufferEntries >= 1, "fetch buffer must hold at least one instruction")
 }
 
-/** Private-tier parameters for internal implementation details. Only frontend
-  * subsystem implementers should modify these.
-  */
-case class FrontendPrivateParams(
-    alignmentStages: Int =
-      2,                   // Number of pipeline stages for instruction alignment
-    decodeLatency: Int = 1 // Instruction decode latency in cycles
-) {
-  require(alignmentStages > 0, "Alignment stages must be positive")
-  require(decodeLatency > 0, "Decode latency must be positive")
-}
-
-/** Complete frontend parameter bundle combining all tiers. This is the resolved
-  * parameter set used by frontend implementation.
-  */
+/** Complete frontend parameter set. */
 case class FrontendParams(
-    contract: FrontendContractParams,
-    tuning: FrontendTuningParams = FrontendTuningParams(),
-    privateParams: FrontendPrivateParams = FrontendPrivateParams()
+    contract: FrontendContractParams = FrontendContractParams(),
+    tuning: FrontendTuningParams = FrontendTuningParams()
 ) {
-  // Convenience accessors for frequently used parameters
-  def fetchWidth: Int             = contract.fetchWidth
-  def instructionCacheSize: Int   = contract.instructionCacheSize
-  def instAddrWidth: Int          = contract.instAddrWidth
-  def memDataWidth: Int           = contract.memDataWidth
-  def branchPredictorEntries: Int = tuning.branchPredictorEntries
-  def epochWidth: Int             = tuning.epochWidth
-
-  // Parameter derivations
-  def fetchTargetWidth: Int = instAddrWidth
-  def pcWidth: Int          = instAddrWidth
-  def instLen: Int          = 32 // RISC-V instruction length
-  // ADR-009 D-9.8 derivations.
-  def slotsPerBeat: Int     = contract.memDataWidth / 16
-  def fetchStrideBytes: Int = contract.memDataWidth / 8
-}
-
-object FrontendParams {
-
-  /** Create FrontendParams with only contract parameters specified. Uses
-    * default values for tuning and private parameters.
-    */
-  def minimal(
-      fetchWidth: Int,
-      instructionCacheSize: Int,
-      instAddrWidth: Int
-  ): FrontendParams = {
-    FrontendParams(
-      contract =
-        FrontendContractParams(fetchWidth, instructionCacheSize, instAddrWidth)
-    )
-  }
-
-  /** Create FrontendParams with contract and tuning parameters. Uses default
-    * values for private parameters.
-    */
-  def tuned(
-      fetchWidth: Int,
-      instructionCacheSize: Int,
-      instAddrWidth: Int,
-      branchPredictorEntries: Int,
-      epochWidth: Int = 2
-  ): FrontendParams = {
-    FrontendParams(
-      contract =
-        FrontendContractParams(fetchWidth, instructionCacheSize, instAddrWidth),
-      tuning = FrontendTuningParams(
-        branchPredictorEntries = branchPredictorEntries,
-        epochWidth = epochWidth
-      )
-    )
-  }
+  def fetchBytes: Int  = contract.fetchBytes
+  def fetchWidth: Int  = contract.fetchBytes / 4
+  def decodeWidth: Int = contract.decodeWidth
+  def vAddrWidth: Int  = contract.vAddrWidth
+  def ghrLength: Int   = tuning.tageHistoryLengths.max
+  def ftqDepth: Int    = tuning.ftqDepth
 }

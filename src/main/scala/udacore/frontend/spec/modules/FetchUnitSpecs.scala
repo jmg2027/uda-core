@@ -6,85 +6,145 @@ import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
 import udacore.frontend.spec.shared.FrontendParamsSpecs._
+import udacore.backend.spec.shared.BackendBundlesSpecs.bndRecoveryEvent
+import udacore.core.spec.shared.MemoryBundlesSpecs.{bndICacheReq, bndICacheResp, bndTranslateReq}
 
-/** FetchUnit: the frontend memory-bridge vertex (ADR-009 D-9.2). */
+/** FetchUnit: parallel ITLB + VIPT I-cache access for one fetch block
+  * (ADR-019 D-19.3, D-19.4).
+  */
 object FetchUnitSpecs {
   val contFetchUnit = spec {
     CONTRACT("FetchUnit")
       .desc(
-        "FetchUnit is the frontend memory-bridge vertex. It consumes NextPc tokens, " +
-          "issues epoch-tagged program-memory requests, accepts responses, and emits " +
-          "FetchResponse beats to the slot slicer. It holds no pipeline register: the " +
-          "only architectural state is the outstanding-request epoch latch."
+        "FetchUnit turns an FTQ FetchRequest into one FetchBlock. It issues the ITLB " +
+        "translation request and the I-cache lookup for the same virtual fetch address in " +
+        "one transfer (the ITLB answers the I-cache directly for the physical tag compare), " +
+        "then assembles the returned 16-byte block into four aligned 32-bit slots. It performs " +
+        "no prediction and no decoding."
       )
       .has(
-        intfNextPcIn,
-        intfProgMemReqOut,
-        intfProgMemRespIn,
-        intfFetchResponseOut,
-        funcOutstandingTracking,
-        funcEpochTagging
+        intfFetchRequestIn,
+        intfITlbReqOut,
+        intfICacheReqOut,
+        intfICacheRespIn,
+        intfFetchBlockOut,
+        intfRecoveryEventIn,
+        funcParallelFetchLookup,
+        funcFetchGeneration,
+        funcFetchBlockAssembly,
+        propFetchInOrder,
+        propNoStaleFetchBlock
       )
-      .note("Boot does NOT enter FetchUnit; boot seeds NextPcGen (ADR-009 D-9.1).")
-      .note("The stray intfBootIn/intfInstructionOut are deleted (ADR-009 D-9.2).")
+      .uses(paramFetchBytes, paramFetchWidth)
+      .is(rawSpeculativeHolder)
+      .note(
+        "Speculative-holder stance: in-flight fetch requests are ordered FIFO. They cannot be " +
+        "canceled in the ITLB/I-cache, so every request carries the local fetch generation " +
+        "(propGenerationTagScope class 1); a RecoveryEvent advances the generation and every " +
+        "older-generation response is dropped. Nothing is reclaimed from the caches: wrong-path " +
+        "fills and ITLB refills are allowed to complete and install (ADR-019 D-19.12)."
+      )
       .build()
   }
 
-  val intfNextPcIn = spec {
-    INTERFACE("NextPcIn")
-      .desc("Next fetch address (epoch-tagged) entering the fetch unit from NextPcGen.")
+  val intfFetchRequestIn = spec {
+    INTERFACE("FetchRequestIn")
+      .desc("In-order fetch requests from the FetchTargetQueue.")
+      .uses(bndFetchRequest)
       .is(rawReadyValidIntf)
-      .uses(bndNextPcIssue)
       .build()
   }
 
-  val intfProgMemReqOut = spec {
-    INTERFACE("ProgMemReqOut")
-      .desc("Program-memory read request leaving the fetch unit at the frontend top boundary.")
+  val intfITlbReqOut = spec {
+    INTERFACE("ITlbReqOut")
+      .desc("Translation request (access = Fetch) to the CoreTop-level InstructionTlb.")
+      .uses(bndTranslateReq)
       .is(rawReadyValidIntf)
-      .uses(bndExternalProgramMemoryReq)
       .build()
   }
 
-  val intfProgMemRespIn = spec {
-    INTERFACE("ProgMemRespIn")
-      .desc("Program-memory response entering the fetch unit from the frontend top boundary.")
+  val intfICacheReqOut = spec {
+    INTERFACE("ICacheReqOut")
+      .desc("Virtually indexed lookup to the CoreTop-level InstructionCache; fires in the same cycle as ITlbReqOut.")
+      .uses(bndICacheReq)
       .is(rawReadyValidIntf)
-      .uses(bndExternalProgramMemoryResp)
       .build()
   }
 
-  val intfFetchResponseOut = spec {
-    INTERFACE("FetchResponseOut")
-      .desc("One fetched beat (aligned to the memory data width) toward the slot slicer.")
+  val intfICacheRespIn = spec {
+    INTERFACE("ICacheRespIn")
+      .desc("Fetch-block data or fetch fault from the InstructionCache, in request order.")
+      .uses(bndICacheResp)
       .is(rawReadyValidIntf)
-      .uses(bndFetchResponse)
       .build()
   }
 
-  val funcOutstandingTracking = spec {
-    FUNCTION("OutstandingTracking")
+  val intfFetchBlockOut = spec {
+    INTERFACE("FetchBlockOut")
+      .desc("Assembled fetch blocks to the FetchBuffer, in request order.")
+      .uses(bndFetchBlock)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfRecoveryEventIn = spec {
+    INTERFACE("RecoveryEventIn")
+      .desc("The common RecoveryEvent broadcast.")
+      .uses(bndRecoveryEvent)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 6.")
+      .build()
+  }
+
+  val funcParallelFetchLookup = spec {
+    FUNCTION("ParallelFetchLookup")
       .desc(
-        "Tracks in-flight program-memory requests so responses are matched to the PC " +
-          "and epoch that requested them. At the base config exactly one request may be " +
-          "outstanding (prefetchDepth==1); depth is a tuning knob."
+        "For each accepted FetchRequest, offer ITlbReq{vaddr = fetchPc, access = Fetch} and " +
+        "ICacheReq{vaddr = fetchPc aligned to FetchBytes} and fire both in the same cycle " +
+        "(atomic fork); either not ready holds the request. The I-cache set index comes from " +
+        "untranslated address bits; the physical tag compare waits for the ITLB answer inside " +
+        "the I-cache."
       )
-      .note("Backpressure: NextPcIn.ready is deasserted while the outstanding set is full.")
-      .uses(paramPrefetchDepth)
+      .uses(intfFetchRequestIn, intfITlbReqOut, intfICacheReqOut)
       .build()
   }
 
-  val funcEpochTagging = spec {
-    FUNCTION("EpochTagging")
+  val funcFetchGeneration = spec {
+    FUNCTION("FetchGeneration")
       .desc(
-        "Each request latches the GlobalEpoch at issue time. On response, if the latched " +
-          "request epoch =/= current GlobalEpoch the beat is dropped locally (valid gated low) " +
-          "instead of buffered. The outstanding-fetch latch is an enumerated eager-filter " +
-          "vertex (ADR-005 D-5.2): it self-invalidates on mismatch every cycle it holds a " +
-          "request, so an in-flight fetch dies at the first redirect and never survives a wrap (G2/G5)."
+        "A local fetch generation counter increments on every RecoveryEvent; each request " +
+        "carries the current generation as reqId, and an ICacheResp whose reqId differs from " +
+        "the current generation is consumed and dropped without producing a FetchBlock. " +
+        "Requests not yet sent are discarded on the event."
       )
-      .note("No flush wire: staleness is a comparison (ADR-005 D-5.1).")
-      .uses(paramGlobalEpochWidth)
+      .uses(intfRecoveryEventIn, intfICacheRespIn)
+      .note("Local transaction bookkeeping only (ADR-019 D-19.10); it never orders program uops.")
+      .build()
+  }
+
+  val funcFetchBlockAssembly = spec {
+    FUNCTION("FetchBlockAssembly")
+      .desc(
+        "Split the 16-byte response into four 32-bit words; mark slots valid from the fetchPc " +
+        "slot through lastSlot. A response with a fetch fault produces a block whose only " +
+        "valid slot is the fetchPc slot, carrying the fault (instruction page fault or " +
+        "instruction access fault) to be raised precisely at commit."
+      )
+      .uses(intfFetchBlockOut)
+      .build()
+  }
+
+  val propFetchInOrder = spec {
+    PROPERTY("FetchInOrder")
+      .desc("FetchBlocks leave in the order their FetchRequests were accepted; ftqIdx increases (wrap-aware) along FetchBlockOut between RecoveryEvents.")
+      .uses(intfFetchBlockOut)
+      .build()
+  }
+
+  val propNoStaleFetchBlock = spec {
+    PROPERTY("NoStaleFetchBlock")
+      .desc("No FetchBlock is produced, in or after a RecoveryEvent cycle, for a FetchRequest accepted before that event.")
+      .uses(intfFetchBlockOut, intfRecoveryEventIn)
       .build()
   }
 }

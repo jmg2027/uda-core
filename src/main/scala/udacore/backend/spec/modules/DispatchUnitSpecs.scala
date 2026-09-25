@@ -5,97 +5,115 @@ import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
+import udacore.backend.spec.shared.BackendParamsSpecs.funcRecoveryKills
 
+/** DispatchUnit: routes issued uops to their execution unit (ADR-019). */
 object DispatchUnitSpecs {
   val contDispatchUnit = spec {
     CONTRACT("DispatchUnit")
-      .desc(
-        "Dispatch unit routes ready operations toward backend execution lanes."
-      )
+      .desc("Routes each IssuedUop from the ReservationStation to exactly one execution unit selected by fuType.")
       .has(
-        intfDispatchedUopIn,
+        intfIssuedUopIn,
         intfAluReqOut,
         intfBitAluReqOut,
         intfMultiplierReqOut,
         intfDividerReqOut,
         intfBranchUnitReqOut,
-        intfCsrReqOut,
         intfAddressGenerationReqOut,
-        funcSerializingDispatchGate
+        intfCsrReqOut,
+        intfRecoveryEventIn,
+        funcFuRoute
+      )
+      .is(rawSpeculativeHolder)
+      .note(
+        "Speculative-holder stance: holds at most one routed token under backpressure; it is " +
+        "dropped in the event cycle if funcRecoveryKills selects it. Serialization is no longer " +
+        "a dispatch gate: it is enforced at rename (funcSerializeGate)."
       )
       .build()
   }
 
-  // ADR-004 D-4.2: single-in-flight serialize as ready backpressure.
-  val funcSerializingDispatchGate = spec {
-    FUNCTION("SerializingDispatchGate")
-      .desc("Grant the CSR/system edge ready only when no serializing uop is in flight; a 1-bit scoreboard is set at dispatch of a serializing uop and cleared at its commitGrant.")
-      .note("Ready backpressure (FCL edge property), never a node-internal stall counter; at most one un-committed CSR/system uop exists, so a CSR read never observes a not-yet-committed CSR write (ADR-004 D-4.2).")
-      .uses(intfDispatchedUopIn, intfCsrReqOut)
-      .build()
-  }
-
-  val intfDispatchedUopIn = spec {
-    INTERFACE("DispatchedUopIn")
-      .desc("Dispatch-ready uop input.")
-      .uses(bndDispatchedUop)
+  val intfIssuedUopIn = spec {
+    INTERFACE("IssuedUopIn")
+      .desc("Issued uops from the ReservationStation.")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfAluReqOut = spec {
     INTERFACE("AluReqOut")
-      .desc("Integer ALU request output.")
-      .uses(bndAluReq)
+      .desc("Integer ALU operations (including LUI/AUIPC).")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfBitAluReqOut = spec {
     INTERFACE("BitAluReqOut")
-      .desc("Bit manipulation request output.")
-      .uses(bndBitAluReq)
+      .desc("Bit-manipulation operations; elaborated only when the optional BitAluUnit extension is enabled (absent in v0).")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfMultiplierReqOut = spec {
     INTERFACE("MultiplierReqOut")
-      .desc("Multiplier request output.")
-      .uses(bndMultiplierReq)
+      .desc("MUL/MULH/MULHSU/MULHU.")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfDividerReqOut = spec {
     INTERFACE("DividerReqOut")
-      .desc("Divider request output.")
-      .uses(bndDividerReq)
+      .desc("DIV/DIVU/REM/REMU.")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfBranchUnitReqOut = spec {
     INTERFACE("BranchUnitReqOut")
-      .desc("Branch unit request output.")
-      .uses(bndBranchUnitReq)
-      .is(rawReadyValidIntf)
-      .build()
-  }
-
-  val intfCsrReqOut = spec {
-    INTERFACE("CsrReqOut")
-      .desc("CSR request output.")
-      .uses(bndCsrReq)
+      .desc("Conditional branches, JAL, JALR.")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfAddressGenerationReqOut = spec {
     INTERFACE("AddressGenerationReqOut")
-      .desc("Address generation request output.")
-      .uses(bndAddressGenerationReq)
+      .desc("Loads and stores (address computation).")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfCsrReqOut = spec {
+    INTERFACE("CsrReqOut")
+      .desc("CSR instructions (always the only live uop, by the rename serialization gate).")
+      .uses(bndCsrReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfRecoveryEventIn = spec {
+    INTERFACE("RecoveryEventIn")
+      .desc("The common RecoveryEvent broadcast.")
+      .uses(bndRecoveryEvent)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 6.")
+      .build()
+  }
+
+  val funcFuRoute = spec {
+    FUNCTION("FuRoute")
+      .desc(
+        "Offer the IssuedUop on the one request edge selected by fuType; IssuedUopIn is ready " +
+        "exactly when that edge is ready. The RS only selects uops whose unit can accept, so " +
+        "routing never reorders or duplicates uops."
+      )
+      .uses(intfIssuedUopIn, funcRecoveryKills)
       .build()
   }
 }

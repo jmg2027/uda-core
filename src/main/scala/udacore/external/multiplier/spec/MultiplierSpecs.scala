@@ -50,7 +50,7 @@ object MultiplierSpecs {
           ),
           List(
             "kill",
-            "Synchronous cancellation request (external-IP capability; in UDACore tied inactive - wrong-path results die by epoch at the wrapper, no-flush doctrine)",
+            "Synchronous cancellation request (external-IP capability; in UDACore tied inactive - a killed operation's result is discarded by the MultiplierUnit wrapper per the RecoveryEvent younger-than rule, no-flush doctrine)",
             "Input",
             "Bool"
           ),

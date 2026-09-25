@@ -7,104 +7,98 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs._
 
+/** PublishMux: the single result lane (ADR-014 retained for v0 by ADR-019). */
 object PublishMuxSpecs {
   val contPublishMux = spec {
     CONTRACT("PublishMux")
       .desc(
-        "Result bus: arbitrates FU results, writes physical register file, broadcasts wakeup."
+        "Arbitrates the execution-unit results and LSQ memory completions onto one publish " +
+        "lane per cycle. A published result writes the PRF (when it has a destination), " +
+        "broadcasts the wakeup of its prd, and completes its ROB entry, all in one transfer."
       )
       .has(
         intfAluResultIn,
         intfBitAluResultIn,
         intfMultiplierResultIn,
         intfDividerResultIn,
-        intfBranchUnitResultIn,
+        intfBranchResultIn,
         intfCsrResultIn,
-        intfMemoryOpRespIn,
+        intfMemResultIn,
         intfPhysicalRegWriteOut,
         intfWakeupBroadcastOut,
-        intfPublishResultOut,
+        intfRobCompletionOut,
+        funcPublishArbitrate,
+        funcPublishFanout,
         propSingleDrain
       )
-      .note("Unified result collection point for all functional units")
-      .note("Writes result to physical register file")
-      .note("Broadcasts (prd, valid) to reservation station for wakeup")
-      .note("Forwards result to commit unit for retirement tracking")
-      .note("Base build: ONE arbitrated publish/result bus feeding ONE PRF write port; lane count = 1, independent of SpeculativeRegNum (ADR-014 D-14.1).")
-      .note("The publish->PRF-write edge carries real back-pressure: the always-ready claim is STRUCK; a contending producer that is not granted stalls, not drops (ADR-014 D-14.2).")
-      .note("Multi-lane publish (peak IPC > 1) is a proposed extension gated on measured need (ADR-014 D-14.4).")
-      .build()
-  }
-
-  // ADR-014 D-14.1/D-14.2: single-drain base contract.
-  val propSingleDrain = spec {
-    PROPERTY("SingleDrain")
-      .desc("In the base build there is at most one PRF write, one wakeup broadcast, and one retire per cycle.")
-      .note("peakIssue = peakPublish = peakRetire = 1 at every N; N=32 is an MLP/latency-hiding machine, not IPC>1 (ADR-014 D-14.1). Lane count references SpeculativeRegNum only to assert independence: lanes = 1 regardless of N.")
-      .note("Pair with a design assert; also assert the publish->PRF-write ready is a real signal, not tied high (ADR-014 D-14.2, ADR-015 D-15.3).")
-      .uses(paramSpeculativeRegNum)
+      .uses(paramPublishWidth, funcRobOlder)
+      .note(
+        "Recovery stance: PublishMux holds no tokens. Every candidate is held on its producer's " +
+        "edge, and the producer drops it when funcRecoveryKills selects it, so a killed uop " +
+        "never writes the PRF, wakes a consumer, or completes a ROB entry."
+      )
       .build()
   }
 
   val intfAluResultIn = spec {
-    INTERFACE("ALUResultIn")
-      .desc("Integer ALU result input.")
-      .uses(bndAluResult)
+    INTERFACE("AluResultIn")
+      .desc("AluUnit results.")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfBitAluResultIn = spec {
-    INTERFACE("BitALUResultIn")
-      .desc("Bit ALU result input.")
-      .uses(bndBitAluResult)
+    INTERFACE("BitAluResultIn")
+      .desc("BitAluUnit results (optional extension, absent in v0).")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfMultiplierResultIn = spec {
     INTERFACE("MultiplierResultIn")
-      .desc("Multiplier result input.")
-      .uses(bndMultiplierResult)
+      .desc("MultiplierUnit results.")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfDividerResultIn = spec {
     INTERFACE("DividerResultIn")
-      .desc("Divider result input.")
-      .uses(bndDividerResult)
+      .desc("DividerUnit results.")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfBranchUnitResultIn = spec {
-    INTERFACE("BranchUnitResultIn")
-      .desc("Branch resolution result input.")
-      .uses(bndBranchUnitResult)
+  val intfBranchResultIn = spec {
+    INTERFACE("BranchResultIn")
+      .desc("BranchUnit completions (link value and cfiOutcome).")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfCsrResultIn = spec {
-    INTERFACE("CSRResultIn")
-      .desc("CSR execution result input.")
+    INTERFACE("CsrResultIn")
+      .desc("CsrController results (old CSR value, or illegal-access exception).")
       .uses(bndCsrResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfMemoryOpRespIn = spec {
-    INTERFACE("MemoryOpRespIn")
-      .desc("Memory response input.")
-      .uses(bndMemoryOpResp)
+  val intfMemResultIn = spec {
+    INTERFACE("MemResultIn")
+      .desc("LoadStoreQueue completions (load values, store resolutions, memory exceptions).")
+      .uses(bndMemResult)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfPhysicalRegWriteOut = spec {
     INTERFACE("PhysicalRegWriteOut")
-      .desc("Physical register write command output.")
+      .desc("PRF write of the published value.")
       .uses(bndPhysicalRegWrite)
       .is(rawReadyValidIntf)
       .build()
@@ -112,22 +106,48 @@ object PublishMuxSpecs {
 
   val intfWakeupBroadcastOut = spec {
     INTERFACE("WakeupBroadcastOut")
-      .desc("Wakeup broadcast output for dependency resolution.")
+      .desc("Wakeup of the published prd to the ReservationStation and RenameUnit.")
       .uses(bndWakeupBroadcast)
       .is(rawNoDecoupled)
-      .note(
-        "Sanctioned broadcast class (rawNoDecoupled note 5, ADR-014): a wakeup is a "+
-        "non-negotiable published fact riding the result publish; consumers epoch-qualify, "+
-        "never backpressure."
-      )
+      .note("rawNoDecoupled class 5.")
       .build()
   }
 
-  val intfPublishResultOut = spec {
-    INTERFACE("PublishResultOut")
-      .desc("Aggregated result output to commit unit.")
-      .uses(bndPublishResult)
+  val intfRobCompletionOut = spec {
+    INTERFACE("RobCompletionOut")
+      .desc("Completion of the published uop to the ReorderBuffer.")
+      .uses(bndRobCompletion)
       .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val funcPublishArbitrate = spec {
+    FUNCTION("PublishArbitrate")
+      .desc(
+        "Each cycle grant the oldest valid candidate by funcRobOlder; losers stay valid on " +
+        "their edges (backpressure, never drop). Oldest-first guarantees the ROB head's result " +
+        "is never starved."
+      )
+      .uses(funcRobOlder)
+      .build()
+  }
+
+  val funcPublishFanout = spec {
+    FUNCTION("PublishFanout")
+      .desc(
+        "The granted result fires PhysicalRegWriteOut (if wen), WakeupBroadcastOut (if wen), " +
+        "and RobCompletionOut in the same cycle; the grant is withheld while a needed " +
+        "ready/valid output is not ready."
+      )
+      .uses(intfPhysicalRegWriteOut, intfWakeupBroadcastOut, intfRobCompletionOut)
+      .build()
+  }
+
+  val propSingleDrain = spec {
+    PROPERTY("SingleDrain")
+      .desc("At most one PRF write, one wakeup broadcast, and one ROB completion occur per cycle, always for the same uop.")
+      .uses(paramPublishWidth)
+      .note("ADR-014 D-14.1 single lane, retained for v0. Simulation assert.")
       .build()
   }
 }

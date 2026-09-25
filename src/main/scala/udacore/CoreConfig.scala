@@ -2,58 +2,19 @@ package udacore
 
 import udacore.core.design.shared._
 
-/** Core domain configuration using new parameter architecture.
+/** Core domain configurations (ADR-019 v0 reference point).
   *
-  * Only manages Core domain parameters. Other domains (Backend, Frontend, 
-  * MemorySubsystem) should manage their own default configurations within
-  * their respective domains.
+  * Only manages Core domain parameters. Backend and frontend defaults live in
+  * their own domains (BackendParams / FrontendParams defaults are the v0
+  * reference values).
   */
 object DefaultCoreConfig {
-  
-  /** Default core contract parameters */
-  val defaultCoreContract = CoreContractParams(
-    dataWidth = 32,              // 32-bit data width
-    vAddrWidth = 32,             // 32-bit virtual addresses
-    pAddrWidth = 32,             // 32-bit physical addresses
-    hartId = 0                   // Hart identifier matches zero by default
-  )
-  
-  /** Default core tuning parameters */
-  val defaultCoreTuning = CoreTuningParams(
-    epochWidth = 2,              // Epoch counter width
-    commitWidth = 1,             // Single-issue in-order
-    robDepth = 0                 // No reorder buffer (in-order)
-  )
-  
-  /** Default core private parameters */
-  val defaultCorePrivate = CorePrivateParams(
-    bootCycles = 8,              // 8-cycle boot sequence
-    debugFeatures = false        // Disable debug features for performance
-  )
-  
-  /** Complete default core configuration */
-  val default = CoreParams(
-    contract = defaultCoreContract,
-    tuning = defaultCoreTuning,
-    priv = defaultCorePrivate
-  )
-  
-  /** Minimal configuration for basic tests */
+
+  /** The v0 reference product point (retire stream off). */
+  val default = CoreParams()
+
+  /** Fast directed-test build: shorter boot, debug features on. */
   val minimal = CoreParams(
-    contract = CoreContractParams(
-      dataWidth = 32,
-      vAddrWidth = 32,
-      pAddrWidth = 32,
-      hartId = 0
-    ),
-    tuning = CoreTuningParams(
-      epochWidth = 2,             // Minimum legal width under the ADR-005 wrap bound
-      commitWidth = 1,
-      robDepth = 0
-    ),
-    priv = CorePrivateParams(
-      bootCycles = 4,             // Faster boot for tests
-      debugFeatures = true        // Enable debug for testing
-    )
+    priv = CorePrivateParams(bootCycles = 4, debugFeatures = true)
   )
 }
