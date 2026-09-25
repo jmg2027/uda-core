@@ -11,7 +11,6 @@
 funcCsrMapContribution
 funcDebugCommitBoundary
 funcIntegrateExternalBitAlu
-propPrfPortsFixed
 propTrapSingleWriter
 
 # WP-5 LSQ: needs an uncacheable PMA region in the harness or an L1 LSQ SpecTest (funcHeadMemGrant is bound by commit.headMemGrant)

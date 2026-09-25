@@ -43,7 +43,6 @@ propDisabledExtensionTraps
 propNoCompressedDecode
 propNoSpeculativeCsrWrite
 propPreciseCommit
-propPrfPortsFixed
 propRecoveryOnlyOnMispredict
 propRobTagConsecutive
 propRsIssueOnlyReady

@@ -164,6 +164,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
      TrapController) satisfies the hold at once; ExceptionOut{SysOp}.sysOp keeps only the
      intrinsic redirects (FenceI/SfenceVma/CsrWrite/Mret/Sret) and is None for a
      predictionFault-only Refetch (asserted). 15 L1 tests; 19 mutants all red.
+13. RTL block 5 - PhysicalRegisterFile: storage for p1..p(N-1) only (p0 is a constant zero),
+    one always-ready write port, combinational RS operand reads and (usingRvvi only) the
+    ADR-019B commit read port, both with the same-cycle write bypass; p0 write asserted;
+    port counts width-derived (propPrfPortsFixed, checked on the normalized io type across
+    PRF/ROB depths). 3 L1 tests, 7 mutants all red (the p0 mutant became observable only
+    after removing p0 storage: Verilator zero-fills registers).
 
 ## Validation status (run this session)
 
@@ -174,16 +180,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 46/46 PASS (6 pre-existing + 2 params +
-  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit)
-  after RTL block 4 and its review fixes.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 49/49 PASS (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
+  3 PhysicalRegisterFile) after RTL block 5.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 52 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
-  propRetireNonBlocking, funcHeadMemGrant) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 51 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
+  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
@@ -191,7 +197,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
   propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
-  propRetireNonBlocking; now 57) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  propRetireNonBlocking, propPrfPortsFixed; now 56) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -208,6 +214,19 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   OQ-G closed: uncacheable accesses execute at the ROB head under HeadMemGrant (precise
   faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
   the SoC memory map is chosen).
+
+## Open contradictions reported to the OWNER (block RS and BranchUnit)
+
+- C-1 ReservationStation select vs FU availability: funcSelectOldestReady selects only
+  entries "whose target FU class can accept" and funcFuRoute says the RS only selects uops
+  whose unit can accept, but the RS has no FU-availability input; IssuedUopOut.ready is a
+  function of the offered uop's fuType, so using it to choose is a combinational loop.
+  Without a view, an older ready DIV behind a busy divider blocks an idle ALU for the whole
+  divide.
+- C-2 combinational loop BranchUnit -> RecoveryController -> producers -> PublishMux ->
+  BranchUnit: BranchResolution must fire with the branch's completion
+  (funcBranchRecoveryRequest), the event is combinational (funcRecoverySelect), producers
+  drop killed tokens in the event cycle, and PublishMux grants among the filtered valids.
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -231,9 +250,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 ## Next steps (in order)
 
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
-   RecoveryController, CommitUnit RTL are green. Next (owner order): PhysicalRegisterFile,
-   ReservationStation, DispatchUnit + ALU/MUL/DIV wrappers + BranchUnit, PublishMux; each
-   red-first with asserts, mutant controls, and allowlist shrink. RenameUnit spec ambiguities found
+   RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
+   ReservationStation (blocked on C-1), DispatchUnit + ALU/MUL/DIV wrappers + BranchUnit
+   (BranchUnit blocked on C-2), PublishMux; each red-first with asserts, mutant controls,
+   and allowlist shrink. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

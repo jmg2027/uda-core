@@ -303,6 +303,26 @@ class RobHead(val params: BackendParams) extends BackendBundle {
   val entry  = new RobEntry(params)
 }
 
+// ---- Execution ----------------------------------------------------------------
+
+@LocalSpec(bndPhysicalRegWrite)
+class PhysicalRegWrite(val params: BackendParams) extends BackendBundle {
+  val prd  = UInt(physRegIdWidth.W)
+  val data = UInt(xLen.W)
+}
+
+@LocalSpec(bndRegisterFileReadReq)
+class RegisterFileReadReq(val params: BackendParams) extends BackendBundle {
+  val prs1 = UInt(physRegIdWidth.W)
+  val prs2 = UInt(physRegIdWidth.W)
+}
+
+@LocalSpec(bndRegisterFileReadResp)
+class RegisterFileReadResp(val params: BackendParams) extends BackendBundle {
+  val src1 = UInt(xLen.W)
+  val src2 = UInt(xLen.W)
+}
+
 /** StoreCommit view of the commit broadcast. */
 @LocalSpec(bndCommitBroadcast)
 class StoreCommit(val params: BackendParams) extends BackendBundle {
