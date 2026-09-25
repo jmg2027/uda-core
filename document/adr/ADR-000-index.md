@@ -14,37 +14,40 @@ Status legend:
   argument, must settle. The ADR states the experiment and the interim default
   that ships until the experiment returns.
 
-## The one root ruling
+## The current root ruling
 
-The single most load-bearing decision, which the correctness critique correctly
-identifies as the root of five downstream conflicts, is **ADR-011: redirect is
-generated at the in-order commit head**. Read it first. It makes the single
-global epoch sound, answers "no selective squash at the base," and is the reason
-ADR-001/002/003/004/013 are internally consistent. Everything else composes on
-top of it.
+For new implementation work, **ADR-019: Conventional OoO Root Architecture** is
+the root ruling. It supersedes the earlier commit-head/global-epoch substrate
+where explicitly stated: the new machine has an explicit data-less ROB,
+PC-indexed BTB+TAGE+RAS frontend, execute-time selective branch recovery,
+VIPT L1 caches, and Sv32 ITLB/DTLB/PTW.
+
+ADR-011 remains historical rationale for why the old single-global-epoch machine
+required commit-head redirect. Do not apply that constraint to ADR-019 work.
 
 ## Index
 
 | ADR | Title | Status | Settles (paper / critique) |
 |-----|-------|--------|----------------------------|
 | [001](ADR-001-rename-recovery.md) | Rename recovery on redirect | accepted | P01 s1; crit-correctness B1.2 |
-| [002](ADR-002-commit-retirement.md) | Commit and retirement without a ROB | accepted | P01 s2; P06 |
+| [002](ADR-002-commit-retirement.md) | Commit and retirement without a ROB | **superseded by 019** | P01 s2; P06 |
 | [003](ADR-003-store-lifecycle-load-ordering.md) | Store lifecycle, load ordering, disambiguation | accepted / **proposed** | P02 M1/M2; crit B2, BL-1 |
 | [004](ADR-004-csr-serialization.md) | CSR serialization and single-owner trap | accepted | P04 s1-5; crit M2 |
 | [005](ADR-005-epoch-wrap-policy.md) | Epoch wrap policy | accepted | P05 D2; crit M1, BL-2 |
 | [006](ADR-006-redirect-distribution-timing.md) | Redirect / epoch distribution timing | accepted | P05 D3; crit MI-1 |
 | [007](ADR-007-ipc-critical-edge-registry.md) | IPC-critical edge registry | accepted / **proposed** | P05 D1; crit MA-2, V-MA-3 |
 | [008](ADR-008-n1-degeneracy.md) | N=1 degeneracy criteria and PPA bar | accepted / **proposed** | P01 s5, P05 D5; crit BL-3, MA-4 |
-| [009](ADR-009-frontend-graph-reconciliation.md) | Frontend graph reconciliation | accepted | P03 s1-5 |
+| [009](ADR-009-frontend-graph-reconciliation.md) | Frontend graph reconciliation | **superseded by 019** | P03 s1-5 |
 | [010](ADR-010-commit-stream-verification-port.md) | Commit-stream verification port | accepted | P06 s1 |
-| [011](ADR-011-redirect-generation-point.md) | Redirect generation point (ROOT) | accepted / **proposed** | crit B1, BL-1 |
+| [011](ADR-011-redirect-generation-point.md) | Redirect generation point (historical root) | **superseded by 019 for branch recovery** | crit B1, BL-1 |
 | [012](ADR-012-canonical-tag-and-commit-broadcast.md) | Canonical in-flight tag and unified commit broadcast | accepted | crit B3, M4, MA-3, V-MA-5 |
 | [013](ADR-013-redirect-merge-priority.md) | Redirect merge priority ladder | accepted | crit M3 |
 | [014](ADR-014-publish-bus-width.md) | Publish bus width and peak-IPC contract | accepted / **proposed** | P01 O4; crit MA-1 |
 | [015](ADR-015-spec-enforcement-and-nequiv.md) | Spec enforcement, interim checker, N-equivalence soundness | accepted | P06 s3-5; crit V-BL-1/2/3 |
-| [016](ADR-016-udacore-identity-tilelink-boundary.md) | UDACore identity, XLEN-parametric datapath, TileLink boundary | accepted | owner directive 2026-07-06; amends ADR-003 D-3.14 |
+| [016](ADR-016-udacore-identity-tilelink-boundary.md) | UDACore identity, XLEN-parametric datapath, TileLink boundary | accepted / **amended by 019** | owner directive 2026-07-06; amends ADR-003 D-3.14 |
 | [017](ADR-017-extension-contribution.md) | Extension contribution convention (Feature pattern re-based on UDA) | accepted | owner directive 2026-07-06; imports main xxxFeature lessons |
 | [018](ADR-018-spec-tdd.md) | Spec-TDD: every spec object bound to a test, red before green | accepted | owner directive 2026-07-06; extends ADR-015 enforcement |
+| [019](ADR-019-conventional-ooo-root-architecture.md) | Conventional OoO root architecture | **accepted (current root)** | owner directive 2026-09-25; supersedes epoch/predecode/ROB-less base where stated |
 
 ## Proposed-status items (experiments that must settle them)
 
