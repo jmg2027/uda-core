@@ -84,6 +84,7 @@ case class BackendParams(
     "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
   def xLen: Int             = contract.xLen
   def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
+  def pAddrWidth: Int       = 34 // Sv32 physical address (CoreContractParams.pAddrWidth)
   def regNum: Int           = contract.regNum
   def hartId: Int           = contract.hartId
   def enableMulDiv: Boolean = contract.enableMulDiv
@@ -101,6 +102,14 @@ case class BackendParams(
   def fetchSlotWidth: Int = log2Ceil(frontend.fetchWidth)
   def ftqIdxWidth: Int    = log2(frontend.ftqDepth) + 1
   def vAddrWidth: Int     = frontend.vAddrWidth
+
+  // LSQ transaction tags (private tier): per-entry allocation generation for the
+  // uncancelable D-cache/DTLB transactions (propGenerationTagScope), never for program order.
+  def lqIdxWidth: Int    = log2Ceil(tuning.loadQueueDepth)
+  def sqIdxWidth: Int    = log2Ceil(tuning.storeQueueDepth)
+  def lsqGenWidth: Int   = 2
+  /** DTLB reqId of an LSQ request: {isStore, entry index, generation}. */
+  def lsqReqIdWidth: Int = 1 + math.max(lqIdxWidth, sqIdxWidth) + lsqGenWidth
 
   private def log2(x: Int): Int     = Integer.numberOfTrailingZeros(x)
   private def log2Ceil(x: Int): Int = if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)

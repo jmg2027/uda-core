@@ -19,6 +19,7 @@ sealed protected trait HasBackendParams {
   def ftqIdxWidth: Int      = params.ftqIdxWidth
   def fetchSlotWidth: Int   = params.fetchSlotWidth
   def vAddrWidth: Int       = params.vAddrWidth
+  def pAddrWidth: Int       = params.pAddrWidth
 
   val bytesize: Int = 8
   val halfsize: Int = bytesize * 2

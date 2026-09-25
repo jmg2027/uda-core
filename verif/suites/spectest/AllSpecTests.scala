@@ -12,7 +12,7 @@ object RunSpecTests {
     UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all ++ RenameUnitSpecTests.all ++ ReorderBufferSpecTests.all ++
       SystemOpDecodeSpecTests.all ++ RecoveryControllerSpecTests.all ++ CommitUnitSpecTests.all ++
       ReservationStationSpecTests.all ++ DispatchUnitSpecTests.all ++ ExecUnitSpecTests.all ++
-      BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++ TrapControllerSpecTests.all ++
+      BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++ TrapControllerSpecTests.all ++ LoadStoreQueueSpecTests.all ++
       CsrTrapSeamSpecTests.all ++
       PhysicalRegisterFileSpecTests.all
 

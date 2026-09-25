@@ -302,6 +302,37 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       priv M (the first seam run let "target mepc" survive because dpc equalled mepc; the test
       now retires one U instruction first so dpc != mepc).
     - Allowlist: funcCsrMapContribution bound and removed (spec-test-allow 49 -> 48).
+24. RTL block 13 - LoadStoreQueue (ADR-019 D-19.5/D-19.12): circular LQ/SQ with wrap-bit
+    pointers, per-entry generations for DTLB/D-cache transactions, store translation first
+    then paired DtlbReq{Load}+DCacheLoadReq for the oldest Ready load whose older stores all
+    have physical addresses, forwarding decided in the D-cache answer cycle (SQ bytes of
+    older stores by paddr, youngest wins, then the StoreBuffer answer of the same cycle, then
+    the cache word), WaitStoreDrain on a StoreBuffer partial, refill-before-miss races kept by
+    a sawRefill flag, uncached loads/stores only after HeadMemGrant + StoreBufferEmpty and
+    exactly once, StoreCommit hands the SQ head to the StoreBuffer in the same cycle (an
+    uncached performed store is only released), LQ release at retirement via RobStatus,
+    selective kill with tail rewind, one-entry MemResult holder (oldest pending first).
+    New core design bundles (TranslateReq, Translation, WalkResp/TlbEntry/PmaAttr,
+    DCacheLoadReq/Resp, Uncached*), backend CommittedStore/StoreForwardQuery/Data,
+    BackendParams pAddrWidth and LSQ index/generation widths. Timing contracts this design
+    relies on (spec-compatible, recorded here): the StoreBuffer answers a forwarding query
+    combinationally in the query cycle, and a DCacheLoadResp's data reflects every drain
+    completed before its response cycle. CommittedStore/UncachedStoreReq paddr is the byte
+    address; data and mask are lane-aligned.
+    - 14 L1 tests (allocate, addressCapture, translationWait, refillRace, staleAnswer,
+      disambig, loadIssue, forward incl. synonym VAs, loadComplete, storeComplete, uncached,
+      storeCommit, recovery, and a random reference model: two seeds x 300 retirements with
+      out-of-order D-cache answers, replays, DTLB misses, synonyms, device accesses, faults,
+      traps, and mispredicts, checked against sequential memory semantics and final memory).
+      Red: 12 PENDING on the typed shell (the two race tests were added after the first
+      mutant pass).
+    - 31 mutants: all red after strengthening (first pass left the generation check, both
+      refill races, and the drain-wait gate alive; new tests catch them). Equivalent under
+      the protocol: dropping the event-cycle allocation guard (RenameUnit never allocates in
+      an event cycle; now asserted) and moving a faulting uncached store's state (its
+      exception still reports).
+    - Allowlists: spec-test-allow 48 -> 46 (funcUncacheableAtHead, propUncachedPerformedOnce),
+      spec-check-allow 49 -> 43 (six LSQ properties now asserted).
 
 ## Validation status (run this session)
 

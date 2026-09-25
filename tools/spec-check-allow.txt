@@ -43,14 +43,6 @@ propNoCompressedDecode
 propPreciseCommit
 propRobTagConsecutive
 
-# WP-5 LoadStoreQueue asserts
-propNoWrongPathStoreVisible
-propUncachedPerformedOnce
-propLsqRecoveryKeepsOlder
-propNoPassUnresolvedStore
-propPhysicalOrderingAuthority
-propWrongPathLoadNoResult
-
 # WP-5 StoreBuffer asserts
 propCommittedSurvivesRecovery
 propInOrderDrain

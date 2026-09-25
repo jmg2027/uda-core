@@ -416,6 +416,26 @@ class CommitPrfReadResp(val params: BackendParams) extends BackendBundle {
   val data = UInt(xLen.W)
 }
 
+@LocalSpec(bndCommittedStore)
+class CommittedStore(val params: BackendParams) extends BackendBundle {
+  val paddr = UInt(pAddrWidth.W)
+  val data  = UInt(xLen.W)
+  val mask  = UInt((xLen / 8).W)
+}
+
+@LocalSpec(bndStoreForwardQuery)
+class StoreForwardQuery(val params: BackendParams) extends BackendBundle {
+  val paddr = UInt(pAddrWidth.W)
+  val mask  = UInt((xLen / 8).W)
+}
+
+@LocalSpec(bndStoreForwardData)
+class StoreForwardData(val params: BackendParams) extends BackendBundle {
+  val data    = UInt(xLen.W)
+  val hitMask = UInt((xLen / 8).W)
+  val partial = Bool()
+}
+
 @LocalSpec(bndHeadMemGrant)
 class HeadMemGrant(val params: BackendParams) extends BackendBundle {
   val robTag = new RobTag(params)
