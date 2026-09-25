@@ -280,7 +280,7 @@ object BranchPublishSpecTests {
 
   // ==== PublishMux ==================================================================================
 
-  val inputs = Seq("alu", "mul", "div", "branch", "mem")
+  val inputs = Seq("alu", "mul", "div", "branch", "csr", "mem") // csr: native FuResult (ADR-019D E-1)
   case class Cand(s: Int, prd: Int = 40, wen: Boolean = true, data: Long = 0, exc: Boolean = false, hx: Boolean = false)
   case class PObs(granted: Seq[String], prfV: Boolean, prf: (Int, Long), wk: Option[Int], robV: Boolean, rob: Map[String, Long])
 
@@ -289,7 +289,7 @@ object BranchPublishSpecTests {
     var prfReady, robReady = true
     private def port(n: String) = n match {
       case "alu" => io.aluResultIn; case "mul" => io.multiplierResultIn; case "div" => io.dividerResultIn
-      case "branch" => io.branchResultIn
+      case "branch" => io.branchResultIn; case "csr" => io.csrResultIn
     }
     def cycle(c: Map[String, Cand]): PObs = {
       for (n <- inputs) {
@@ -309,7 +309,6 @@ object BranchPublishSpecTests {
             f.bits.cfiOutcome.taken.poke((n == "branch").B) }
         }
       }
-      io.csrResultIn.valid.poke(false.B)
       io.physicalRegWriteOut.ready.poke(prfReady.B)
       io.robCompletionOut.ready.poke(robReady.B)
       val granted = inputs.filter { n =>
@@ -336,17 +335,19 @@ object BranchPublishSpecTests {
   val pmArbitrate = new SpecTest("pm.arbitrate", Seq("funcPublishArbitrate")) {
     def run(): Seq[TCheck] = withP(this) { d =>
       var pend = Map("alu" -> Cand(5, 35, data = 0x55), "mul" -> Cand(2, 32, data = 0x22), "div" -> Cand(7, 37, data = 0x77),
-        "branch" -> Cand(3, 33, data = 0x33), "mem" -> Cand(4, 34, data = 0x44))
+        "branch" -> Cand(3, 33, data = 0x33), "mem" -> Cand(4, 34, data = 0x44), "csr" -> Cand(6, 36, data = 0x66))
       var order = Seq.empty[Long]
       var losersHeld = true
-      while (pend.nonEmpty) {
+      var guard = 0
+      while (pend.nonEmpty && guard < 16) {
+        guard += 1
         val o = d.cycle(pend)
         if (o.granted.size != 1) losersHeld = false
         order :+= o.rob("s")
         pend = pend -- o.granted
       }
       Seq(
-        chk(order == Seq(2, 3, 4, 5, 7), "each cycle the oldest valid candidate is granted", s"$order"),
+        chk(order == Seq(2, 3, 4, 5, 6, 7), "each cycle the oldest valid candidate is granted (the CSR FuResult included, ADR-019D E-1)", s"$order"),
         chk(losersHeld, "exactly one candidate is taken per cycle; losers stay valid on their edges", "")
       )
     }

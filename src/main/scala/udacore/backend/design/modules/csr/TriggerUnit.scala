@@ -7,6 +7,30 @@ import udacore.common._
 import udacore.common.system.SystemConstants
 import udacore.backend.design.shared._
 
+// Trigger-facing bundles (moved verbatim from the deleted legacy csr/CSR.scala, ADR-019D).
+class CSRBreakPoint(val params: BackendParams) extends BackendBundle {
+  val valid = Bool()
+  val cause = UInt(4.W)
+  val exe   = Bool()
+  val load  = Bool()
+  val store = Bool()
+}
+
+class CSRTriggerFire(val params: BackendParams) extends BackendBundle {
+  val debugMode  = Bool()
+  val loadData   = Bool()
+  val breakPoint = new CSRBreakPoint(params)
+}
+
+class CSRTriggerSource(val params: BackendParams) extends BackendBundle {
+  val pc          = UInt(xLen.W)
+  val instruction = UInt(32.W)
+  val loadAddr    = UInt(xLen.W)
+  val storeAddr   = UInt(xLen.W)
+  val loadData    = UInt(xLen.W)
+  val storeData   = UInt(xLen.W)
+}
+
 // AGENT: DO NOT TOUCH CORE LOGIC
 class TriggerUnitIO(val params: BackendParams) extends BackendBundle {
   val regDebugMode = Input(Bool())

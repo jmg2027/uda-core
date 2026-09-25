@@ -84,3 +84,13 @@ class ResultHolder[T <: Data](gen: T, tag: T => RobTag, ev: RecoveryEvent, out: 
       bits  := d
     }
 }
+
+/** CSR (ADR-019D E-3): op[1:0] = 1 RW, 2 RS, 3 RC; op[2] = immediate form (operand
+  * zext(insn[19:15]) instead of src1). The CSR address is insn[31:20]. */
+object CsrOp {
+  val RW  = 1
+  val RS  = 2
+  val RC  = 3
+  val Imm = 4
+  def encode(kind: Int, imm: Boolean = false): Int = kind | (if (imm) Imm else 0)
+}

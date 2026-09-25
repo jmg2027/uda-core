@@ -210,6 +210,24 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       bu.branchResolutionOut.valid <- ... <- rc.recoveryEventOut <- ... <- pm grant.
     - 10 L1 tests (3 reference-model runs); 14 mutants, all red except the assert-only
       mutant B1 (no input can reach the BranchUnit asserts from outside; B4 shows they fire).
+19. ADR-019D (v0 Erratum 04, owner ruling on C-3): native CSR execution and trap-state seam.
+    - Spec: IssuedUop gains insn and sysOp; Dispatch CsrReqOut is Decoupled[IssuedUop] and
+      PublishMux CsrResultIn is Decoupled[FuResult]; CSRReq/CSRResult deleted; Interrupt is
+      the one six-line core bundle; CSRTrapRead/CSRTrapWrite get field tables (kind selects M
+      or S registers); CsrController gains funcCsrOpSemantics, funcCsrTrapWriteApply,
+      funcInterruptCtrlPublish, propCsrWriteIntent, propCsrSingleOwner; funcInterruptSampling
+      suppresses sampling at a presented serialize head (E-5).
+    - Design: legacy CsrReq/CsrResult/meta/epoch classes, BackendParams.legacyCsrEpochWidth,
+      BackendModule.epochWidth, and csr/CSR.scala deleted (the three trigger bundles moved
+      verbatim into TriggerUnit.scala); new Interrupt/CsrTrapRead/CsrTrapWrite/
+      TranslationContext classes, Priv/TrapWriteKind/CsrOp encodings; RS carries insn/sysOp;
+      the CSR FuResult joins PublishMux oldest-live arbitration (C-3 assert removed).
+    - Tests: dispatch.route checks the native CSR IssuedUop (robTag, operand, insn, sysOp);
+      rs.wakeup checks insn/sysOp propagation; pm.arbitrate includes a CSR candidate.
+      Mutants: RS insn dropped, RS sysOp dropped, CSR unrouted, CSR excluded from
+      arbitration - all red.
+    - Gaps reported: debug-entry target PC (design parameter until the owner fixes the ROM
+      address); DRet kind has no v0 SysOp producer.
 
 ## Validation status (run this session)
 
@@ -252,24 +270,22 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - OQ-I (new): confirm the ADR-015 D-15.4/15.5 reinterpretation (ISA-model equivalence,
   one-axis configs without N) recorded in ADR-000 - or write a small ADR amendment.
 - RV64 decode scheduling (carried; v0 is RV32 only).
-- Decided 2026-09-25: OQ-E waived (CSR.scala protection lifted for the ADR-019 rewrite; it
-  still carries the legacy epoch input/meta until then, kept compiling by
-  BackendParams.legacyCsrEpochWidth). OQ-D decided: v0 single-hart, non-coherent, no DMA.
+- Decided 2026-09-25: OQ-E waived (CSR.scala protection lifted; the file is deleted by
+  ADR-019D). OQ-D decided: v0 single-hart, non-coherent, no DMA.
   OQ-G closed: uncacheable accesses execute at the ROB head under HeadMemGrant (precise
   faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
   the SoC memory map is chosen).
 
 ## Open contradictions reported to the OWNER
 
-- C-3 CSR request bundle: DispatchUnit.CsrReqOut and CsrController.CSRReqIn use the legacy
-  bndCsrReq {csr, op, data, meta{rd(5), epoch}}. It has no robTag and cannot name a
-  physical destination, so a CSR uop's CsrResult cannot complete its ROB entry or write
-  its prd. It needs an ADR-019 CSR request shape with the CsrController/CSR.scala rewrite.
+- None open.
 
 ## Contradictions resolved by owner ruling
 
 - C-1 (RS select vs FU availability) and C-2 (BranchUnit/RC/PublishMux loop) are closed by
   ADR-019C.
+- C-3 (legacy CSR request/result without robTag/prd) is closed by ADR-019D, which also
+  fixes serialize-head interrupt sampling in the CommitUnit (E-5).
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -295,8 +311,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
-   Next: owner ruling on C-3 (CSR request/result shape), then CsrController/TrapController,
-   LSQ/StoreBuffer, DecodeUnit, and BackendTop wiring. RenameUnit spec ambiguities found
+   ADR-019D order: CommitUnit serialize-head sampling fix -> CsrController -> TrapController
+   -> CSR/Trap integration -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

@@ -30,7 +30,10 @@ object ReservationStationSpecTests {
   case class RA(s: Int, fu: UInt = FuType.Alu, prs1: Int = 0, prs2: Int = 0, r1: Boolean = true, r2: Boolean = true,
       prd: Int = 40, exc: Boolean = false, imm: Long = 0, pc: Long = 0x100)
 
-  case class Iss(s: Int, fu: Int, src1: Long, src2: Long, prd: Int, pc: Long)
+  case class Iss(s: Int, fu: Int, src1: Long, src2: Long, prd: Int, pc: Long, insn: Long = 0, sysOp: Int = 0)
+  /** Distinct per-allocation instruction word and sysOp (ADR-019D E-2 metadata). */
+  def insnOf(s: Int): Long = 0x73L | ((0x300L + s) & 0xfffL) << 20
+  def sysOpOf(s: Int): Int = s % 8
   case class Obs(allocReady: Boolean, allocFire: Boolean, issValid: Boolean, issFire: Boolean, iss: Option[Iss],
       prfReqValid: Boolean)
 
@@ -49,6 +52,7 @@ object ReservationStationSpecTests {
       alloc.foreach { r =>
         a.bits.robTag.wrap.poke(tagOf(r.s)._1.B); a.bits.robTag.idx.poke(tagOf(r.s)._2.U)
         a.bits.uop.fuType.poke(r.fu); a.bits.uop.op.poke(0.U); a.bits.uop.imm.poke(r.imm.U); a.bits.uop.pc.poke(r.pc.U)
+        a.bits.uop.insn.poke(insnOf(r.s).U); a.bits.uop.sysOp.poke(sysOpOf(r.s).U)
         a.bits.uop.exception.valid.poke(r.exc.B); a.bits.uop.isLoad.poke((r.fu.litValue == FuType.Mem.litValue).B)
         a.bits.prs1.poke(r.prs1.U); a.bits.prs2.poke(r.prs2.U)
         a.bits.prs1Ready.poke(r.r1.B); a.bits.prs2Ready.poke(r.r2.B)
@@ -77,7 +81,8 @@ object ReservationStationSpecTests {
       val iss = if (!iv) None else Some(Iss(
         seqOf((ib.robTag.wrap.peek().litToBoolean, ib.robTag.idx.peek().litValue.toInt), near),
         ib.fuType.peek().litValue.toInt, ib.src1.peek().litValue.toLong, ib.src2.peek().litValue.toLong,
-        ib.prd.peek().litValue.toInt, ib.pc.peek().litValue.toLong))
+        ib.prd.peek().litValue.toInt, ib.pc.peek().litValue.toLong, ib.insn.peek().litValue.toLong,
+        ib.sysOp.peek().litValue.toInt))
       val o = Obs(a.ready.peek().litToBoolean, alloc.nonEmpty && a.ready.peek().litToBoolean, iv,
         iv && issuedReady, iss, qv)
       dut.clock.step()
@@ -133,6 +138,8 @@ object ReservationStationSpecTests {
           chk(!wk.issValid && iss.issFire && iss.iss.exists(i => i.s == 0 && i.src1 == prf(33) && i.src2 == prf(34) && i.prd == 41),
             "a wakeup sets the source ready; the entry issues the next cycle with PRF operands", s"$wk $iss"),
           chk(iss1.iss.exists(_.s == 1), "a wakeup in the allocation cycle is captured", s"$iss1"),
+          chk(Seq(iss, iss1, iss2, iss3).flatMap(_.iss).forall(i => i.insn == insnOf(i.s) && i.sysOp == sysOpOf(i.s)),
+            "the entry carries insn and sysOp to the IssuedUop (ADR-019D E-2)", s"$iss $iss1 $iss2 $iss3"),
           chk(iss2.iss.exists(_.s == 2), "ready bits captured at rename allow issue the next cycle", s"$iss2"),
           chk(!other.issValid && iss3.iss.exists(_.s == 3), "only the matching prd wakes an entry", s"$other $iss3")
         )

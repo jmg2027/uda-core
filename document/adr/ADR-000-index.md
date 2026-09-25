@@ -35,7 +35,11 @@ RecoveryCause.Debug, WFI as a serializing NOP, the usingRvvi commit PRF read pat
 executing-privilege meaning of RetireToken.priv, trap-entry observation tokens, and atomic
 retiring redirects. **ADR-019C (v0 Erratum 03)** adds the FuAvailability view
 (rawNoDecoupled class 7) for oldest-ready-among-available RS selection and separates the
-BranchUnit's control-resolution and result-publication channels.
+BranchUnit's control-resolution and result-publication channels. **ADR-019D (v0 Erratum
+04)** replaces the legacy epoch-based CSR boundary with the native IssuedUop/FuResult CSR
+edge, makes the CsrController the sole committed CSR-state owner with a commit-gated
+staged write, replaces the trap/CSR seam bundles, and fixes serialize-head interrupt
+sampling in the CommitUnit.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -98,6 +102,7 @@ BranchUnit's control-resolution and result-publication channels.
 | [019A](ADR-019A-v0-erratum-01.md) | ADR-019 v0 erratum 01 (RS allocation set, sysOp, recovery ordering) | **accepted** | owner ruling 2026-09-25; amends 019 on top of the 242feaf freeze |
 | [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
 | [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
+| [019D](ADR-019D-v0-erratum-04.md) | ADR-019 v0 erratum 04 (native CSR execution and trap-state seam) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B + 019C |
 
 ## Status of pre-ADR-019 proposed experiments
 

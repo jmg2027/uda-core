@@ -96,10 +96,6 @@ case class BackendParams(
   def ftqIdxWidth: Int    = log2(frontend.ftqDepth) + 1
   def vAddrWidth: Int     = frontend.vAddrWidth
 
-  /** Width of the legacy epoch meta field of the owner-protected CSR.scala
-    * interface (OQ-E waived; removed when CSR.scala is rewritten). It has no ADR-019 recovery meaning. */
-  def legacyCsrEpochWidth: Int = 1
-
   private def log2(x: Int): Int     = Integer.numberOfTrailingZeros(x)
   private def log2Ceil(x: Int): Int = if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)
 }

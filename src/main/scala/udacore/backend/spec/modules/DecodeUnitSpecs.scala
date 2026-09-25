@@ -109,6 +109,7 @@ object DecodeUnitSpecs {
         "nothing after it until the ROB is empty again (ADR-004 D-4.2, re-based on the ROB)."
       )
       .note("ADR-019A E-2: sysOp is an explicit DecodedUop field; op never carries commit semantics.")
+      .note("ADR-019D E-3: a CSR uop's op is the CsrOp layout (RW, RS, RC, RWI, RSI, RCI); the CsrWrite rule above is propCsrWriteIntent.")
       .uses(intfDecodedPacketOut)
       .build()
   }

@@ -300,7 +300,9 @@ object CommitUnitSpecs {
         "head from the ROB, then hold (funcTrapHold); the head is killed by the ArchRedirect and " +
         "re-executes after the handler returns. Debug has priority over interrupts. Never " +
         "sampled during a trap hold, a serialization sequence, or while a HeadMemGrant is in " +
-        "flight (funcHeadMemGrant)."
+        "flight (funcHeadMemGrant). A presented head with serialize set (CSR read, CSR write, " +
+        "FENCE, FENCE.I, SFENCE.VMA, WFI, MRET, SRET) suppresses sampling from its first " +
+        "presented cycle until it retires or traps (ADR-019D E-5)."
       )
       .note(
         "ADR-019B: the pending/enabled decision, debugMode, and the committed privilege come " +

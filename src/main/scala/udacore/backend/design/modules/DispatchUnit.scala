@@ -18,7 +18,6 @@ import udacore.backend.spec.modules.DispatchUnitSpecs._
   */
 @LocalSpec(contDispatchUnit)
 class DispatchUnit(val params: BackendParams) extends BackendModule {
-  private val CSRControlWidth = udacore.common.ControlSignal.CSRControl.getWidth
   val io = IO(new Bundle {
     @LocalSpec(intfIssuedUopIn)
     val issuedUopIn = Flipped(Decoupled(new IssuedUop(params)))
@@ -42,7 +41,7 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     val addressGenerationReqOut = Decoupled(new IssuedUop(params))
 
     @LocalSpec(intfCsrReqOut)
-    val csrReqOut = Decoupled(new CsrReq(params))
+    val csrReqOut = Decoupled(new IssuedUop(params)) // ADR-019D E-1
 
     @LocalSpec(intfFuAvailabilityOut)
     val fuAvailabilityOut = Output(new FuAvailability(params))
@@ -58,7 +57,8 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
   /** The IssuedUop request edges by class. */
   private val edges: Seq[(UInt, DecoupledIO[IssuedUop])] = Seq(
     FuType.Alu -> io.aluReqOut, FuType.Mul -> io.multiplierReqOut, FuType.Div -> io.dividerReqOut,
-    FuType.Branch -> io.branchUnitReqOut, FuType.Mem -> io.addressGenerationReqOut)
+    FuType.Branch -> io.branchUnitReqOut, FuType.Mem -> io.addressGenerationReqOut,
+    FuType.Csr -> io.csrReqOut)
 
   // ---- funcFuAvailability (ADR-019C E-2: downstream readiness only) -----------------------
 
@@ -84,16 +84,9 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
       e.bits  := in.bits
     }
     io.bitAluReqOut.foreach { e => e.valid := false.B; e.bits := in.bits }
-    // CSR edge (legacy bndCsrReq shape until the CSR rewrite): address in imm, operand in src1.
-    io.csrReqOut.valid         := alive && is(FuType.Csr)
-    io.csrReqOut.bits.csr      := in.bits.imm(11, 0)
-    io.csrReqOut.bits.op       := in.bits.op(CSRControlWidth - 1, 0).asTypeOf(io.csrReqOut.bits.op)
-    io.csrReqOut.bits.data     := in.bits.src1
-    io.csrReqOut.bits.meta.rd    := 0.U
-    io.csrReqOut.bits.meta.epoch := 0.U
     // IssuedUopIn.ready equals the availability bit of the presented class (ADR-019C E-2).
     in.ready := fuAvailability.of(in.bits.fuType)
-    val offered = edges.map(_._2.valid) :+ io.csrReqOut.valid
+    val offered = edges.map(_._2.valid)
     assert(PopCount(offered) <= 1.U, "FuRoute: a uop was offered on more than one edge")
   }
 }

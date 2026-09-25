@@ -228,7 +228,9 @@ object BackendBundlesSpecs {
           List("src1, src2", "UInt(XLen)", "Operand values."),
           List("imm, pc", "UInt", "Immediate and PC (branches, AUIPC, JAL/JALR link value)."),
           List("prd, hasDest", "UInt(PhysRegIdWidth), Bool", "Destination."),
-          List("checkpointId, prediction", "BranchCheckpointId, PredictionView", "Branch resolution inputs.")
+          List("checkpointId, prediction", "BranchCheckpointId, PredictionView", "Branch resolution inputs."),
+          List("insn", "UInt(ILen)", "Instruction word (ADR-019D E-2): the CSR address insn[31:20], uimm = zext(insn[19:15]), and the illegal-instruction tval."),
+          List("sysOp", "SysOp", "Copied from the DecodedUop (ADR-019D E-2): for a CSR uop, CsrWrite means write semantics and None a read-only access; write intent is never inferred from an operand value.")
         )
       )
       .uses(bndRobTag)
@@ -582,15 +584,8 @@ object BackendBundlesSpecs {
   }
 
   // ---- Trap / CSR -----------------------------------------------------------
-  // bndInterrupt, bndCsrReq, bndCsrResult, bndCsrTrapRead, bndCsrTrapWrite keep
-  // their names: the owner-protected csr/CSR.scala binds the design bundles.
-
-  val bndInterrupt = spec {
-    BUNDLE("Interrupt")
-      .desc("Raw interrupt source lines (machine and supervisor external/timer/software) as seen by the CSR mip view.")
-      .note("Fields: meip, mtip, msip, seip, stip, ssip (sampled only at a retire boundary by CommitUnit).")
-      .build()
-  }
+  // ADR-019D: the CSR execution edge uses IssuedUop/FuResult; the legacy CSRReq/CSRResult
+  // bundles are deleted. The raw Interrupt lines are CoreBundlesSpecs.bndInterrupt.
 
   val bndInterruptCtrl = spec {
     BUNDLE("InterruptCtrl")
@@ -623,37 +618,35 @@ object BackendBundlesSpecs {
       .build()
   }
 
-  val bndCsrReq = spec {
-    BUNDLE("CSRReq")
-      .desc("CSR operation request (the CSR uop always executes at the ROB head).")
-      .note("Fields: csr, op, data, meta{rd}; the legacy CSR.scala (to be rewritten, OQ-E waived) still carries a legacy epoch meta field, which has no ADR-019 meaning.")
-      .build()
-  }
-
-  val bndCsrResult = spec {
-    BUNDLE("CSRResult")
-      .desc("CSR execution result: the OLD CSR value as the rd writeback, plus illegal-access exception.")
-      .build()
-  }
-
   val bndCsrTrapRead = spec {
     BUNDLE("CSRTrapRead")
-      .desc("Live trap-CSR snapshot read by TrapController at the commit head.")
-      .note("Fields: mstatus, mepc, mcause, mtval, mtvec, medeleg, mideleg, mie, mip, sepc, scause, stval, stvec, priv, dpc, dcsr.")
+      .desc("Live trap-CSR snapshot read by TrapController at the commit head: a combinational view of the CsrController's committed state (ADR-019D E-6/E-7).")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("mstatus", "UInt(XLen)", "Full mstatus (sstatus is its restricted view)."),
+          List("mepc, mcause, mtval, mtvec", "UInt(XLen)", "Machine trap registers."),
+          List("medeleg, mideleg", "UInt(XLen)", "Delegation masks."),
+          List("mie, mip", "UInt(XLen)", "Enables and pending bits (mip includes the raw lines)."),
+          List("sepc, scause, stval, stvec", "UInt(XLen)", "Supervisor trap registers."),
+          List("priv", "Priv", "Committed privilege."),
+          List("dpc, dcsr", "UInt(XLen)", "Debug registers.")
+        )
+      )
       .build()
   }
 
   val bndCsrTrapWrite = spec {
     BUNDLE("CSRTrapWrite")
-      .desc("Single trap/return application packet driven only by TrapController (ADR-004 D-4.3).")
+      .desc("Single trap/return application packet driven only by TrapController (ADR-004 D-4.3) and applied only by the CsrController (ADR-019D E-6/E-7).")
       .markdownTable(
         List("field", "meaning"),
         List(
-          List("kind", "TrapEntryM | TrapEntryS | MRet | SRet | DRet | DebugEntry"),
-          List("xepc, xcause, xtval", "written to the M or S trap registers selected by delegation"),
-          List("mstatusNext", "mstatus/sstatus after the MIE/SIE/MPIE/SPIE/MPP/SPP push or pop"),
-          List("privNext", "privilege after the transition"),
-          List("dpc, dcsrNext", "debug entry/return state")
+          List("kind", "TrapEntryM | TrapEntryS | MRet | SRet | DRet | DebugEntry; selects the registers written"),
+          List("xepc, xcause, xtval", "TrapEntryM: mepc/mcause/mtval; TrapEntryS: sepc/scause/stval; ignored otherwise"),
+          List("mstatusNext", "mstatus after the MIE/SIE/MPIE/SPIE/MPP/SPP/MPRV push or pop (TrapEntryM/S, MRet, SRet)"),
+          List("privNext", "privilege after the transition (every kind)"),
+          List("dpc, dcsrNext", "DebugEntry: dpc and dcsr written, debug mode entered; DRet leaves debug mode")
         )
       )
       .build()

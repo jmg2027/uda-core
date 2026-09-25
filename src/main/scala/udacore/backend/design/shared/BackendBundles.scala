@@ -5,9 +5,7 @@ import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs.{funcRecoveryKills, funcRobOlder}
-import udacore.core.spec.shared.CoreBundlesSpecs.bndExceptionInfo
-import udacore.common.Causes
-import udacore.common.ControlSignal.CSRControl
+import udacore.core.spec.shared.CoreBundlesSpecs.{bndExceptionInfo, bndInterrupt}
 
 /** Backend bundle implementations.
   *
@@ -15,10 +13,7 @@ import udacore.common.ControlSignal.CSRControl
   * rename allocation) are authored together with the RTL that first drives
   * them, each against its BackendBundlesSpecs field table; the remaining
   * ADR-019 bundles (RobEntry, LSQ entries, ...) are added with their vertices.
-  * The CSR-facing bundles at the end are the interface of the legacy
-  * csr/CSR.scala (OQ-E waived; rewritten with the ADR-019 RTL) and keep their
-  * shape until that file is rewritten; their `epoch` meta fields are legacy of
-  * the superseded machine and carry no ADR-019 meaning.
+  * The trap/CSR seam bundles at the end follow ADR-019D E-6.
   */
 
 // ---- Enumerated payload codes ----------------------------------------------
@@ -337,6 +332,8 @@ class IssuedUop(val params: BackendParams) extends BackendBundle {
   val hasDest      = Bool()
   val checkpointId = new BranchCheckpointId(params)
   val prediction   = new PredictionView(params)
+  val insn         = UInt(iLen.W)             // ADR-019D E-2
+  val sysOp        = UInt(SysOp.width.W)      // ADR-019D E-2
 }
 
 @LocalSpec(bndFuAvailability)
@@ -432,56 +429,75 @@ class RobStatus(val params: BackendParams) extends BackendBundle {
   val headTag = new RobTag(params)
 }
 
-// ---- Legacy CSR-facing bundles ----------------------------------------------
+// ---- Trap / CSR seam (ADR-019D E-6) ---------------------------------------------
+
+/** Privilege encodings (RISC-V). */
+object Priv {
+  val U = 0.U(2.W)
+  val S = 1.U(2.W)
+  val M = 3.U(2.W)
+}
 
 @LocalSpec(bndInterrupt)
-class Interrupt() extends Bundle {
-  val e = Bool() // External interrupt
-  val t = Bool() // Timer interrupt
-  val s = Bool() // Software interrupt
-}
-
-class CsrReqMeta(val params: BackendParams) extends BackendBundle {
-  val rd    = UInt(regIdWidth.W)
-  val epoch = UInt(epochWidth.W)
-}
-
-@LocalSpec(bndCsrReq)
-class CsrReq(val params: BackendParams) extends BackendBundle {
-  val csr  = UInt(12.W)
-  val op   = CSRControl()
-  val data = UInt(xLen.W)
-  val meta = new CsrReqMeta(params)
-}
-
-class CsrResultTraps extends Bundle {
-  val exception = Bool()
-  val cause     = UInt(Causes.all.length.W)
-}
-
-class CsrResultMeta(val params: BackendParams) extends BackendBundle {
-  val rd    = UInt(regIdWidth.W)
-  val epoch = UInt(epochWidth.W)
-}
-
-@LocalSpec(bndCsrResult)
-class CsrResult(val params: BackendParams) extends BackendBundle {
-  val csr   = UInt(12.W)
-  val data  = UInt(xLen.W)
-  val traps = new CsrResultTraps
-  val meta  = new CsrResultMeta(params)
+class Interrupt extends Bundle {
+  val meip = Bool()
+  val mtip = Bool()
+  val msip = Bool()
+  val seip = Bool()
+  val stip = Bool()
+  val ssip = Bool()
 }
 
 @LocalSpec(bndCsrTrapRead)
 class CsrTrapRead(val params: BackendParams) extends BackendBundle {
-  val mtvec   = UInt(xLen.W)
   val mstatus = UInt(xLen.W)
+  val mepc    = UInt(xLen.W)
+  val mcause  = UInt(xLen.W)
+  val mtval   = UInt(xLen.W)
+  val mtvec   = UInt(xLen.W)
+  val medeleg = UInt(xLen.W)
+  val mideleg = UInt(xLen.W)
+  val mie     = UInt(xLen.W)
+  val mip     = UInt(xLen.W)
+  val sepc    = UInt(xLen.W)
+  val scause  = UInt(xLen.W)
+  val stval   = UInt(xLen.W)
+  val stvec   = UInt(xLen.W)
+  val priv    = UInt(2.W)
+  val dpc     = UInt(xLen.W)
+  val dcsr    = UInt(xLen.W)
+}
+
+/** bndCsrTrapWrite.kind. */
+object TrapWriteKind {
+  val width      = 3
+  val TrapEntryM = 0.U(width.W)
+  val TrapEntryS = 1.U(width.W)
+  val MRet       = 2.U(width.W)
+  val SRet       = 3.U(width.W)
+  val DRet       = 4.U(width.W)
+  val DebugEntry = 5.U(width.W)
 }
 
 @LocalSpec(bndCsrTrapWrite)
 class CsrTrapWrite(val params: BackendParams) extends BackendBundle {
-  val mepc    = UInt(xLen.W)
-  val mcause  = UInt(xLen.W)
-  val mtval   = UInt(xLen.W)
-  val mstatus = UInt(xLen.W)
+  val kind        = UInt(TrapWriteKind.width.W)
+  val xepc        = UInt(xLen.W)
+  val xcause      = UInt(xLen.W)
+  val xtval       = UInt(xLen.W)
+  val mstatusNext = UInt(xLen.W)
+  val privNext    = UInt(2.W)
+  val dpc         = UInt(xLen.W)
+  val dcsrNext    = UInt(xLen.W)
+}
+
+@LocalSpec(bndTranslationContext)
+class TranslationContext extends Bundle {
+  val satpMode = Bool()
+  val asid     = UInt(9.W)
+  val rootPpn  = UInt(22.W)
+  val priv     = UInt(2.W)
+  val dataPriv = UInt(2.W)
+  val sum      = Bool()
+  val mxr      = Bool()
 }

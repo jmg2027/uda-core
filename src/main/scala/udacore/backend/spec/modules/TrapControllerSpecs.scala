@@ -16,7 +16,9 @@ object TrapControllerSpecs {
         "Consumes commit-head hand-offs (synchronous exceptions, interrupts, xRET, Refetch) " +
         "and the live trap-CSR snapshot, and produces exactly one CSRTrapWrite (when " +
         "architectural trap state changes) and exactly one ArchRedirect per hand-off. It " +
-        "implements M/S/U trap routing with medeleg/mideleg delegation."
+        "implements M/S/U trap routing with medeleg/mideleg delegation. It computes transitions " +
+        "but owns no CSR register: the CsrController is the sole committed CSR-state owner " +
+        "(ADR-019D E-7)."
       )
       .has(
         intfExceptionIn,
@@ -80,6 +82,7 @@ object TrapControllerSpecs {
       )
       .uses(intfExceptionIn, intfCsrTrapReadIn, intfCsrTrapWriteOut, intfArchRedirectOut)
       .note("ADR-004 D-4.3: the CSR node performs no trap encoding; this vertex is the only trap-CSR writer.")
+      .note("ADR-019D E-6: kind TrapEntryM/TrapEntryS selects the M or S trap registers; the CsrController applies the packet.")
       .build()
   }
 
@@ -117,6 +120,7 @@ object TrapControllerSpecs {
       .uses(intfExceptionIn, intfCsrTrapWriteOut, intfArchRedirectOut)
       .note("ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP.")
       .note("ADR-019B E-1: the debug-entry ArchRedirect carries cause Debug, never Trap.")
+      .note("ADR-019D gap: the debug-entry target PC is not fixed by a contract; v0 uses a design parameter until the owner fixes the debug-module ROM address.")
       .build()
   }
 

@@ -20,9 +20,6 @@ sealed protected trait HasBackendParams {
   def fetchSlotWidth: Int   = params.fetchSlotWidth
   def vAddrWidth: Int       = params.vAddrWidth
 
-  /** Only the legacy csr/CSR.scala reads this (removed when it is rewritten). */
-  def epochWidth: Int = params.legacyCsrEpochWidth
-
   val bytesize: Int = 8
   val halfsize: Int = bytesize * 2
   val wordsize: Int = bytesize * 4

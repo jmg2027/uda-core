@@ -88,7 +88,8 @@ object PublishMuxSpecs {
   val intfCsrResultIn = spec {
     INTERFACE("CsrResultIn")
       .desc("CsrController results (old CSR value, or illegal-access exception).")
-      .uses(bndCsrResult)
+      .note("ADR-019D E-1: a FuResult that joins the oldest-live arbitration like every other result input.")
+      .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
   }

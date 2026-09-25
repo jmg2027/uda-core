@@ -21,6 +21,8 @@ class RsEntry(val params: BackendParams) extends BackendBundle {
   val hasDest      = Bool()
   val checkpointId = new BranchCheckpointId(params)
   val prediction   = new PredictionView(params)
+  val insn         = UInt(iLen.W)        // ADR-019D E-2
+  val sysOp        = UInt(SysOp.width.W) // ADR-019D E-2
 }
 
 /** ReservationStation (spec: ReservationStationSpecs; ADR-019, ADR-019A E-1, ADR-019C E-1/E-3).
@@ -126,6 +128,8 @@ class ReservationStation(val params: BackendParams) extends BackendModule {
     iu.bits.hasDest      := sel.hasDest
     iu.bits.checkpointId := sel.checkpointId
     iu.bits.prediction   := sel.prediction
+    iu.bits.insn         := sel.insn
+    iu.bits.sysOp        := sel.sysOp
     heldValid := iu.valid && !iu.ready
     heldIdx   := offerIdx
     iu.fire
@@ -163,6 +167,8 @@ class ReservationStation(val params: BackendParams) extends BackendModule {
     e.hasDest       := al.bits.hasDest
     e.checkpointId  := al.bits.checkpointId
     e.prediction    := u.prediction
+    e.insn          := u.insn
+    e.sysOp         := u.sysOp
     assert(!u.exception.valid && u.fuType =/= FuType.System, "ReservationStation: only needsRs uops are allocated")
     assert(!ev.valid, "ReservationStation: allocation in a RecoveryEvent cycle")
   }

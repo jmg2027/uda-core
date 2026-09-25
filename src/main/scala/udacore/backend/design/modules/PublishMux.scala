@@ -14,8 +14,7 @@ import udacore.backend.spec.modules.PublishMuxSpecs._
   *
   * Recovery stance: PublishMux holds no tokens and observes no RecoveryEvent; every producer
   * drops a result funcRecoveryKills selects in the event cycle, so only live candidates
-  * reach this vertex. CSR results use the legacy bndCsrResult (no robTag) and cannot be
-  * published until the CSR request/result shape is amended (HANDOFF C-3).
+  * reach this vertex. CSR results are FuResults and join the arbitration (ADR-019D E-1).
   */
 @LocalSpec(contPublishMux)
 class PublishMux(val params: BackendParams) extends BackendModule {
@@ -36,7 +35,7 @@ class PublishMux(val params: BackendParams) extends BackendModule {
     val branchResultIn = Flipped(Decoupled(new FuResult(params)))
 
     @LocalSpec(intfCsrResultIn)
-    val csrResultIn = Flipped(Decoupled(new CsrResult(params)))
+    val csrResultIn = Flipped(Decoupled(new FuResult(params)))
 
     @LocalSpec(intfMemResultIn)
     val memResultIn = Flipped(Decoupled(new MemResult(params)))
@@ -59,7 +58,8 @@ class PublishMux(val params: BackendParams) extends BackendModule {
   private val noCfi = 0.U.asTypeOf(new CfiOutcome(params))
   private val m = io.memResultIn
   private val cands: Seq[Cand] =
-    Seq(fu(io.aluResultIn), fu(io.multiplierResultIn), fu(io.dividerResultIn), fu(io.branchResultIn)) ++
+    Seq(fu(io.aluResultIn), fu(io.multiplierResultIn), fu(io.dividerResultIn), fu(io.branchResultIn),
+      fu(io.csrResultIn)) ++
     io.bitAluResultIn.map(fu).toSeq :+
     new Cand(m.valid, m.bits.robTag, m.bits.prd, m.bits.wen, m.bits.data, m.bits.exception, noCfi, m.bits.headExecute, m.ready)
 
@@ -100,10 +100,6 @@ class PublishMux(val params: BackendParams) extends BackendModule {
     cands.zipWithIndex.foreach { case (c, i) => c.ready := fire && win === i.U }
     fire
   }
-
-  // CSR results: legacy bndCsrResult carries no robTag (HANDOFF C-3); never accepted here.
-  io.csrResultIn.ready := false.B
-  assert(!io.csrResultIn.valid, "PublishArbitrate: a CSR result cannot be published before the C-3 amendment")
 
   // ---- propSingleDrain (simulation assertion) -------------------------------------------------------
 

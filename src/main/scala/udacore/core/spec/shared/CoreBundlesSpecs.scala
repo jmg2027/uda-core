@@ -29,14 +29,12 @@ object CoreBundlesSpecs {
 
   val bndInterrupt = spec {
     BUNDLE("Interrupt")
-      .desc("Interrupt source lines from outer domains.")
+      .desc("Raw interrupt source lines from outer domains (ADR-019D E-6: the one Interrupt definition).")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("e", "Bool", "Machine external interrupt"),
-          List("t", "Bool", "Machine timer interrupt"),
-          List("s", "Bool", "Machine software interrupt"),
-          List("se", "Bool", "Supervisor external interrupt")
+          List("meip, mtip, msip", "Bool", "Machine external, timer, and software interrupt lines."),
+          List("seip, stip, ssip", "Bool", "Supervisor external, timer, and software interrupt lines (ORed with the software-writable mip bits).")
         )
       )
       .note(

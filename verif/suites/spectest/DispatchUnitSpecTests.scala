@@ -25,9 +25,10 @@ object DispatchUnitSpecTests {
   class Drv(val dut: DispatchUnit) {
     val io = dut.io
     var ready: Map[String, Boolean] = classes.map(_._1 -> true).toMap
+    var insnOut: (Long, Int) = (0L, 0)
     private def outPort(n: String) = n match {
       case "alu" => io.aluReqOut; case "mul" => io.multiplierReqOut; case "div" => io.dividerReqOut
-      case "branch" => io.branchUnitReqOut; case "mem" => io.addressGenerationReqOut
+      case "branch" => io.branchUnitReqOut; case "mem" => io.addressGenerationReqOut; case "csr" => io.csrReqOut
     }
     def cycle(uop: Option[(Int, UInt, Long)] = None, event: Option[(UInt, Int)] = None, step: Boolean = true): Obs = {
       val i = io.issuedUopIn
@@ -36,19 +37,19 @@ object DispatchUnitSpecTests {
         i.bits.robTag.wrap.poke(tagOf(s)._1.B); i.bits.robTag.idx.poke(tagOf(s)._2.U)
         i.bits.fuType.poke(fu); i.bits.op.poke(0.U); i.bits.src1.poke(src1.U); i.bits.src2.poke(7.U)
         i.bits.imm.poke(0x300.U); i.bits.prd.poke(33.U)
+        i.bits.insn.poke((0x30012073L | (s.toLong << 7 & 0xf80L)).U); i.bits.sysOp.poke(7.U)
       }
-      for ((n, _) <- classes) if (n == "csr") io.csrReqOut.ready.poke(ready(n).B) else outPort(n).ready.poke(ready(n).B)
+      for ((n, _) <- classes) outPort(n).ready.poke(ready(n).B)
       val e = io.recoveryEventIn
       e.valid.poke(event.nonEmpty.B)
       event.foreach { case (k, s) => e.kind.poke(k); e.robTag.wrap.poke(tagOf(s)._1.B); e.robTag.idx.poke(tagOf(s)._2.U) }
       val av = io.fuAvailabilityOut
       val avail = Map("alu" -> av.alu, "mul" -> av.mul, "div" -> av.div, "branch" -> av.branch, "mem" -> av.mem, "csr" -> av.csr)
         .map { case (k, v) => k -> v.peek().litToBoolean }
-      val outs = classes.map { case (n, _) =>
-        n -> (if (n == "csr") io.csrReqOut.valid.peek().litToBoolean else outPort(n).valid.peek().litToBoolean) }.toMap
-      val payload = classes.filter(_._1 != "csr").map { case (n, _) =>
-        n -> (outPort(n).bits.robTag.idx.peek().litValue.toInt, outPort(n).bits.src1.peek().litValue.toLong) }.toMap ++
-        Map("csr" -> (io.csrReqOut.bits.csr.peek().litValue.toInt, io.csrReqOut.bits.data.peek().litValue.toLong))
+      val outs = classes.map { case (n, _) => n -> outPort(n).valid.peek().litToBoolean }.toMap
+      val payload = classes.map { case (n, _) =>
+        n -> (outPort(n).bits.robTag.idx.peek().litValue.toInt, outPort(n).bits.src1.peek().litValue.toLong) }.toMap
+      insnOut = io.csrReqOut.bits.insn.peek().litValue.toLong -> io.csrReqOut.bits.sysOp.peek().litValue.toInt
       val o = Obs(i.ready.peek().litToBoolean, outs, avail, payload)
       if (step) dut.clock.step()
       o
@@ -71,9 +72,10 @@ object DispatchUnitSpecTests {
       val single = routed.map { case (n, o) =>
         chk(o.outs(n) && o.outs.count(_._2) == 1 && o.inReady,
           s"a $n uop is offered on its own request edge only and accepted", s"$o") }
-      val pay = routed.filter(_._1 != "csr").map { case (n, o) =>
+      val pay = routed.map { case (n, o) =>
         chk(o.payload(n)._2 == 0x100L + classes.indexWhere(_._1 == n), s"the $n edge carries the IssuedUop payload", s"${o.payload(n)}") }
       val csr = routed.find(_._1 == "csr").get._2
+      val csrInsn = d.insnOut
       // Backpressure: the presented class not ready -> not accepted, others unaffected.
       d.ready = d.ready.updated("div", false)
       val bp = d.cycle(Some((9, FuType.Div, 1L)))
@@ -84,7 +86,8 @@ object DispatchUnitSpecTests {
       val older  = d.cycle(Some((11, FuType.Branch, 4L)), event = Some((RecoveryKind.BranchMispredict, 11)))
       val arch   = d.cycle(Some((13, FuType.Mul, 5L)), event = Some((RecoveryKind.ArchRedirect, 13)))
       single ++ pay ++ Seq(
-        chk(csr.payload("csr")._1 == 0x300 && csr.payload("csr")._2 == 0x100L + 5, "a CSR uop reaches the CSR edge with its address and operand", s"$csr"),
+        chk(csr.payload("csr")._1 == 6 && csr.payload("csr")._2 == 0x100L + 5, "a CSR uop reaches the CSR edge as an IssuedUop with its robTag and operand (ADR-019D E-1)", s"$csr"),
+        chk(csrInsn == ((0x30012073L | (6L << 7)) -> 7), "the CSR edge carries insn and sysOp (ADR-019D E-2)", s"$csrInsn"),
         chk(!bp.inReady && bp.outs("div") && bp.outs.count(_._2) == 1, "an unready class does not accept its uop", s"$bp"),
         chk(other.inReady && other.outs("alu"), "other classes are unaffected", s"$other"),
         chk(!killed.outs.exists(_._2), "a token killed by the same-cycle RecoveryEvent is not routed", s"$killed"),

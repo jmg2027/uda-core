@@ -93,8 +93,9 @@ object DispatchUnitSpecs {
 
   val intfCsrReqOut = spec {
     INTERFACE("CsrReqOut")
-      .desc("CSR instructions (always the only live uop, by the rename serialization gate).")
-      .uses(bndCsrReq)
+      .desc("CSR instructions as IssuedUops (always the only live uop, by the rename serialization gate).")
+      .note("ADR-019D E-1: the native CSR edge carries IssuedUop (robTag, prd, hasDest, insn, sysOp, op, src1); no legacy CSRReq.")
+      .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
   }
