@@ -38,7 +38,6 @@ propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
 propTrapHoldUntilRedirect
-propArchRedirectWins
 propBranchCompletesOnce
 propCheckpointRestoreExact
 propCommitInOrder
@@ -54,7 +53,6 @@ propRobTagConsecutive
 propRsIssueOnlyReady
 propRsRecoveryKeepsOlder
 propSingleDrain
-propSingleRecoveryPerCycle
 propTrapSingleWriter
 
 # WP-5 LoadStoreQueue asserts

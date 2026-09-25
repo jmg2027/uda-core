@@ -125,6 +125,25 @@ class RecoveryEvent(val params: BackendParams) extends BackendBundle {
   val cause        = UInt(RecoveryCause.width.W)
 }
 
+@LocalSpec(bndBranchResolution)
+class BranchResolution(val params: BackendParams) extends BackendBundle {
+  val robTag         = new RobTag(params)
+  val checkpointId   = new BranchCheckpointId(params)
+  val ftqIdx         = UInt(ftqIdxWidth.W)
+  val pc             = UInt(vAddrWidth.W)
+  val outcome        = new CfiOutcome(params)
+  val redirectTarget = UInt(vAddrWidth.W)
+  val cause          = UInt(RecoveryCause.width.W)
+}
+
+@LocalSpec(bndArchRedirect)
+class ArchRedirect(val params: BackendParams) extends BackendBundle {
+  val robTag = new RobTag(params)
+  val ftqIdx = UInt(ftqIdxWidth.W)
+  val target = UInt(vAddrWidth.W)
+  val cause  = UInt(RecoveryCause.width.W)
+}
+
 /** The single program-order function and the common kill predicate (ADR-019
   * D-19.9). Every speculative holder evaluates recovery only through these. */
 object RobOrder {

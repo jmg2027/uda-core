@@ -132,6 +132,18 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    cite ADR-019A. New L1: rename.allocateAtomic, rename.archRecovery, rob.allocate.sysOp,
    decode.sysOpClassify (SystemOpDecode pins the table ahead of the DecodeUnit RTL);
    13 mutants all red.
+10. RTL block 3 - RecoveryController (spec 242feaf + ADR-019A):
+   - L1 SpecTests `verif/suites/spectest/RecoveryControllerSpecTests.scala` (4 tests) bind
+     funcRecoverySelect, funcRecoveryPublish, propSingleRecoveryPerCycle,
+     propArchRedirectWins; PENDING x4 against the typed-IO shell.
+   - RTL: both inputs always ready; the event is formed combinationally in the request
+     cycle (published or discarded, never queued); ArchRedirect wins; checkpointId and
+     cfiOutcome are driven 0 on an ArchRedirect. BranchResolution/ArchRedirect bundles added.
+   - Asserts check the output port every consumer observes: event valid iff a request,
+     the event equals the selected request (SingleRecoveryPerCycle), ArchRedirect kind on
+     a collision (ArchRedirectWins); plus request-cause legality.
+   - Mutation controls (7) all red; four of them stopped by the property asserts, and the
+     registered-publish mutant too once the asserts read the output port.
 
 ## Validation status (run this session)
 
@@ -142,20 +154,20 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 27/27 PASS (6 pre-existing + 2 params +
-  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode) after ADR-019A.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 31/31 PASS (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController) after RTL block 3.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 55 names (funcRobOlder now bound by rob.order) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 54 names (funcRobOlder bound by rob.order, propArchRedirectWins by rc.archWins) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
 - spec-check-allow: 63 PROPERTYs (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
-  propRobCompletionTargetsLive) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins; now 61) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -180,6 +192,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   a CheckpointRelease whose owner the same-cycle RecoveryEvent kills is ignored;
   LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings live in
   BackendBundles.scala; the AllocateAtomic fork needs ROB/RS/LSQ ready independent of valid.
+- RecoveryEvent is combinational from BranchUnit/TrapController to every holder (the spec
+  requires publication in the request cycle); a registered stage would need an ADR and a
+  BranchUnit hold/kill rule. FTQ derives HistoryRestore.pc as block base + 4 * slot.
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
 - DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
@@ -191,8 +206,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-1. Spec frozen at 242feaf; RenameUnit and ReorderBuffer RTL are green. Next:
-   RecoveryController -> CommitUnit, each red-first. RenameUnit spec ambiguities found
+1. Spec frozen at 242feaf + ADR-019A; RenameUnit, ReorderBuffer, RecoveryController RTL
+   are green. Next: CommitUnit, red-first. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

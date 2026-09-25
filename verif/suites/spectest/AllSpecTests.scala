@@ -10,7 +10,7 @@ package verif.spectest
 object RunSpecTests {
   val registry: Seq[SpecTest] =
     UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all ++ RenameUnitSpecTests.all ++ ReorderBufferSpecTests.all ++
-      SystemOpDecodeSpecTests.all
+      SystemOpDecodeSpecTests.all ++ RecoveryControllerSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }
