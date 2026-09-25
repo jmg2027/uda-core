@@ -3,12 +3,13 @@
 ## Documentation Reading Order
 
 1. **[README.md](README.md)** - Core design philosophy and quick start
-2. **[docs/](docs/)** - Detailed design documentation
+2. **[ADR-019](document/adr/ADR-019-conventional-ooo-root-architecture.md)** - Binding root architecture for OoO v0 work
+3. **[docs/](docs/)** - Detailed design documentation
    - `foundations/` - Core design principles
    - `practices/` - Implementation guidelines
    - `process/` - Development workflow
    - `tooling/` - Build system
-3. **This document (AGENTS.md)** - Mandatory rules and workflows
+4. **This document (AGENTS.md)** - Mandatory rules and workflows
 
 ## Binding Rules (mechanically enforced on this branch)
 
@@ -17,10 +18,13 @@
 - Gates (also run by the pre-commit hook): `bash verif/bin/build.sh` must report 0 errors;
   `python3 tools/spec-check.py` must report 0 errors. A new PROPERTY ships with its paired
   design assert or an explicit `tools/spec-check-allow.txt` entry (ADR-015).
-- Edge doctrine: every interface is ready/valid except the five sanctioned rawNoDecoupled
-  classes enumerated in `common/spec/DesignRuleSpecs.rawNoDecoupled` (epoch broadcast,
-  async inputs, boot statics, commit-broadcast strobes, wakeup broadcast). No flush/kill
-  side-channels; stalls are ready backpressure only.
+- Edge doctrine: every token-moving interface is ready/valid except the sanctioned
+  rawNoDecoupled FACT/static classes enumerated in
+  `common/spec/DesignRuleSpecs.rawNoDecoupled`: epoch/generation broadcast where still
+  used, async inputs, boot statics, commit-broadcast strobes, wakeup broadcast, and the
+  ADR-019 speculative RecoveryEvent broadcast. No ad-hoc flush/kill side-channels are
+  allowed: selective squash is derived locally from RecoveryEvent identity. Stalls are
+  ready backpressure only.
 - Extensions follow ADR-017: optional vertices plus data contributions (decode rows,
   CSR map entries). Feature-style host-signal weaving is forbidden.
 - Spec-TDD (ADR-018): every FUNCTION/PROPERTY binds to a test by name (SpecTest
@@ -40,7 +44,7 @@ package udacore.subsystem.spec.modules
 
 import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
-import udacore.common.spec.DesignSpecs._
+import udacore.common.spec.DesignRuleSpecs._
 
 object ModuleNameSpecs {
   val contModuleName = spec {
@@ -94,11 +98,11 @@ Choose categories that make your spec naturally readable. These are organization
 ### Core Spec Properties
 
 ```scala
-import udacore.common.spec.DesignSpecs._
+import udacore.common.spec.DesignRuleSpecs._
 
 rawTop              // Graph structure only, no logic blocks
 rawReadyValidIntf   // Interface implements ready/valid protocol
-rawNoDecoupled      // Exception: epoch, interrupt, debugReq only
+rawNoDecoupled      // Broadcast FACT/static exception classes only; see DesignRuleSpecs
 ```
 
 ### Documentation Methods
@@ -262,14 +266,16 @@ All specifications and documentation use English:
 
 - **Unified Dataflow Architecture**: All components are vertices with ready/valid edges
 - **Spec-First Development**: Specifications before implementation
-- **Epoch-Based Control**: Epoch values replace flush signals
+- **Selective OoO Recovery**: ADR-019 RecoveryEvent + ROB age/checkpoints recover younger speculative work; epochs are not the branch-ordering mechanism
 - **Module Encapsulation**: Clear contracts and interfaces
 - **Parameter Resolution**: Elaboration-time, unused hardware optimized away
 - **Interface-by-Interface**: Every spec interface needs design implementation
 
 ## Ready/Valid Integration
 
-Do not introduce queues, skid buffers, or response registers unless specs require them. Gate `valid` or use kill mechanisms instead.
+Do not introduce queues, skid buffers, or response registers unless specs require them.
+Do not invent per-module kill wires. For branch recovery, consume the common ADR-019
+RecoveryEvent and derive local younger-than invalidation from the shared ordering rule.
 
 ## Directory Structure
 
@@ -290,6 +296,36 @@ domain/
 - Package names match physical directories
 - Single spec file = single spec object = single CONTRACT
 - Reusable assets in `shared/`, promote to `api/` when parents need them
+
+
+## ADR-019 OoO v0 Architecture Overlay
+
+For new OoO work, ADR-019 is the root architecture decision. Older ADR/spec text is
+historical where ADR-019 explicitly supersedes it.
+
+Non-negotiable v0 anchors:
+
+- RV32IM with fixed 32-bit instructions. No RVC, RvcExpander, half-word slot/carry,
+  or BranchPredecoder prediction path.
+- Conventional frontend prediction from fetch PC: BTB + TAGE + RAS + FTQ + fetch buffer.
+- ITLB/DTLB + shared Sv32 PTW; U/S privilege.
+- VIPT L1 I-cache and D-cache reference point.
+- Explicit data-less ROB; sRAT/rRAT/free list; RS; LSQ; in-order retirement.
+- Execute-time selective branch recovery. Older correct-path work survives.
+- RecoveryEvent is the sole normal branch-squash broadcast fact. Global epoch equality
+  must not be used to kill all in-flight work on a branch misprediction.
+- Speculative stores remain above the committed memory/cache boundary; wrong-path loads
+  may leave cache/TLB performance state but no architectural result.
+- Cache presence and coherence enable are separate configuration decisions.
+
+When translating this architecture into the DSL, follow
+`document/architecture-team/07-ooo-v0-spec-work-order.md`. Agents doing this work
+should also read `.claude/skills/ooo-spec-author/SKILL.md`.
+
+ADR-019 migration is clean-break. Obsolete non-protected specs/design shells/bundles/
+parameters/docs may be deleted or replaced wholesale. Do not add compatibility shims
+whose only purpose is to preserve the superseded RVC/predecode/ROB-less/epoch-only
+architecture.
 
 ## Testing
 

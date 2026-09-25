@@ -41,13 +41,13 @@ object DesignRuleSpecs {
     RAW("NoDecoupled", "NoDecoupled")
       .desc("Interface bypasses Decoupled protocol.")
       .note(
-        "Sanctioned classes only: (1) the global epoch broadcast; (2) asynchronous system " +
-        "inputs (interrupt lines, debugReq); (3) boot-time static signals (bootAddr, " +
-        "hartEn); (4) commit-time broadcast strobes and their payloads (commitGrant, " +
-        "archMapRestore, redirectFire, interruptCtrl view) - these publish an already-made " +
-        "commit-head decision, so backpressure is meaningless (a consumer cannot un-commit; " +
-        "ADR-011/ADR-012); (5) the wakeup broadcast (a non-negotiable fact derived from the " +
-        "publish bus, ADR-014). Anything else on this classification is a doctrine violation."
+        "Sanctioned classes only: (1) epoch/generation broadcast where a transaction-generation " +
+        "tag is still used; (2) asynchronous system inputs (interrupt lines, debugReq); " +
+        "(3) boot-time static signals (bootAddr, hartEn); (4) commit-time broadcast strobes " +
+        "and their payloads; (5) the wakeup broadcast (a non-negotiable fact derived from " +
+        "result publication); (6) ADR-019 speculative RecoveryEvent, which publishes an " +
+        "already-made execute-time recovery decision and cannot be backpressured. Anything " +
+        "else on this classification is a doctrine violation."
       )
       .note(
         "A broadcast FACT differs from a broadcast TRANSFER: projections of the same event " +
@@ -94,31 +94,29 @@ object DesignRuleSpecs {
       .build()
   }
 
-  // WP-D OWNS: the epoch-holding-vertex enumeration (ADR-005 D-5.2).
+  // ADR-019 amends the old universal epoch model. This PROPERTY now covers only
+  // state that intentionally carries a transaction-generation tag.
   val propEpochVertexEnumeration = spec {
     PROPERTY("EpochVertexEnumeration")
       .desc(
-        "Every epoch-holding vertex is classified exactly one of eager-filter (self-invalidates each cycle) or epoch-exempt-by-construction (holds an epoch but never uses it for a correctness compare)."
+        "ADR-019 transaction-generation rule: only uncancelable/request-response state that " +
+        "still carries an epoch/generation tag is governed by this enumeration. Program-order " +
+        "speculative state (ROB, RS, LSQ, FTQ, fetch buffer, rename checkpoints) uses the " +
+        "RecoveryEvent younger-than rule instead and MUST NOT be killed solely by global-epoch mismatch."
       )
       .markdownTable(
-        List("Vertex", "Class", "Survivable generations for this vertex (bound is the MAX across vertices, not a sum)"),
+        List("State", "Class", "Recovery meaning"),
         List(
-          List("Reservation-station entry", "eager-filter", "1"),
-          List("FU request latch", "eager-filter", "1"),
-          List("Edge register", "eager-filter", "1"),
-          List("Fetch outstanding latch", "eager-filter", "1"),
-          List("Issue-queue entry", "eager-filter", "1"),
-          List("Slot-slicer straddle carry", "eager-filter", "1"),
-          List("Speculative store-buffer entry", "eager-filter", "1"),
-          List("Committed store-buffer entry", "epoch-exempt", "0"),
-          List("Retire-token epoch cross-check field", "epoch-exempt", "0")
+          List("I-cache miss/fill context", "generation-filtered", "response may be stale for a canceled fetch; fill may still install"),
+          List("D-cache MSHR/fill context", "generation-filtered or transaction-id only", "external transaction drains; canceled uop result is not published"),
+          List("PTW outstanding request", "generation-filtered or request-id only", "walk completes or is ignored by the canceled consumer"),
+          List("Committed store-drain entry", "generation-exempt", "irrevocable after architectural commit")
         )
       )
       .note(
-        "ADR-005 D-5.2: maxSurvivableGenerations = max over eager-filter vertices of cycles a token is held with a deferred compare = 1 under the eager-filter invariant. Adding a vertex that defers its compare raises the number and forces epochWidth up (GlobalEpochUnit propEpochWrapBound). Committed store-buffer entries are exempt because they are irrevocable and drain regardless of epoch (ADR-003 D-3.5)."
-      )
-      .note(
-        "Machine check 5 (propRegQueueTagged) requires every epoch-holding Reg/Queue design site to be tagged eager-filter or epoch-exempt against this table."
+        "ADR-019 supersedes ADR-005 for program-order speculation. Adding a new ROB/RS/LSQ/FTQ " +
+        "entry to this epoch table is an architecture error; those structures must instead " +
+        "specify RecoveryEvent ordering, younger-than invalidation, and resource reclamation."
       )
       .build()
   }

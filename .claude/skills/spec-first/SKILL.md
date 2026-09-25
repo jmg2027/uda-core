@@ -1,11 +1,11 @@
 ---
 name: spec-first
-description: Use BEFORE any change under src/main/scala on UDACore - adding/modifying a vertex, interface, parameter, or behavior; making an architectural decision; or reviewing whether existing specs conform to the UDA dataflow philosophy. Encodes this branch's binding discipline: ADRs are law, specs precede design, spec-check is the gate, and the UDA edge rules (ready/valid everywhere, sanctioned rawNoDecoupled classes, no flush, rawTop wiring-only, epoch stances, extension contribution). Trigger on "add a module/vertex", "change an interface", "write a spec", "new parameter", "is this UDA-compliant", "architectural decision".
+description: Use BEFORE any change under src/main/scala on UDACore - adding/modifying a vertex, interface, parameter, or behavior; making an architectural decision; or reviewing spec conformance. Encodes the binding discipline: ADRs are law, specs precede design, spec-check is the gate, ready/valid is the default transfer protocol, rawTop is wiring-only, and only sanctioned rawNoDecoupled facts/statics bypass handshakes. For ADR-019 OoO work, selective recovery is RecoveryEvent/ROB-age based, not epoch-only. Trigger on "add a module/vertex", "change an interface", "write a spec", "new parameter", "is this UDA-compliant", "architectural decision".
 ---
 
 # UDACore spec-first discipline
 
-This branch's order of authority: **ADRs (document/adr/, read ADR-000-index.md first) >
+This branch's order of authority: **ADRs (document/adr/, read ADR-000-index.md first; for new OoO work read ADR-019 immediately after it) >
 specs (src/main/scala/udacore/**/spec/) > design (design/)**. Design code implements specs;
 specs implement ADRs. Never edit design/ ahead of its spec.
 
@@ -53,21 +53,25 @@ spec -> test -> RED -> test review -> implement -> GREEN, hierarchically:
 
 ## UDA edge rules (what reviews check)
 - Every vertex-to-vertex interface is a ready/valid edge: `.is(rawReadyValidIntf)`.
-- `.is(rawNoDecoupled)` ONLY for the sanctioned classes (DesignRuleSpecs.rawNoDecoupled):
-  (1) global epoch broadcast, (2) async inputs (interrupt, debugReq), (3) boot statics
-  (bootAddr, hartEn), (4) commit-time broadcast strobes (commitGrant, archMapRestore,
-  redirectFire, interruptCtrl view), (5) the wakeup broadcast. Broadcast FACT vs queued
-  TRANSFER: strobe projections ride this class; token-moving projections (e.g. StoreCommit
-  into the StoreBuffer) stay ready/valid.
-- No flush/kill/squash side-channels: wrong-path state dies by epoch comparison
-  (eager-filter vertices are enumerated in propEpochVertexEnumeration). External IP kill
-  ports are tied inactive (ADR-017 note in DividerSpecs).
+- `.is(rawNoDecoupled)` ONLY for the sanctioned classes
+  (DesignRuleSpecs.rawNoDecoupled): (1) epoch/generation broadcast where still used,
+  (2) async inputs (interrupt, debugReq), (3) boot statics (bootAddr, hartEn),
+  (4) commit-time broadcast strobes, (5) wakeup broadcast, and (6) ADR-019
+  speculative RecoveryEvent broadcast. Broadcast FACT vs queued TRANSFER remains the
+  test: token-moving projections stay ready/valid.
+- No ad-hoc flush/kill/squash side-channels. Under ADR-019, branch recovery is selective:
+  the common RecoveryEvent identifies the recovery point and each speculative holder
+  locally invalidates only younger entries using the shared wrap-aware order rule.
+  Global epoch equality is not the branch-ordering mechanism. External IP kill ports
+  remain forbidden unless a later ADR explicitly owns them.
 - Stall = ready backpressure on an edge. Never a dedicated stall wire.
 - rawTop specs/modules: vertex instantiation + `:<>=` wiring only; the mermaid in the
   CONTRACT must reconcile edge-for-edge with the child INTERFACE union (spec-check
   graph-consistency enforces the drawn-boundary version).
-- Any state-holding vertex declares its epoch stance: eager-filter (speculative) or
-  epoch-exempt (committed/architectural, e.g. StoreBuffer committed entries, DataCache).
+- State-holding vertices declare their recovery stance. Legacy transaction-generation
+  state may be epoch/generation-filtered; ADR-019 program-order speculative state must
+  declare selective-recovery behavior (ordering key, younger-than rule, resource reclaim)
+  or committed/architectural exemption.
 - Extensions (ADR-017): optional vertices + data contributions only - decode rows
   (Seq[InstPattern], absent-when-disabled so instructions trap) and CSR map entries
   (Map[Int, Csr] into CsrAccess.readFromCsr). Never Feature-style host-signal weaving.
@@ -85,3 +89,14 @@ bnd/cap), module classes PascalCase with acronyms as words (Alu, Csr).
   TOUCH; pending OQ-E sign-off)
 - `src/test/scala/cluster/*`, `src/test/scala/assembler/*`, `src/main/scala/assembler/*`
 - `verif/` engine core may be extended, but the Gate discipline must never be weakened.
+
+
+## ADR-019 OoO spec overlay
+
+When the requested work touches the new OoO frontend/backend/MMU/cache architecture,
+also load `.claude/skills/ooo-spec-author/SKILL.md` and follow
+`document/architecture-team/07-ooo-v0-spec-work-order.md`.
+
+Do not copy the old RVC/BranchPredecoder, ROB-less retirement, commit-head branch
+redirect, or universal epoch-kill contracts into new specs. They are superseded where
+ADR-019 says so.

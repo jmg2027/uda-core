@@ -4,6 +4,12 @@ Guidance for Claude Code working in this repository. This file is the entry poin
 binding law lives in `document/adr/` and the spec tree, and the mechanical gates enforce
 what prose cannot.
 
+
+> OoO v0 note: for frontend/backend/MMU/cache redesign, read
+> `document/adr/ADR-019-conventional-ooo-root-architecture.md` and
+> `document/architecture-team/07-ooo-v0-spec-work-order.md` before older
+> architecture papers. Use `.claude/skills/ooo-spec-author/SKILL.md`.
+
 ## Language and Style Policy
 
 - **All conversation responses and commit messages: Korean.**
@@ -36,8 +42,9 @@ privilege ladder (ADR-016). It is independent of the company line (KLASE32); ref
    contract, interface, behavior, and property.
 3. **Design** - `src/main/scala/udacore/**/design/`. Implements specs, never precedes them.
 
-Spec-first workflow, the UDA edge rules (sanctioned rawNoDecoupled classes, no flush,
-rawTop wiring-only, epoch stances), the extension-contribution convention (ADR-017), and
+Spec-first workflow, the UDA edge rules (ready/valid transfers, sanctioned
+rawNoDecoupled facts/statics, rawTop wiring-only), the ADR-019 selective-recovery
+overlay for new OoO work, the extension-contribution convention (ADR-017), and
 the Spec-TDD loop (ADR-018: every FUNCTION/PROPERTY binds to a test, red before green)
 are operationalized in the **spec-first skill** (`.claude/skills/spec-first/SKILL.md`) -
 invoke it before touching `src/main/scala`. The spec DSL guide is `AGENTS.md`.
@@ -90,8 +97,9 @@ hook): staged-ASCII check + spec-check on any src/main/scala commit.
 - **Epochs, not flushes**: redirect fires only at the in-order commit head (ADR-011); the
   global epoch increments and stale tokens self-filter (eager-filter vertices enumerated in
   the spec). Committed state (StoreBuffer committed entries, caches) is epoch-exempt.
-- **Edges**: everything ready/valid except the five sanctioned rawNoDecoupled classes
-  (epoch broadcast / async inputs / boot statics / commit-broadcast strobes / wakeup
+- **Edges**: everything token-moving is ready/valid except sanctioned rawNoDecoupled
+  facts/statics (epoch/generation where used / async inputs / boot statics /
+  commit-broadcast strobes / wakeup / ADR-019 RecoveryEvent
   broadcast) - see `DesignRuleSpecs.rawNoDecoupled`.
 - **Boundary**: two TileLink master links, `instBus` (TL-UL/UH) and `dataBus` (TL-C when a
   DCache is configured), bridged by CoreTop-owned adapter vertices (ADR-016). Cache/TLB
