@@ -179,6 +179,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     offer stable until transfer or kill, PRF read and entry release at the issue transfer,
     selective kill; asserts RsIssueOnlyReady, RsRecoveryKeepsOlder, RsIssueStable, and
     needsRs-only allocation. 6 L1 tests (3 reference-model runs), 10 mutants all red.
+16. RTL block 7 - DispatchUnit: stateless router (one edge per fuType, IssuedUopIn.ready =
+    availability of the presented class, same-cycle killed token not routed), FuAvailability
+    = per-class downstream readiness. 2 L1 tests (incl. a 200-step request-independence
+    sweep), 7 mutants all red. The CSR edge still uses the legacy bndCsrReq, which carries no
+    robTag and a 5-bit rd (reported: C-3).
 
 ## Validation status (run this session)
 
@@ -191,7 +196,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   consumer *In interface; no orphan child interfaces.
 - `verif/bin/run.sh verif.spectest.RunSpecTests`: 55/55 PASS (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
-  3 PhysicalRegisterFile + 6 ReservationStation) after RTL block 6.
+  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit) after RTL block 7.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
@@ -225,6 +230,13 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   OQ-G closed: uncacheable accesses execute at the ROB head under HeadMemGrant (precise
   faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
   the SoC memory map is chosen).
+
+## Open contradictions reported to the OWNER
+
+- C-3 CSR request bundle: DispatchUnit.CsrReqOut and CsrController.CSRReqIn use the legacy
+  bndCsrReq {csr, op, data, meta{rd(5), epoch}}. It has no robTag and cannot name a
+  physical destination, so a CSR uop's CsrResult cannot complete its ROB entry or write
+  its prd. It needs an ADR-019 CSR request shape with the CsrController/CSR.scala rewrite.
 
 ## Contradictions resolved by owner ruling
 
