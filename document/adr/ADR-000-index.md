@@ -39,7 +39,9 @@ BranchUnit's control-resolution and result-publication channels. **ADR-019D (v0 
 04)** replaces the legacy epoch-based CSR boundary with the native IssuedUop/FuResult CSR
 edge, makes the CsrController the sole committed CSR-state owner with a commit-gated
 staged write, replaces the trap/CSR seam bundles, and fixes serialize-head interrupt
-sampling in the CommitUnit.
+sampling in the CommitUnit. **ADR-019E (v0 Erratum 05)** makes the CsrController's native
+staged-write CSR map authoritative (amending ADR-017 D-17.3), moves the debug entry address to
+the core integration contract, adds DRET, and adds the committed DecodePrivView.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -103,6 +105,7 @@ sampling in the CommitUnit.
 | [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
 | [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
 | [019D](ADR-019D-v0-erratum-04.md) | ADR-019 v0 erratum 04 (native CSR execution and trap-state seam) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B + 019C |
+| [019E](ADR-019E-v0-erratum-05.md) | ADR-019 v0 erratum 05 (native CSR map contribution, debug entry/return, DecodePrivView) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A..D; amends ADR-017 D-17.3 |
 
 ## Status of pre-ADR-019 proposed experiments
 

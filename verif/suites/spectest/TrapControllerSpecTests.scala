@@ -24,7 +24,7 @@ object TrapControllerSpecTests {
       sysOp: UInt = SysOp.None)
   /** A CSRTrapRead snapshot; unnamed fields read zero. */
   case class Snap(priv: Int = 3, mstatus: Long = 0, mtvec: Long = 0x100, stvec: Long = 0x200, medeleg: Long = 0,
-      mideleg: Long = 0, mepc: Long = 0x3000, sepc: Long = 0x4000, dcsr: Long = (4L << 28) | 3)
+      mideleg: Long = 0, mepc: Long = 0x3000, sepc: Long = 0x4000, dcsr: Long = (4L << 28) | 3, dpc: Long = 0x6000)
   case class TW(kind: Int, xepc: Long, xcause: Long, xtval: Long, mstatus: Long, priv: Int, dpc: Long, dcsr: Long)
   case class AR(tag: (Boolean, Int), ftq: Int, target: Long, cause: Int)
   case class Obs(excReady: Boolean, tw: Option[TW], twFire: Boolean, ar: Option[AR], arFire: Boolean)
@@ -43,8 +43,8 @@ object TrapControllerSpecTests {
       val r = io.csrTrapReadIn
       r.priv.poke(c.priv.U); r.mstatus.poke(c.mstatus.U); r.mtvec.poke(c.mtvec.U); r.stvec.poke(c.stvec.U)
       r.medeleg.poke(c.medeleg.U); r.mideleg.poke(c.mideleg.U); r.mepc.poke(c.mepc.U); r.sepc.poke(c.sepc.U)
-      r.dcsr.poke(c.dcsr.U)
-      Seq(r.mcause, r.mtval, r.mie, r.mip, r.scause, r.stval, r.dpc).foreach(_.poke(0.U))
+      r.dcsr.poke(c.dcsr.U); r.dpc.poke(c.dpc.U)
+      Seq(r.mcause, r.mtval, r.mie, r.mip, r.scause, r.stval).foreach(_.poke(0.U))
       io.csrTrapWriteOut.ready.poke(twReady.B); io.archRedirectOut.ready.poke(arReady.B)
       def b(v: Bool) = v.peek().litToBoolean
       def l(v: UInt) = v.peek().litValue.toLong
@@ -59,8 +59,8 @@ object TrapControllerSpecTests {
     }
   }
 
-  def withDrv(t: SpecTest)(body: Drv => Seq[TCheck]): Seq[TCheck] =
-    t.sim(new TrapController(p)) { dut => val d = new Drv(dut); body(d) }
+  def withDrv(t: SpecTest, params: BackendParams = p)(body: Drv => Seq[TCheck]): Seq[TCheck] =
+    t.sim(new TrapController(params)) { dut => val d = new Drv(dut); body(d) }
   def chk(ok: Boolean, label: String, detail: => String): TCheck = TCheck(ok, label, if (ok) "" else detail)
 
   val K = TrapWriteKind
@@ -168,8 +168,45 @@ object TrapControllerSpecTests {
         chk(o.tw.exists(t => t.kind == code(K.DebugEntry) && t.dpc == 0x7000 && t.priv == 3 &&
           t.dcsr == ((4L << 28) | ebreakm | (3L << 6) | 1)),
           "Exception{Debug}: DebugEntry {dpc = pc, dcsr.cause = 3, dcsr.prv = priv, other dcsr bits kept, priv M}", s"${o.tw}"),
-        chk(o.ar.exists(r => r.cause == code(RecoveryCause.Debug) && r.target == p.debugEntryPc && r.tag == tagOf(9)) && one(o),
+        chk(o.ar.exists(r => r.cause == code(RecoveryCause.Debug) && r.target == p.debugEntryAddr && r.tag == tagOf(9)) && one(o),
           "the debug-entry ArchRedirect carries cause Debug (never Trap) and the debug entry PC", s"${o.ar}")
+      )
+    }
+  }
+
+  /** ADR-019E E-2/E-5: a non-default platform debugEntryAddr is honored; dpc stays the next
+    * normal PC (never the entry address). */
+  val pAlt = p.copy(debugEntryAddr = 0x40000800L)
+  val debugEntryAddr = new SpecTest("trap.debugEntryAddr", Seq("funcDebugCommitBoundary")) {
+    def run(): Seq[TCheck] = withDrv(this, pAlt) { d =>
+      val o = d.cycle(Some(Exc(DBG, 3, pc = 0x7004, s = 2)), Snap(priv = 0))
+      Seq(
+        chk(o.ar.exists(r => r.target == 0x40000800L && r.cause == code(RecoveryCause.Debug)),
+          "DebugEntry redirects to the configured (non-default) debugEntryAddr", s"${o.ar}"),
+        chk(o.tw.exists(t => t.dpc == 0x7004 && t.dpc != pAlt.debugEntryAddr && (t.dcsr & 3) == 0),
+          "dpc is the next normal PC (the head pc), not debugEntryAddr; dcsr.prv records U", s"${o.tw}")
+      )
+    }
+  }
+
+  // ---- funcXRet: DRET (ADR-019E E-3/E-5) ------------------------------------------------------------
+
+  val dret = new SpecTest("trap.dret", Seq("funcXRet")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      val toS = d.cycle(Some(Exc(SYSOP, pc = 0x800, s = 4, sysOp = SysOp.Dret)),
+        Snap(priv = 3, dcsr = (4L << 28) | (3L << 6) | 1, dpc = 0x2468, mstatus = 0x1888))
+      val toU = d.cycle(Some(Exc(SYSOP, pc = 0x804, sysOp = SysOp.Dret)), Snap(priv = 3, dcsr = (4L << 28) | 0, dpc = 0x1000))
+      d.arReady = false
+      val bp = d.cycle(Some(Exc(SYSOP, pc = 0x804, sysOp = SysOp.Dret)), Snap(dpc = 0x1000))
+      d.arReady = true
+      Seq(
+        chk(one(toS) && toS.twFire && toS.tw.exists(t => t.kind == code(K.DRet) && t.priv == 1 && t.mstatus == 0x1888),
+          "DRET: CSRTrapWrite{DRet, privNext = dcsr.prv}, mstatus unchanged", s"${toS.tw}"),
+        chk(toS.ar.exists(r => r.target == 0x2468 && r.cause == code(RecoveryCause.XRet) && r.tag == tagOf(4)),
+          "DRET redirects to dpc with cause XRet (not to debugEntryAddr)", s"${toS.ar}"),
+        chk(toU.tw.exists(t => t.kind == code(K.DRet) && t.priv == 0) && toU.ar.exists(_.target == 0x1000),
+          "DRET restores U from dcsr.prv", s"${toU.tw} ${toU.ar}"),
+        chk(!bp.excReady && bp.tw.isEmpty, "DRET is one atomic transfer (no CSRTrapWrite without its ArchRedirect)", s"$bp")
       )
     }
   }
@@ -181,13 +218,14 @@ object TrapControllerSpecTests {
       val rnd = new scala.util.Random(0x7c)
       var bad = Seq.empty[String]
       var fires = 0
-      val kinds = Seq(Exc(SYNC, 2), Exc(INTR, 11), Exc(DBG, 3), Exc(SYSOP, sysOp = SysOp.Mret), Exc(SYSOP, sysOp = SysOp.FenceI))
+      val kinds = Seq(Exc(SYNC, 2), Exc(INTR, 11), Exc(DBG, 3), Exc(SYSOP, sysOp = SysOp.Mret), Exc(SYSOP, sysOp = SysOp.FenceI),
+        Exc(SYSOP, sysOp = SysOp.Dret))
       for (step <- 0 until 300) {
         d.twReady = rnd.nextInt(3) > 0; d.arReady = rnd.nextInt(3) > 0
         val e = if (rnd.nextBoolean()) Some(kinds(rnd.nextInt(kinds.size))) else None
         val o = d.cycle(e)
         val excFire = e.nonEmpty && o.excReady
-        val needsWrite = e.exists(x => x.source != SYSOP || x.sysOp == SysOp.Mret)
+        val needsWrite = e.exists(x => x.source != SYSOP || x.sysOp == SysOp.Mret || x.sysOp == SysOp.Dret)
         if (o.twFire != (excFire && needsWrite)) bad :+= s"step $step: CSRTrapWrite fire ${o.twFire} vs hand-off $excFire"
         if (o.arFire != excFire) bad :+= s"step $step: ArchRedirect fire ${o.arFire} vs hand-off $excFire"
         if (e.isEmpty && (o.tw.nonEmpty || o.ar.nonEmpty)) bad :+= s"step $step: output without a hand-off"
@@ -201,5 +239,5 @@ object TrapControllerSpecTests {
     }
   }
 
-  val all: Seq[SpecTest] = Seq(entryM, refetch, delegation, xret, debug, atomic)
+  val all: Seq[SpecTest] = Seq(entryM, refetch, delegation, xret, debug, debugEntryAddr, dret, atomic)
 }

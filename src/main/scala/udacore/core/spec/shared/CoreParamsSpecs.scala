@@ -109,6 +109,19 @@ object CoreParamsSpecs {
       .build()
   }
 
+  val paramDebugEntryAddr = spec {
+    PARAMETER("DebugEntryAddr")
+      .desc(
+        "Platform / Debug Module supplied execution address used when the hart enters Debug " +
+        "Mode (ADR-019E E-2). Its value is implementation-specific; it is exposed through " +
+        "CoreApiParams for the Debug Module integration and mirrored into the backend for the " +
+        "TrapController DebugEntry redirect. It is never the resume address (dpc)."
+      )
+      .is(rawContractParams)
+      .entry("verification platform default", "0x800")
+      .build()
+  }
+
   val paramDataCoherence = spec {
     PARAMETER("DataCoherence")
       .desc(

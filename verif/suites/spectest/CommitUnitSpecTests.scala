@@ -382,6 +382,32 @@ object CommitUnitSpecTests {
     }
   }
 
+  /** ADR-019E E-3: DRET is a retiring redirect like MRET/SRET. */
+  val sysopDret = new SpecTest("commit.sysop.dret", Seq("funcSystemOpSequencing")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.debugMode = true
+      d.rob += sys(0, SysOp.Dret).copy(pc = 0x800); d.rob += HE(1)
+      d.excReady = false; val wait = d.run(2); d.excReady = true
+      val fin = d.cycle()
+      val held = d.run(3)
+      d.arch(0); d.debugMode = false; d.rob += HE(1)
+      val after = d.cycle()
+      // predictionFault on a DRET keeps the intrinsic sysOp.
+      d.debugMode = true; d.autoService = Some(1)
+      d.rob += sys(2, SysOp.Dret).copy(predFault = true)
+      val pf = d.run(4).find(_.headFire)
+      Seq(
+        chk(wait.forall(noFire), "a DRET does not retire while ExceptionOut is not ready", s"$wait"),
+        chk(fin.headFire && fin.excF && fin.excSource == SYSOP && fin.exc._3 == code(SysOp.Dret) && fin.exc._5 == 0x800 &&
+          !fin.grantV && fin.tok.exists(t => !t.trap),
+          "DRET retires with ExceptionOut{SysOp, Dret} in one atomic transfer (no CommitGrant)", s"$fin"),
+        chk(held.forall(o => !o.headFire && !o.anyProjection && !o.excV), "after DRET nothing commits until its ArchRedirect", s"$held"),
+        chk(after.headFire && after.headS.contains(1), "the matching ArchRedirect releases the hold", s"$after"),
+        chk(pf.exists(o => o.excF && o.exc._3 == code(SysOp.Dret)), "a predictionFault DRET keeps sysOp Dret", s"$pf")
+      )
+    }
+  }
+
   /** ADR-019B E-6: only intrinsic retiring redirects keep their sysOp; a redirect that exists
     * only because of predictionFault carries sysOp None. */
   val sysopPredictionFault = new SpecTest("commit.sysop.predictionFault", Seq("funcSystemOpSequencing")) {
@@ -554,6 +580,7 @@ object CommitUnitSpecTests {
         ("predictionFault Refetch", s => HE(s, predFault = true), false, false),
         ("MRET XRet", s => sys(s, SysOp.Mret), false, false),
         ("SRET XRet", s => sys(s, SysOp.Sret), false, false),
+        ("DRET XRet (ADR-019E E-3)", s => sys(s, SysOp.Dret), false, false),
         ("FENCE.I Refetch", s => sys(s, SysOp.FenceI), false, false)
       )
       var s = 0
@@ -772,6 +799,6 @@ object CommitUnitSpecTests {
   }
 
   val all: Seq[SpecTest] = Seq(commitHead, blockEnd, sysopRedirect, sysopMaintenance, sysopPredictionFault, trap,
-    interrupt, interruptSerializeHead, trapHold, trapHoldZeroLatency,
+    sysopDret, interrupt, interruptSerializeHead, trapHold, trapHoldZeroLatency,
     headMemGrant, retireStream, inOrder, noPastException, trapHoldProp, retireNonBlocking)
 }

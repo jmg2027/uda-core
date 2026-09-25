@@ -30,6 +30,7 @@ object CsrControllerSpecs {
         intfInterruptIn,
         intfInterruptCtrlOut,
         intfTranslationContextOut,
+        intfDecodePrivViewOut,
         funcCsrExecuteAtCommit,
         funcCsrOpSemantics,
         funcCsrAccessCheck,
@@ -37,6 +38,7 @@ object CsrControllerSpecs {
         funcCsrTrapWriteApply,
         funcInterruptCtrlPublish,
         funcTranslationContextPublish,
+        funcDecodePrivViewPublish,
         funcCsrMapContribution,
         propNoSpeculativeCsrWrite,
         propCsrWriteIntent,
@@ -125,6 +127,15 @@ object CsrControllerSpecs {
       .uses(bndTranslationContext)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 4: changes only at a commit that is followed by an ArchRedirect.")
+      .build()
+  }
+
+  val intfDecodePrivViewOut = spec {
+    INTERFACE("DecodePrivViewOut")
+      .desc("Committed priv/debugMode/TVM/TW/TSR view to the DecodeUnit (ADR-019E E-4).")
+      .uses(bndDecodePrivView)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4.")
       .build()
   }
 
@@ -223,13 +234,30 @@ object CsrControllerSpecs {
       .build()
   }
 
+  val funcDecodePrivViewPublish = spec {
+    FUNCTION("DecodePrivViewPublish")
+      .desc(
+        "Drive DecodePrivView every cycle from the committed privilege, Debug Mode, and " +
+        "mstatus.TVM/TW/TSR; it changes only when those committed fields change."
+      )
+      .uses(intfDecodePrivViewOut)
+      .note("ADR-019E E-4.")
+      .build()
+  }
+
   val funcCsrMapContribution = spec {
     FUNCTION("CsrMapContribution")
       .desc(
-        "The Zicsr address map is the base machine and supervisor map plus each enabled " +
-        "extension's Map[Int, Csr] contribution, merged into the one CsrAccess.readFromCsr " +
-        "call this vertex owns. Contributions add addresses, never a second write path."
+        "The CSR address map is the single map this vertex owns: the base machine, supervisor, " +
+        "and debug CSRs plus each enabled extension's contribution, all as declarative map " +
+        "descriptors. A descriptor may provide the address, readable/writable properties, " +
+        "privilege/access metadata, the read-value source, WARL legalization, and the committed " +
+        "write target (application function). It owns no Zicsr semantics, no write-intent " +
+        "classification, no request or CommitGrant timing, and no mutation path: this vertex " +
+        "alone invokes a descriptor's application function, for the staged write named by the " +
+        "matching CommitGrant. A duplicate address is rejected at elaboration."
       )
+      .note("ADR-019E E-1 amends ADR-017 D-17.3 for the ADR-019 machine: CsrAccess.readFromCsr (operand-inferred write intent, access-time mutation) is not the ADR-019 access protocol.")
       .build()
   }
 

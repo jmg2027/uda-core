@@ -116,7 +116,7 @@ object BackendBundlesSpecs {
           List("isCfi", "Bool", "Control-flow uop: allocates a branch checkpoint at rename."),
           List("isLoad, isStore", "Bool", "Allocates an LQ or SQ entry at rename."),
           List("serialize", "Bool", "CSR/system uop: renamed only into an empty ROB, blocks younger rename until it retires (ADR-004 D-4.2 re-based)."),
-          List("sysOp", "SysOp", "Commit-time system semantics (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite. None for a uop with a fetch/decode exception and for a read-only CSR instruction."),
+          List("sysOp", "SysOp", "Commit-time system semantics (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (Dret per ADR-019E E-3; SysOp is 4 bits). None for a uop with a fetch/decode exception and for a read-only CSR instruction."),
           List("prediction", "PredictionView", "Frontend prediction for this slot: predictedTaken, predictedTarget, ftqIdx, slot, blockEnd."),
           List("predictionFault", "Bool", "The frontend predicted a taken CFI at this slot but it decodes as a non-CFI."),
           List("exception", "ExceptionInfo", "Fetch-time fault (instruction page/access fault) or illegal instruction, raised precisely at commit.")
@@ -162,7 +162,7 @@ object BackendBundlesSpecs {
           List("ftqIdx, blockEnd", "FtqIdx, Bool", "FTQ reference; blockEnd marks the last committed instruction of its fetch block."),
           List("isLoad, isStore", "Bool", "Memory ordering metadata (SQ commit handoff for stores)."),
           List("headExecute", "Bool", "Uncacheable load/store reported by the LSQ: not done until CommitUnit grants its execution at the head (HeadMemGrant) and the LSQ completes it."),
-          List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior, copied from uop.sysOp (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite."),
+          List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior, copied from uop.sysOp (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (ADR-019E E-3)."),
           List("predictionFault", "Bool", "Commit triggers an ArchRedirect(Refetch) to pc+4.")
         )
       )
@@ -612,7 +612,7 @@ object BackendBundlesSpecs {
           List("source", "Sync | Interrupt | Debug | SysOp"),
           List("cause, tval", "RISC-V cause code and trap value (faulting VA for page faults); Debug uses cause 3 (haltreq, ADR-019B E-5)"),
           List("pc, robTag, ftqIdx", "identity of the head uop"),
-          List("sysOp", "source SysOp only: the retiring head's SysOp - Mret/Sret request XRet; FenceI, SfenceVma, CsrWrite, and None (predictionFault) request Refetch (ADR-019B E-6)")
+          List("sysOp", "source SysOp only: the retiring head's SysOp - Mret/Sret/Dret request XRet (Dret per ADR-019E E-3); FenceI, SfenceVma, CsrWrite, and None (predictionFault) request Refetch (ADR-019B E-6)")
         )
       )
       .build()
@@ -649,6 +649,21 @@ object BackendBundlesSpecs {
           List("dpc, dcsrNext", "DebugEntry: dpc and dcsr written, debug mode entered; DRet leaves debug mode")
         )
       )
+      .build()
+  }
+
+  val bndDecodePrivView = spec {
+    BUNDLE("DecodePrivView")
+      .desc("Committed privilege state the DecodeUnit needs for privileged-instruction legality, published by the CsrController (ADR-019E E-4).")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("priv", "Priv", "Committed privilege."),
+          List("debugMode", "Bool", "The hart is in Debug Mode (decodes as M; DRET is legal only here)."),
+          List("tvm, tw, tsr", "Bool", "mstatus.TVM (SFENCE.VMA / satp from S), mstatus.TW (WFI below M), mstatus.TSR (SRET from S).")
+        )
+      )
+      .note("rawNoDecoupled class 4: a committed-state view; it never depends on the instruction being decoded.")
       .build()
   }
 

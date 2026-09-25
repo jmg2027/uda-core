@@ -81,7 +81,7 @@ object UopOp {
 /** Commit-time system semantics (bndDecodedUop.sysOp / bndRobEntry.sysOp, ADR-019A E-2),
   * classified by DecodeUnit (SystemOpDecode) and carried unchanged to the ROB entry. */
 object SysOp {
-  val width     = 3
+  val width     = 4 // ADR-019E E-3: widened for Dret (no aliasing)
   val None      = 0.U(width.W)
   val Fence     = 1.U(width.W)
   val FenceI    = 2.U(width.W)
@@ -90,6 +90,7 @@ object SysOp {
   val Mret      = 5.U(width.W)
   val Sret      = 6.U(width.W)
   val CsrWrite  = 7.U(width.W)
+  val Dret      = 8.U(width.W)
 }
 
 // ---- Ordering and recovery identity ----------------------------------------
@@ -489,6 +490,15 @@ class CsrTrapWrite(val params: BackendParams) extends BackendBundle {
   val privNext    = UInt(2.W)
   val dpc         = UInt(xLen.W)
   val dcsrNext    = UInt(xLen.W)
+}
+
+@LocalSpec(bndDecodePrivView)
+class DecodePrivView extends Bundle {
+  val priv      = UInt(2.W)
+  val debugMode = Bool()
+  val tvm       = Bool()
+  val tw        = Bool()
+  val tsr       = Bool()
 }
 
 @LocalSpec(bndTranslationContext)

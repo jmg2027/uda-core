@@ -24,9 +24,11 @@ object DecodeUnitSpecs {
         intfFetchPacketIn,
         intfDecodedPacketOut,
         intfRecoveryEventIn,
+        intfDecodePrivViewIn,
         funcDecodeRv32im,
         funcExtensionDecodeContribution,
         funcSerializingTag,
+        funcSystemPrivLegality,
         funcPredictionCheck,
         funcDecodeRecovery,
         propDisabledExtensionTraps,
@@ -70,18 +72,41 @@ object DecodeUnitSpecs {
       .build()
   }
 
+  val intfDecodePrivViewIn = spec {
+    INTERFACE("DecodePrivViewIn")
+      .desc("Committed priv/debugMode/TVM/TW/TSR from the CsrController for privileged-instruction legality (ADR-019E E-4).")
+      .uses(bndDecodePrivView)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4.")
+      .build()
+  }
+
   val funcDecodeRv32im = spec {
     FUNCTION("DecodeRv32im")
       .desc(
         "Decode RV32I (including FENCE, ECALL, EBREAK), M, Zicsr, Zifencei (FENCE.I), and the " +
-        "privileged MRET, SRET, WFI, and " +
-        "SFENCE.VMA. Any other encoding, and any privileged instruction executed below its " +
+        "privileged MRET, SRET, WFI, SFENCE.VMA, and DRET. Any other encoding, and any privileged instruction executed below its " +
         "required privilege (SRET in U, MRET below M, SFENCE.VMA in U or with mstatus.TVM, WFI " +
         "per mstatus.TW), becomes an illegal-instruction exception payload (cause 2, tval = " +
         "instruction bits). ECALL/EBREAK become their exception payloads. A fetch fault on " +
         "the slot overrides decoding."
       )
       .uses(intfFetchPacketIn, intfDecodedPacketOut)
+      .note("ADR-019E E-4: the privilege-dependent cases are funcSystemPrivLegality over DecodePrivViewIn.")
+      .build()
+  }
+
+  val funcSystemPrivLegality = spec {
+    FUNCTION("SystemPrivLegality")
+      .desc(
+        "With p = debugMode ? M : priv from DecodePrivView: MRET is legal iff p = M; SRET iff " +
+        "p = M or (p = S and !TSR); SFENCE.VMA iff p = M or (p = S and !TVM); WFI iff p = M or " +
+        "(p = S and !TW) (U-mode WFI is illegal: S-mode exists and the v0 WFI time limit is " +
+        "zero); DRET iff debugMode. An illegal case decodes to the illegal-instruction payload " +
+        "(cause 2, tval = instruction bits) and enters the ROB carrying it."
+      )
+      .uses(intfDecodePrivViewIn, intfDecodedPacketOut)
+      .note("ADR-019E E-3/E-4.")
       .build()
   }
 
@@ -100,8 +125,8 @@ object DecodeUnitSpecs {
   val funcSerializingTag = spec {
     FUNCTION("SerializingTag")
       .desc(
-        "Set serialize for every CSR instruction, MRET, SRET, WFI, FENCE, FENCE.I, and " +
-        "SFENCE.VMA, and classify sysOp: Mret, Sret, Wfi, Fence, FenceI, SfenceVma for those " +
+        "Set serialize for every CSR instruction, MRET, SRET, DRET, WFI, FENCE, FENCE.I, and " +
+        "SFENCE.VMA, and classify sysOp: Mret, Sret, Dret, Wfi, Fence, FenceI, SfenceVma for those " +
         "(fuType System); CsrWrite for CSRRW/CSRRWI, for CSRRS/CSRRC with rs1 != x0, and for " +
         "CSRRSI/CSRRCI with zimm != 0 (fuType Csr); None for read-only CSR instructions (which " +
         "keep serialize), for every other instruction, and for any uop carrying a fetch or " +

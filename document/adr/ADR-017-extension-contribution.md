@@ -1,6 +1,8 @@
 # ADR-017: Extension Contribution Convention (the Feature Pattern, Re-based on UDA)
 
-Status: **accepted** (owner directive, 2026-07-06).
+Status: **accepted** (owner directive, 2026-07-06). D-17.3 amended for the ADR-019 machine
+by ADR-019E E-1 (declarative CSR-map descriptors into the CsrController's native staged-write
+map; `CsrAccess.readFromCsr` is not the ADR-019 access protocol).
 
 Depends on: ADR-004 (CSR ownership), ADR-016 (accommodation seams), ADR-015
 (enforcement). Imports the lessons of the main line's `xxxFeature` pattern
@@ -46,6 +48,11 @@ entries (and optional contiguous banks) merged into the single
 `CsrAccess.readFromCsr` map owned by the CSR-owning vertex (ADR-004 unchanged:
 the library is mechanism, TrapController/CsrController own WHEN). No extension
 instantiates its own Zicsr access path.
+*Amended by ADR-019E E-1 for the ADR-019 machine:* extension (and base) CSRs contribute
+declarative map descriptors (address, access properties, read source, WARL legalization,
+committed write target) into the single map the CsrController owns; the CsrController alone
+classifies write intent from the encoding, stages the candidate value, and applies it on the
+matching CommitGrant. A descriptor owns no Zicsr semantics, timing, or mutation path.
 
 **D-17.4 (instantiation discipline).** Conditional elaboration uses
 `Option[Params]`/`Boolean` parameters consumed ONCE at vertex-instantiation
@@ -67,9 +74,10 @@ entries.
   `propDisabledExtensionTraps`; `CsrControllerSpecs` gains
   `funcCsrMapContribution`. The doctrine lives in
   `DesignRuleSpecs.rawExtensionContribution`.
-- The ported CSR decorator library (`common/system/csr`) is the D-17.3
-  mechanism; its `readFromCsr(csrMap, blocks)` signature already supports
-  per-extension merge and contiguous banks.
+- The ported CSR decorator library (`common/system/csr`) was the D-17.3
+  mechanism; for the ADR-019 machine (ADR-019E E-1) it may still supply storage
+  fields and WARL helpers, but its `readFromCsr` access path (operand-inferred
+  write intent, access-time mutation) is not used.
 - When the main line's FPU/CLIC functionality is ever wanted here, it is
   re-derived as vertices against this ADR - the Feature classes themselves are
   not portable and MUST NOT be copied.

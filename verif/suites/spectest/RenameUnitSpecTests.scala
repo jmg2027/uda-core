@@ -406,7 +406,8 @@ object RenameUnitSpecTests {
         U(system = true, serialize = true, sysOp = SysOp.Fence),
         U(exc = true, rd = 3),
         U(exc = true, load = true, rd = 4),
-        U(system = true, serialize = true, sysOp = SysOp.Mret)
+        U(system = true, serialize = true, sysOp = SysOp.Mret),
+        U(system = true, serialize = true, sysOp = SysOp.Dret) // ADR-019E E-3: DRET is execution-free
       )
       val runs = (0 until 3 * p.tuning.integerRsEntries).map(i => d.offerFork(free(i % free.size), true, false, false))
       // Uops that need the RS (including CSR and predictionFault) wait for it.

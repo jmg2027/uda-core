@@ -22,6 +22,9 @@ class DecodeUnit(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
+
+    @LocalSpec(intfDecodePrivViewIn)
+    val decodePrivViewIn = ???
   })
 
   @LocalSpec(funcDecodeRv32im)
@@ -32,6 +35,9 @@ class DecodeUnit(val params: BackendParams) extends BackendModule {
 
   @LocalSpec(funcSerializingTag)
   val serializingTag = ???
+
+  @LocalSpec(funcSystemPrivLegality)
+  val systemPrivLegality = ??? // SystemOpDecode.privLegal over decodePrivViewIn
 
   @LocalSpec(funcPredictionCheck)
   val predictionCheck = ???

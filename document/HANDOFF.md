@@ -269,6 +269,39 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       DebugEntry, TranslationContext after each; E-5 end to end (a staged CSR write whose
       head is presented with an interrupt pending retires first). Seam mutants (CommitUnit
       without E-5, TrapEntryS writing mepc) red.
+23. ADR-019E (v0 Erratum 05, owner ruling on C-4 and the debug gaps):
+    - E-1: the CsrController's native staged-write map is authoritative; ADR-017 D-17.3 is
+      amended (pointer in ADR-017). Contributions are `CsrMapContribution` objects whose
+      `entries()` return `CsrMapEntry` descriptors (address, read source, legalizing write
+      target), built inside the CsrController; duplicates fail elaboration; a monitor asserts
+      a contributed CSR never changes outside the grant/trap-write paths.
+    - E-2: `CoreContractParams.debugEntryAddr` (paramDebugEntryAddr, default 0x800 for the
+      verification platform), exposed in CoreApiParams, mirrored as
+      `BackendParams.debugEntryAddr` (renamed from debugEntryPc).
+    - E-3: `SysOp.Dret` (SysOp is 4 bits); SystemOpDecode classifies DRET (System, serialize);
+      CommitUnit treats it as an intrinsic retiring redirect; TrapController emits
+      CSRTrapWrite{DRet, privNext = dcsr.prv} and XRet to dpc; CsrController applies it.
+    - E-4: `DecodePrivView` {priv, debugMode, tvm, tw, tsr} from the CsrController;
+      `SystemOpDecode.privLegal` implements funcSystemPrivLegality (debug mode decodes as M;
+      U-mode WFI illegal); BackendTop edge `csr -. DecodePrivView .-> dec`; the DecodeUnit
+      shell carries the port until its RTL block.
+    - Tests: decode.sysOpClassify (DRET row), decode.sysPrivLegality (all priv x debugMode x
+      TVM x TW x TSR), rename/ROB DRET execution-free, commit.sysop.dret + zero-latency DRET,
+      trap.dret, trap.debugEntryAddr (non-default 0x40000800), csr.decodePrivView,
+      csr.mapContribution (read, staged legalized write, operand-0 intent, read-only
+      contributed CSR, address privilege, collision rejection x2, rogue second write path),
+      seam.debugDret (U -> DebugEntry at a non-default address -> debug code -> DRET -> U at
+      dpc). Red: 10 FAIL before the RTL (trap.debugEntryAddr passed at once: the rename kept
+      the existing parameter path).
+    - Mutants (28, all red): privLegal ignoring TVM / TW / TSR / debugMode, debug mode not as M,
+      U-mode WFI legal, MRET legal in S, DRET unclassified; DecodePrivView TVM/TW/TSR/debugMode
+      dropped; contributions dropped, no duplicate check, no contribution monitor, contributed
+      write applied at accept, contributed intent from the operand; DRET target mepc / entry
+      address, DRET priv M, DRET kind missing, DRET not XRet, entry address hardcoded, dpc =
+      entry address; CommitUnit DRET not redirecting / not intrinsic; seam DRET target mepc and
+      priv M (the first seam run let "target mepc" survive because dpc equalled mepc; the test
+      now retires one U instruction first so dpc != mepc).
+    - Allowlist: funcCsrMapContribution bound and removed (spec-test-allow 49 -> 48).
 
 ## Validation status (run this session)
 
@@ -277,10 +310,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - `python3 tools/spec-check.py`: 0 errors, 4 warnings (localspec-coverage on Decoder,
   DebugUnit, TriggerUnit, and Util - pre-existing; the CSR.scala warnings left with the file).
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
-  edge of FrontendTop (7), BackendTop (62), CoreTop (38) matches a producer *Out and a
+  edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 94/94 PASS after RTL block 12 (adds 1 CommitUnit
-  serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS (6 pre-existing + 2 params +
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 101/101 PASS after ADR-019E (94/94 after RTL block 12 (adds 1 CommitUnit
+  serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
   10 BranchUnit/PublishMux) after RTL block 9.
@@ -289,8 +322,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 49 names (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
-  funcCsrMapContribution stays, see C-4) (bound since the freeze: funcRobOlder, propArchRedirectWins,
+- spec-test-allow: 48 names (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
+  ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
   propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
   bound) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
@@ -322,7 +355,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Open contradictions reported to the OWNER
 
-- C-4 CsrMapContribution vs ADR-019D E-2/E-4 (reported, contracts not amended):
+- None open (C-4 resolved by ADR-019E; its record kept below).
+
+## C-4 record (resolved by ADR-019E E-1)
+
+- C-4 CsrMapContribution vs ADR-019D E-2/E-4:
   funcCsrMapContribution says the CSR map is "merged into the one CsrAccess.readFromCsr call
   this vertex owns", but CsrAccess infers write intent from the runtime operand
   (`isReadOnly = !isImm && in === 0 && (RS || RC)`) and applies the write in the access cycle
@@ -342,6 +379,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   ADR-019C.
 - C-3 (legacy CSR request/result without robTag/prd) is closed by ADR-019D, which also
   fixes serialize-head interrupt sampling in the CommitUnit (E-5).
+- C-4 (CsrMapContribution vs the staged-write protocol) and the two ADR-019D debug gaps are
+  closed by ADR-019E.
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -368,7 +407,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
    ADR-019D order: CommitUnit serialize-head sampling fix, CsrController, TrapController,
-   CSR/Trap integration (all done) -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
+   CSR/Trap integration, ADR-019E (all done) -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

@@ -301,11 +301,13 @@ object ReorderBufferSpecTests {
       d.alloc(1, E(fu = FuType.Csr, op = 3, serialize = true, sysOp = SysOp.CsrWrite)) // CSR write
       d.alloc(2, E(fu = FuType.System, op = 5, serialize = true, sysOp = SysOp.Mret))
       d.alloc(3, E(rd = 4, predFault = true))
-      d.alloc(4, E(fu = FuType.Mem, load = true, rd = 5, exc = Some(12)))
+      d.alloc(4, E(pc = 0x7b0, insn = 0x7b200073, fu = FuType.System, serialize = true, sysOp = SysOp.Dret))
+      d.alloc(5, E(fu = FuType.Mem, load = true, rd = 5, exc = Some(12)))
       val w0 = d.head(); d.complete(0); val h0 = d.retire()
       val w1 = d.head(); d.complete(1); val h1 = d.retire()
       val h2 = d.retire()
       val w3 = d.head(); d.complete(3); val h3 = d.retire()
+      val h5 = d.retire()
       val h4 = d.head()
       def code(u: UInt) = u.litValue.toInt
       Seq(
@@ -317,7 +319,9 @@ object ReorderBufferSpecTests {
           "a System uop is done at allocation and records its sysOp (not its op)", s"$h2"),
         chk(w3.isEmpty && h3.exists(_.predFault), "a predictionFault uop is not execution-free", s"$w3 $h3"),
         chk(h4.exists(h => h.done && h.exc.contains(12) && h.isLoad && h.sysOp == code(SysOp.None)),
-          "a uop with an exception is done at allocation", s"$h4")
+          "a uop with an exception is done at allocation", s"$h4"),
+        chk(h5.exists(h => h.done && h.serialize && h.sysOp == code(SysOp.Dret)),
+          "DRET (4-bit SysOp Dret) is done at allocation and records its sysOp (ADR-019E E-3)", s"$h5")
       )
     }
   }

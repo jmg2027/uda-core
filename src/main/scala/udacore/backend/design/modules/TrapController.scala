@@ -45,7 +45,8 @@ class TrapController(val params: BackendParams) extends BackendModule {
   private val isSysOp   = e.source === ExceptionSource.SysOp
   private val isMret    = isSysOp && e.sysOp === SysOp.Mret
   private val isSret    = isSysOp && e.sysOp === SysOp.Sret
-  private val isXRet    = isMret || isSret
+  private val isDret    = isSysOp && e.sysOp === SysOp.Dret // ADR-019E E-3
+  private val isXRet    = isMret || isSret || isDret
   private val isRefetch = isSysOp && !isXRet
 
   /** mstatus bit positions (RV32). */
@@ -60,7 +61,8 @@ class TrapController(val params: BackendParams) extends BackendModule {
 
   // ---- funcXRet ------------------------------------------------------------------------------------
 
-  /** (mstatusNext, privNext, target) of MRET / SRET. */
+  /** (mstatusNext, privNext, target) of MRET / SRET / DRET. DRET restores dcsr.prv, resumes
+    * at dpc (never at debugEntryAddr), and leaves mstatus unchanged (ADR-019E E-3/E-5). */
   @LocalSpec(funcXRet)
   val xRet: (UInt, UInt, UInt) = {
     val mpp   = m(12, 11)
@@ -68,7 +70,9 @@ class TrapController(val params: BackendParams) extends BackendModule {
     val mret  = Mux(mpp =/= Priv.M, put(mret0, St.MPRV, false.B), mret0)
     val spp   = m(St.SPP)
     val sret  = put(put(put(put(m, St.SIE, m(St.SPIE)), St.SPIE, true.B), St.SPP, false.B), St.MPRV, false.B)
-    (Mux(isMret, mret, sret), Mux(isMret, mpp, Cat(0.U(1.W), spp)), Mux(isMret, r.mepc, r.sepc))
+    (MuxCase(sret, Seq(isMret -> mret, isDret -> m)),
+     MuxCase(Cat(0.U(1.W), spp), Seq(isMret -> mpp, isDret -> r.dcsr(1, 0))),
+     MuxCase(r.sepc, Seq(isMret -> r.mepc, isDret -> r.dpc)))
   }
 
   // ---- funcDebugCommitBoundary ---------------------------------------------------------------------
@@ -94,6 +98,7 @@ class TrapController(val params: BackendParams) extends BackendModule {
     val w = tw.bits
     w.kind := MuxCase(TrapWriteKind.TrapEntryM, Seq(
       isDebug -> TrapWriteKind.DebugEntry, isMret -> TrapWriteKind.MRet, isSret -> TrapWriteKind.SRet,
+      isDret -> TrapWriteKind.DRet,
       toS -> TrapWriteKind.TrapEntryS))
     w.xepc        := e.pc
     w.xcause      := Cat(isInt, 0.U(26.W), e.cause)
@@ -107,7 +112,7 @@ class TrapController(val params: BackendParams) extends BackendModule {
     a.robTag := e.robTag
     a.ftqIdx := e.ftqIdx
     a.target := MuxCase(trapTarget, Seq(
-      isDebug -> params.debugEntryPc.U(vAddrWidth.W), isXRet -> xRet._3, isRefetch -> (e.pc + 4.U)))
+      isDebug -> params.debugEntryAddr.U(vAddrWidth.W), isXRet -> xRet._3, isRefetch -> (e.pc + 4.U)))
     a.cause := MuxCase(RecoveryCause.Trap, Seq(
       isInt -> RecoveryCause.Interrupt, isDebug -> RecoveryCause.Debug, isXRet -> RecoveryCause.XRet,
       isRefetch -> RecoveryCause.Refetch))

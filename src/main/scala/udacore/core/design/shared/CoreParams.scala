@@ -68,13 +68,19 @@ case class CoreContractParams(
     itlb: TlbParams = TlbParams(),
     dtlb: TlbParams = TlbParams(),
     @LocalSpec(paramDataCoherence)
-    dataCoherence: Boolean = false // TL-C only when true; never implied by the D-cache
+    dataCoherence: Boolean = false, // TL-C only when true; never implied by the D-cache
+    /** Platform / Debug Module execution address on Debug Mode entry (ADR-019E E-2);
+      * implementation-specific, 0x800 is the verification platform's default. */
+    @LocalSpec(paramDebugEntryAddr)
+    debugEntryAddr: Long = 0x800L
 ) {
   require(dataWidth == 32, "v0 is RV32IM: dataWidth (XLEN) must be 32")
   require(vAddrWidth == 32 && pAddrWidth == 34, "v0 is Sv32: 32-bit VA, 34-bit PA")
   require(hartId >= 0, "Hart ID must be non-negative")
   require(privilege.usingSupervisor, "Sv32 translation requires S-mode (satp)")
   require(!dataCoherence, "TL-C data coherence is not part of v0 (ADR-019 D-19.13)")
+  require(debugEntryAddr >= 0 && debugEntryAddr < (1L << vAddrWidth) && debugEntryAddr % 4 == 0,
+    "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
 }
 
 /** Tuning tier. */
@@ -101,6 +107,7 @@ case class CoreParams(
   def vAddrWidth: Int    = contract.vAddrWidth
   def pAddrWidth: Int    = contract.pAddrWidth
   def hartId: Int        = contract.hartId
+  def debugEntryAddr: Long = contract.debugEntryAddr
   def usingRvvi: Boolean = tuning.usingRvvi
 
   def usingUser: Boolean       = contract.privilege.usingUser

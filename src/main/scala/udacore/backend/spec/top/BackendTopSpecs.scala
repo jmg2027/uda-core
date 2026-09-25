@@ -159,6 +159,7 @@ object BackendTopSpecs {
         sb -. StoreBufferEmpty .-> lsq
         com -. CommitGrant .-> csr
         csr -. InterruptCtrl .-> com
+        csr -. DecodePrivView .-> dec
 
         com -- Exception --> trap
         csr -. CSRTrapRead .-> trap
@@ -219,6 +220,7 @@ object BackendTopSpecs {
         "StoreBuffer.StoreBufferDrainRespOut -> CommitUnit.StoreBufferDrainRespIn; LSQ.{CommittedStoreOut, " +
         "StoreForwardQueryOut} -> StoreBuffer; StoreBuffer.StoreForwardDataOut -> LSQ; " +
         "CommitUnit.ExceptionOut -> Trap.ExceptionIn; Csr.CSRTrapReadOut -> Trap; " +
+        "Csr.DecodePrivViewOut -> DecodeUnit.DecodePrivViewIn (rawNoDecoupled class 4, ADR-019E); " +
         "CommitUnit.CommitPrfReadReqOut -> PRF.CommitPrfReadReqIn and PRF.CommitPrfReadRespOut -> " +
         "CommitUnit.CommitPrfReadRespIn (usingRvvi only, ADR-019B E-3); " +
         "Trap.CSRTrapWriteOut -> Csr; Trap.ArchRedirectOut and BranchUnit." +

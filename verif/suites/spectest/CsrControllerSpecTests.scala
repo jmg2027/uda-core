@@ -3,7 +3,7 @@ package verif.spectest
 import chisel3._
 import chisel3.util._
 import chisel3.simulator.CachedSimulator._
-import udacore.backend.design.modules.{CsrController, PublishMux}
+import udacore.backend.design.modules.{CsrController, CsrMapContribution, CsrMapEntry, PublishMux}
 import udacore.backend.design.shared._
 
 /** L1 SpecTests for the ADR-019 CsrController (ADR-018; spec 242feaf + ADR-019A..D).
@@ -135,16 +135,16 @@ object CsrControllerSpecTests {
     def setPriv(pv: Int): Obs = { val ms = peek().tr("mstatus"); trap(TW(TrapWriteKind.MRet, mstatus = ms, priv = pv)) }
   }
 
-  def withDrv(t: SpecTest)(body: Drv => Seq[TCheck]): Seq[TCheck] =
-    t.sim(new CsrController(p)) { dut => val d = new Drv(dut); d.cycle(); body(d) }
+  def withDrv(t: SpecTest, contribs: Seq[CsrMapContribution] = Nil)(body: Drv => Seq[TCheck]): Seq[TCheck] =
+    t.sim(new CsrController(p, contribs)) { dut => val d = new Drv(dut); d.cycle(); body(d) }
 
   def chk(ok: Boolean, label: String, detail: => String): TCheck = TCheck(ok, label, if (ok) "" else detail)
   def hx(v: Long): String = f"0x$v%x"
 
-  def mustAssert(t: SpecTest, label: String, expect: String)(body: Drv => Unit): TCheck = {
+  def mustAssert(t: SpecTest, label: String, expect: String, contribs: Seq[CsrMapContribution] = Nil)(body: Drv => Unit): TCheck = {
     var reachedEnd = false
     try {
-      withDrv(t) { d => body(d); d.run(3); reachedEnd = true; Nil }
+      withDrv(t, contribs) { d => body(d); d.run(3); reachedEnd = true; Nil }
       TCheck(false, label, "simulation ended normally: the design assertion did not fire")
     } catch {
       case e: NotImplementedError => throw e
@@ -614,6 +614,101 @@ object CsrControllerSpecTests {
     }
   }
 
+  // ---- funcDecodePrivViewPublish (ADR-019E E-4) -------------------------------------------------------
+
+  val decodePrivView = new SpecTest("csr.decodePrivView", Seq("funcDecodePrivViewPublish")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      def v(): (Int, Boolean, Boolean, Boolean, Boolean) = {
+        val x = d.io.decodePrivViewOut
+        val o = (x.priv.peek().litValue.toInt, x.debugMode.peek().litToBoolean, x.tvm.peek().litToBoolean,
+          x.tw.peek().litToBoolean, x.tsr.peek().litToBoolean)
+        d.cycle(); o
+      }
+      val v0 = v()
+      d.write(MSTATUS, 1L << 20); val tvm = v()
+      d.write(MSTATUS, 1L << 21); val tw = v()
+      d.write(MSTATUS, 1L << 22); val tsr = v()
+      // Staged (uncommitted) write: the view does not move before the grant.
+      d.exec(rw(MSTATUS, 0), grant = false); val staged = v(); d.cycle(grant = Some(d.next - 1)); val cleared = v()
+      d.setPriv(1); val s = v()
+      d.trap(TW(TrapWriteKind.DebugEntry, dpc = 0x10, dcsr = 1, priv = 3)); val dbg = v()
+      // DRET applied by the trap-write path with privNext = dcsr.prv (the TrapController's value).
+      val prv = (d.peek().tr("dcsr") & 3).toInt
+      d.trap(TW(TrapWriteKind.DRet, priv = prv)); val back = v()
+      Seq(
+        chk(v0 == ((3, false, false, false, false)), "reset view: M, not in Debug Mode, TVM/TW/TSR clear", s"$v0"),
+        chk(tvm._3 && !tvm._4 && !tvm._5 && tw._4 && !tw._3 && tsr._5 && !tsr._4, "TVM, TW, TSR follow committed mstatus", s"$tvm $tw $tsr"),
+        chk(staged._5 && !cleared._5, "a staged mstatus write changes the view only at its CommitGrant", s"$staged $cleared"),
+        chk(s._1 == 1, "priv follows the committed privilege", s"$s"),
+        chk(dbg._2 && dbg._1 == 3, "DebugEntry sets debugMode", s"$dbg"),
+        chk(!back._2 && back._1 == 1, "DRet clears debugMode and restores priv from dcsr.prv", s"$back")
+      )
+    }
+  }
+
+  // ---- funcCsrMapContribution (ADR-019E E-1) ------------------------------------------------------------
+
+  /** A synthetic extension CSR: one register with an 8-bit WARL mask. */
+  class SyntheticCsr(addr: Int, reset: Long, mask: Long) extends CsrMapContribution {
+    def entries(): Seq[CsrMapEntry] = {
+      val r = RegInit(reset.U(32.W))
+      Seq(CsrMapEntry(addr, r, v => r := v & mask.U(32.W)))
+    }
+  }
+  /** A read-only contributed CSR (address class 11 = read-only). */
+  class SyntheticRoCsr(addr: Int, value: Long) extends CsrMapContribution {
+    def entries(): Seq[CsrMapEntry] = Seq(CsrMapEntry(addr, value.U(32.W)))
+  }
+  /** A contribution that illegally owns a second write path (its register moves by itself). */
+  class RogueCsr(addr: Int) extends CsrMapContribution {
+    def entries(): Seq[CsrMapEntry] = {
+      val r = RegInit(0.U(32.W)); r := r + 1.U
+      Seq(CsrMapEntry(addr, r, v => r := v))
+    }
+  }
+  val CUSTOM = 0x7c0; val CUSTOM_RO = 0xfc0
+
+  val contribution = new SpecTest("csr.mapContribution", Seq("funcCsrMapContribution")) {
+    def run(): Seq[TCheck] = {
+      val main = withDrv(this, Seq(new SyntheticCsr(CUSTOM, 0x5a, 0xff), new SyntheticRoCsr(CUSTOM_RO, 0xabcd))) { d =>
+        val r0 = d.read(CUSTOM)
+        // Staged write: legalized by the descriptor, applied only at the grant.
+        val (w, os) = d.exec(rw(CUSTOM, 0x1234), grant = false)
+        val held = d.run(3).map(_.reqReady)
+        d.cycle(grant = Some(d.next - 1))
+        val r1 = d.read(CUSTOM)
+        // Encoded write intent is authoritative with a zero operand (a staged write, not a read).
+        d.exec(rs(CUSTOM, 0, rs1 = 5), grant = false)
+        val zeroStaged = d.run(2).map(_.reqReady)
+        d.cycle(grant = Some(d.next - 1))
+        val roRead = d.exec(rd(CUSTOM_RO))._1
+        val roZero = d.exec(rs(CUSTOM_RO, 0, rs1 = 5))._1
+        d.setPriv(1)
+        val fromS = d.exec(rd(CUSTOM))._1
+        Seq(
+          chk(r0 == 0x5a, "a contributed CSR is read through the one map", hx(r0)),
+          chk(w.data == 0x5a && !w.exc && held.forall(!_) && r1 == 0x34,
+            "a contributed CSR write is staged, legalized by its descriptor, and applied only at the CommitGrant", s"$w $held ${hx(r1)}"),
+          chk(zeroStaged.forall(!_), "encoded write intent stays authoritative for a contributed CSR with operand 0", s"$zeroStaged"),
+          chk(!roRead.exc && roRead.data == 0xabcd && roZero.exc && roZero.cause == ILLEGAL,
+            "a read-only contributed CSR reads; a write-intent access (operand 0) is illegal", s"$roRead $roZero"),
+          chk(fromS.exc, "a contributed CSR keeps its address privilege (M-level custom CSR is illegal from S)", s"$fromS")
+        )
+      }
+      def elabFails(label: String, cs: Seq[CsrMapContribution]): TCheck = {
+        val msg = try { sim(new CsrController(p, cs)) { _ => Seq.empty[TCheck] }; "elaborated" }
+                  catch { case e: Throwable => Iterator.iterate[Throwable](e)(_.getCause).takeWhile(_ != null).map(x => String.valueOf(x.getMessage)).mkString(" | ") }
+        TCheck(msg.contains("CsrMapContribution: duplicate CSR address"), label, if (msg.contains("duplicate")) "" else msg.take(200))
+      }
+      main ++ Seq(
+        elabFails("a contribution colliding with a base CSR (mscratch) is rejected at elaboration", Seq(new SyntheticCsr(MSCRATCH, 0, 0xff))),
+        elabFails("two contributions at one address are rejected at elaboration", Seq(new SyntheticCsr(CUSTOM, 0, 1), new SyntheticRoCsr(CUSTOM, 2))),
+        mustAssert(this, "a contribution cannot own a second write path (its CSR changed outside the CommitGrant)",
+          "CsrMapContribution: a contributed CSR changed outside its CommitGrant", Seq(new RogueCsr(CUSTOM))) { d => d.run(4) }
+      )
+    }
+  }
+
   val all: Seq[SpecTest] = Seq(ops, boundaries, rdX0, metadata, access, backpressure, gating, writeIntent, singleOwner,
-    supervisor, interrupts, trapWrite, tctx, publish)
+    supervisor, interrupts, trapWrite, tctx, publish, decodePrivView, contribution)
 }

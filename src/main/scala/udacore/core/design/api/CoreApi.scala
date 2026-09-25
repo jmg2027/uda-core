@@ -19,7 +19,8 @@ case class CoreApiParams(
     dataWidth: Int,
     vAddrWidth: Int,
     pAddrWidth: Int,
-    hartId: Int
+    hartId: Int,
+    debugEntryAddr: Long // Debug Module integration (ADR-019E E-2)
 )
 
 object CoreApiParams {
@@ -32,7 +33,8 @@ object CoreApiParams {
       dataWidth = params.dataWidth,
       vAddrWidth = params.vAddrWidth,
       pAddrWidth = params.pAddrWidth,
-      hartId = params.hartId
+      hartId = params.hartId,
+      debugEntryAddr = params.debugEntryAddr
     )
   }
 }

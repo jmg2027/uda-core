@@ -20,7 +20,7 @@ object CsrTrapSeamSpecTests {
   def tagOf(s: Int): (Boolean, Int) = ((s / D) % 2 == 1, s % D)
   def code(u: UInt): Int = u.litValue.toInt
 
-  class SeamHarness extends Module {
+  class SeamHarness(p: BackendParams = CsrTrapSeamSpecTests.p) extends Module {
     val io = IO(new Bundle {
       val head     = Flipped(Decoupled(new RobHead(p)))
       val csrReq   = Flipped(Decoupled(new IssuedUop(p)))
@@ -182,7 +182,7 @@ object CsrTrapSeamSpecTests {
           afterInt.tr("mcause") == 0x80000007L && afterInt.tr("mepc") == 0x800 && afterInt.tr("priv") == 3 &&
           ((afterInt.tr("mstatus") >> 11) & 3) == 1 && !intr.exists(_.headFire),
           "an M interrupt from S: the head is not retired; TrapEntryM with the interrupt cause and MPP := S", s"${ev(intr)} ${afterInt.tr}"),
-        chk(ev(dbg).exists(e => e.cause == code(RecoveryCause.Debug) && e.target == p.debugEntryPc) && afterDbg.debugMode &&
+        chk(ev(dbg).exists(e => e.cause == code(RecoveryCause.Debug) && e.target == p.debugEntryAddr) && afterDbg.debugMode &&
           afterDbg.tr("dpc") == 0x404 && ((afterDbg.tr("dcsr") >> 6) & 7) == 3 && (afterDbg.tr("dcsr") & 3) == 3,
           "a debug request: DebugEntry (dpc = head pc, dcsr.cause 3, prv M), debug mode, cause Debug", s"${ev(dbg)} ${afterDbg.tr}")
       )
@@ -210,5 +210,37 @@ object CsrTrapSeamSpecTests {
     }
   }
 
-  val all: Seq[SpecTest] = Seq(seam, stagedSurvives)
+  /** ADR-019E E-2/E-3/E-5 end to end: U-mode code -> halt request -> Debug Mode at a
+    * non-default debugEntryAddr -> DRET -> normal execution resumes at dpc in U. */
+  val pAlt = p.copy(debugEntryAddr = 0x40000800L)
+  val debugDret = new SpecTest("seam.debugDret", Seq("funcDebugCommitBoundary", "funcXRet", "funcSystemOpSequencing")) {
+    def run(): Seq[TCheck] = sim(new SeamHarness(pAlt)) { h =>
+      val d = new Drv(h); d.cycle()
+      d.commitWrite(0, rw(MSTATUS, 0)); d.commitWrite(1, rw(MEPC, 0x2000))
+      d.retire(H(2, 0x108, serialize = true, sysOp = SysOp.Mret))
+      val inU = d.peek()
+      d.retire(H(3, 0x2000)) // one U-mode instruction retires, so dpc (0x2004) differs from mepc (0x2000)
+      d.debugReq = true
+      val entry = d.retire(H(4, 0x2004)); val inDbg = d.peek()
+      d.debugReq = false
+      // Debug-mode code at debugEntryAddr runs as ordinary heads.
+      val dbgCode = d.retire(H(5, 0x40000800L))
+      val dret = d.retire(H(6, 0x40000804L, serialize = true, sysOp = SysOp.Dret)); val after = d.peek()
+      val resumed = d.retire(H(7, 0x2004))
+      def ev(os: Seq[O]) = os.flatMap(_.ev).find(_.kind == AR)
+      Seq(
+        chk(inU.tr("priv") == 0, "setup: the hart runs in U", s"${inU.tr}"),
+        chk(ev(entry).exists(e => e.cause == code(RecoveryCause.Debug) && e.target == 0x40000800L) && !entry.exists(_.headFire) &&
+          inDbg.debugMode && inDbg.tr("dpc") == 0x2004 && inDbg.tr("mepc") == 0x2000 && (inDbg.tr("dcsr") & 3) == 0 && inDbg.tr("priv") == 3,
+          "DebugEntry: redirect to the configured debugEntryAddr; dpc = the next normal PC; dcsr.prv = U", s"${ev(entry)} ${inDbg.tr}"),
+        chk(dbgCode.exists(_.headFire) && dbgCode.forall(_.ev.isEmpty), "debug-mode code retires normally", s"$dbgCode"),
+        chk(dret.exists(o => o.headFire && o.twFire && o.ev.exists(e => e.cause == code(RecoveryCause.XRet) && e.target == 0x2004)),
+          "DRET retires with its CSRTrapWrite and its XRet ArchRedirect to dpc in one (zero-latency) cycle", s"$dret"),
+        chk(!after.debugMode && after.tr("priv") == 0 && after.tcPriv == 0, "after DRET: Debug Mode cleared, priv U restored from dcsr.prv", s"${after.tr}"),
+        chk(resumed.exists(_.headFire) && resumed.forall(_.ev.isEmpty), "normal execution resumes at dpc", s"$resumed")
+      )
+    }
+  }
+
+  val all: Seq[SpecTest] = Seq(seam, stagedSurvives, debugDret)
 }

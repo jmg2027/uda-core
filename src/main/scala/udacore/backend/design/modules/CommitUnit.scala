@@ -101,11 +101,11 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   private val isSeqOp     = op === SysOp.Fence || op === SysOp.FenceI || op === SysOp.SfenceVma
   /** Retiring architectural redirects (ADR-019B E-6). */
   private val redirecting = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
-    op === SysOp.Mret || op === SysOp.Sret || head.predictionFault
+    op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret || head.predictionFault
   /** Intrinsic retiring redirects keep their sysOp in ExceptionOut; a redirect caused only by
     * predictionFault carries sysOp None (ADR-019B E-6). */
   private val intrinsicRedirect = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
-    op === SysOp.Mret || op === SysOp.Sret
+    op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret // Dret: ADR-019E E-3
   /** A CSR uop: serialize with sysOp None (read-only) or CsrWrite (ADR-019A E-2). */
   private val isCsr       = head.serialize && (op === SysOp.None || op === SysOp.CsrWrite)
 

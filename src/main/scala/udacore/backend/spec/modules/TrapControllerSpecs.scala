@@ -103,9 +103,12 @@ object TrapControllerSpecs {
       .desc(
         "MRET: priv := MPP, MIE := MPIE, MPIE := 1, MPP := U, and MPRV := 0 when leaving " +
         "M-mode; target = mepc. SRET: priv := SPP, SIE := SPIE, SPIE := 1, SPP := U, MPRV := 0; " +
-        "target = sepc. Illegal xRET was already turned into an exception by decode."
+        "target = sepc. DRET: CSRTrapWrite{DRet, privNext = dcsr.prv} (Debug Mode clears); " +
+        "target = dpc. Every xRET redirect carries cause XRet. Illegal xRET was already turned " +
+        "into an exception by decode."
       )
       .uses(intfCsrTrapWriteOut)
+      .note("ADR-019E E-3/E-5: DRET resumes at dpc, never at the debug entry address.")
       .build()
   }
 
@@ -120,7 +123,7 @@ object TrapControllerSpecs {
       .uses(intfExceptionIn, intfCsrTrapWriteOut, intfArchRedirectOut)
       .note("ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP.")
       .note("ADR-019B E-1: the debug-entry ArchRedirect carries cause Debug, never Trap.")
-      .note("ADR-019D gap: the debug-entry target PC is not fixed by a contract; v0 uses a design parameter until the owner fixes the debug-module ROM address.")
+      .note("ADR-019E E-2/E-5: DebugEntry records dpc = the next normal PC (the head pc) and dcsr.prv/cause, and redirects to debugEntryAddr (core contract parameter, platform-defined); debugEntryAddr is never dpc.")
       .build()
   }
 

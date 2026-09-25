@@ -2,7 +2,7 @@ package verif.spectest
 
 import chisel3._
 import chisel3.simulator.CachedSimulator._
-import udacore.backend.design.shared.{SysOp, SystemOpClass, SystemOpDecode}
+import udacore.backend.design.shared.{DecodePrivView, SysOp, SystemOpClass, SystemOpDecode}
 
 /** L1 SpecTest for the sysOp / serialize / fuType classification of funcSerializingTag
   * (ADR-019A E-2), pinned in SystemOpDecode ahead of the DecodeUnit RTL. Every CSR
@@ -33,6 +33,7 @@ object SystemOpDecodeSpecTests {
     ("wfi", 0x10500073L, true, false, true, SysOp.Wfi),
     ("mret", 0x30200073L, true, false, true, SysOp.Mret),
     ("sret", 0x10200073L, true, false, true, SysOp.Sret),
+    ("dret (ADR-019E E-3)", 0x7b200073L, true, false, true, SysOp.Dret),
     ("csrrw x1,csr,x2", csr(1, 2), false, true, true, W),
     ("csrrw x1,csr,x0", csr(1, 0), false, true, true, W),
     ("csrrw x0,csr,x2", csr(1, 2, rd = 0), false, true, true, W),
@@ -66,5 +67,47 @@ object SystemOpDecodeSpecTests {
     }
   }
 
-  val all: Seq[SpecTest] = Seq(classify)
+  // ---- funcSystemPrivLegality (ADR-019E E-4) -------------------------------------------------
+
+  private class LegalWrap extends Module {
+    val io = IO(new Bundle {
+      val insn  = Input(UInt(32.W))
+      val view  = Input(new DecodePrivView)
+      val legal = Output(Bool())
+    })
+    io.legal := SystemOpDecode.privLegal(io.insn, io.view)
+  }
+
+  /** Reference model: p = debugMode ? M : priv. */
+  def legalRef(name: String, priv: Int, dm: Boolean, tvm: Boolean, tw: Boolean, tsr: Boolean): Boolean = {
+    val p = if (dm) 3 else priv
+    name match {
+      case "mret"       => p == 3
+      case "sret"       => p == 3 || (p == 1 && !tsr)
+      case "sfence.vma" => p == 3 || (p == 1 && !tvm)
+      case "wfi"        => p == 3 || (p == 1 && !tw)
+      case "dret"       => dm
+      case _            => true
+    }
+  }
+  val privInsns = Seq("mret" -> 0x30200073L, "sret" -> 0x10200073L, "sfence.vma" -> 0x12b50073L, "wfi" -> 0x10500073L,
+    "dret" -> 0x7b200073L, "fence" -> 0x0ff0000fL, "csrrw" -> csr(1, 2), "addi" -> 0x00300193L)
+
+  val privLegality = new SpecTest("decode.sysPrivLegality", Seq("funcSystemPrivLegality")) {
+    def run(): Seq[TCheck] = sim(new LegalWrap) { dut =>
+      val combos = for (priv <- Seq(0, 1, 3); dm <- Seq(false, true); tvm <- Seq(false, true); tw <- Seq(false, true);
+        tsr <- Seq(false, true)) yield (priv, dm, tvm, tw, tsr)
+      privInsns.map { case (name, insn) =>
+        val bad = combos.flatMap { case c @ (priv, dm, tvm, tw, tsr) =>
+          dut.io.insn.poke(insn.U); dut.io.view.priv.poke(priv.U); dut.io.view.debugMode.poke(dm.B)
+          dut.io.view.tvm.poke(tvm.B); dut.io.view.tw.poke(tw.B); dut.io.view.tsr.poke(tsr.B)
+          val got = dut.io.legal.peek().litToBoolean
+          if (got != legalRef(name, priv, dm, tvm, tw, tsr)) Some(s"$c -> $got") else None
+        }
+        TCheck(bad.isEmpty, s"$name: legality follows DecodePrivView (priv, debugMode, TVM, TW, TSR)", bad.take(3).mkString("; "))
+      }
+    }
+  }
+
+  val all: Seq[SpecTest] = Seq(classify, privLegality)
 }

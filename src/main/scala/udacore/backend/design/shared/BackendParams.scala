@@ -75,10 +75,13 @@ case class BackendParams(
     tuning: BackendTuningParams = BackendTuningParams(),
     frontend: BackendFrontendView = BackendFrontendView(),
     usingRvvi: Boolean = false, // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
-    /** Debug-entry target PC (the debug-module ROM entry). No contract fixes it yet (ADR-019D
-      * gap); 0x800 follows the RISC-V debug-module convention until the owner decides. */
-    debugEntryPc: Long = 0x800L
+    /** Mirror of CoreContractParams.debugEntryAddr (paramDebugEntryAddr, ADR-019E E-2), passed
+      * down by CoreTop: the platform-defined Debug Mode entry address the TrapController
+      * redirects to. It is never the resume address (dpc). */
+    debugEntryAddr: Long = 0x800L
 ) {
+  require(debugEntryAddr >= 0 && debugEntryAddr < (1L << frontend.vAddrWidth) && debugEntryAddr % 4 == 0,
+    "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
   def xLen: Int             = contract.xLen
   def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
   def regNum: Int           = contract.regNum

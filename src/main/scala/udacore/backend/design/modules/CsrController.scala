@@ -10,6 +10,12 @@ import udacore.backend.spec.modules.CsrControllerSpecs._
   * read-only or WARL-constant CSR). */
 case class CsrMapEntry(addr: Int, read: UInt, write: UInt => Unit = _ => ())
 
+/** An extension's CSR-map contribution (ADR-019E E-1): declarative descriptors, built inside
+  * the CsrController when it elaborates. */
+trait CsrMapContribution {
+  def entries(): Seq[CsrMapEntry]
+}
+
 /** CsrController (spec: CsrControllerSpecs; ADR-019D E-1..E-7).
   *
   * The sole owner of committed CSR state, the privilege, and debug mode. A CSR IssuedUop is
@@ -27,7 +33,7 @@ case class CsrMapEntry(addr: Int, read: UInt, write: UInt => Unit = _ => ())
   * runtime operand value and writes at access time, which ADR-019D E-2/E-4 forbid.
   */
 @LocalSpec(contCsrController)
-class CsrController(val params: BackendParams) extends BackendModule {
+class CsrController(val params: BackendParams, contributions: Seq[CsrMapContribution] = Nil) extends BackendModule {
   val io = IO(new Bundle {
     @LocalSpec(intfCsrReqIn)
     val csrReqIn = Flipped(Decoupled(new IssuedUop(params)))
@@ -52,6 +58,9 @@ class CsrController(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfTranslationContextOut)
     val translationContextOut = Output(new TranslationContext)
+
+    @LocalSpec(intfDecodePrivViewOut)
+    val decodePrivViewOut = Output(new DecodePrivView)
   })
 
   require(xLen == 32, "the v0 CSR map is RV32")
@@ -152,12 +161,16 @@ class CsrController(val params: BackendParams) extends BackendModule {
     CsrMapEntry(0x7b2, dscratch0, v => dscratch0 := v)
   )
 
-  /** Base machine + supervisor + debug map plus each enabled extension's contribution (ADR-017);
-    * v0 enables no CSR-contributing extension. Contributions add addresses, never a write path. */
+  /** Descriptors contributed by enabled extensions (ADR-019E E-1), built here so their storage
+    * belongs to this vertex; v0 enables no CSR-contributing extension. */
+  private val contributed: Seq[CsrMapEntry] = contributions.flatMap(_.entries())
+
+  /** The one map: base machine + supervisor + debug descriptors plus the contributed ones. A
+    * descriptor supplies address, read source, and legalizing write target only; this vertex
+    * alone classifies intent, stages, and applies at the matching CommitGrant. */
   @LocalSpec(funcCsrMapContribution)
   val csrMap: Seq[CsrMapEntry] = {
-    val extensionContributions: Seq[CsrMapEntry] = Nil
-    val m = machineCsrs ++ supervisorCsrs ++ debugCsrs ++ extensionContributions
+    val m = machineCsrs ++ supervisorCsrs ++ debugCsrs ++ contributed
     require(m.map(_.addr).distinct.size == m.size, "CsrMapContribution: duplicate CSR address")
     m
   }
@@ -309,6 +322,18 @@ class CsrController(val params: BackendParams) extends BackendModule {
     t.mxr      := mstatus(19)
   }
 
+  // ---- funcDecodePrivViewPublish (ADR-019E E-4) ---------------------------------------------------------------
+
+  @LocalSpec(funcDecodePrivViewPublish)
+  val decodePrivViewPublish: Unit = {
+    val v = io.decodePrivViewOut
+    v.priv      := priv
+    v.debugMode := debugMode
+    v.tvm       := mstatus(20)
+    v.tw        := mstatus(21)
+    v.tsr       := mstatus(22)
+  }
+
   // ---- Properties (simulation assertions) --------------------------------------------------------------------
 
   private val stateVec = Cat(priv, debugMode, mstatus, medeleg, mideleg, mie, mipSoft, mtvec, mscratch, mepc, mcause,
@@ -334,6 +359,14 @@ class CsrController(val params: BackendParams) extends BackendModule {
       "NoSpeculativeCsrWrite: CSR state changed without a matching CommitGrant or CSRTrapWrite")
 
   @LocalSpec(propCsrSingleOwner)
-  val csrSingleOwner: Unit =
+  val csrSingleOwner: Unit = {
     assert(!(swApply && trapFire), "CsrSingleOwner: a software write and a CSRTrapWrite in the same cycle")
+    // A contributed descriptor owns no mutation path (ADR-019E E-1): its value moves only in the
+    // cycle after one of the two sanctioned paths fired.
+    val pathFired = RegNext(swApply || trapFire, false.B)
+    contributed.foreach { e =>
+      assert(!started || e.read === RegNext(e.read) || pathFired,
+        "CsrMapContribution: a contributed CSR changed outside its CommitGrant")
+    }
+  }
 }

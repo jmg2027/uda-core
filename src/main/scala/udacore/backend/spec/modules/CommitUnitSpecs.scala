@@ -331,7 +331,7 @@ object CommitUnitSpecs {
         "StoreBuffer, cleans the D-cache, invalidates the I-cache, retires, and sends " +
         "Exception{SysOp, Refetch}. SFENCE.VMA drains the StoreBuffer, sends the TLB flush, " +
         "retires, and sends Refetch. A retiring CsrWrite, and a predictionFault uop, retire " +
-        "and send Refetch. Mret/Sret retire and send XRet. v0 WFI is a serializing " +
+        "and send Refetch. Mret/Sret/Dret retire and send XRet. v0 WFI is a serializing " +
         "architectural NOP: it retires like an ordinary head, sends nothing, and waits for " +
         "nothing (ADR-019B E-2). Each maintenance step (drain, clean, invalidate, TLB flush) " +
         "completes before the next starts, and the final retirement of a redirecting system op " +
@@ -340,6 +340,7 @@ object CommitUnitSpecs {
       .uses(intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfICacheInvalidateOut,
             intfDCacheCleanReqOut, intfDCacheCleanRespIn, intfSfenceVmaOut, intfExceptionOut)
       .note("ADR-019A E-2/E-5: sysOp names Mret/Sret/CsrWrite; each of these retiring redirects commits before (or in the cycle of) its ArchRedirect.")
+      .note("ADR-019E E-3: Dret is a retiring redirect like Mret/Sret (atomic retirement with ExceptionOut{SysOp, Dret}; trapPending until its ArchRedirect).")
       .note("SFENCE.VMA drains committed stores first so a page-table store is visible to the next walk; v0 flushes every TLB entry for every encoding (ADR-019 D-19.6).")
       .build()
   }
