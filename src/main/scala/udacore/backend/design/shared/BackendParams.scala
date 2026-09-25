@@ -74,7 +74,10 @@ case class BackendParams(
     contract: BackendContractParams = BackendContractParams(),
     tuning: BackendTuningParams = BackendTuningParams(),
     frontend: BackendFrontendView = BackendFrontendView(),
-    usingRvvi: Boolean = false // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
+    usingRvvi: Boolean = false, // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
+    /** Debug-entry target PC (the debug-module ROM entry). No contract fixes it yet (ADR-019D
+      * gap); 0x800 follows the RISC-V debug-module convention until the owner decides. */
+    debugEntryPc: Long = 0x800L
 ) {
   def xLen: Int             = contract.xLen
   def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)

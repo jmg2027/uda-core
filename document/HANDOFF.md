@@ -252,17 +252,35 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     - 33 mutants (write-intent boundaries, access checks, staging/grant, result handling,
       trap-write kinds, interrupt view, WARL views, assert removals) all red; the first
       M-before-S mutant survived and the test was strengthened (SEI delegated vs STI in M).
+22. RTL block 12 - TrapController + trap/CSR seam integration (ADR-019D E-6/E-7):
+    - TrapController owns no CSR state; it maps each hand-off to one CSRTrapWrite and one
+      ArchRedirect in a single transfer (each valid waits only for the other consumer's
+      ready; ExceptionIn.ready is their conjunction). Sync/Interrupt -> TrapEntryM/S by
+      medeleg/mideleg (never from M), xcause interrupt bit, tval 0 for interrupts, vectored
+      target only for interrupts; MRET/SRET pops (MPRV cleared unless MRET to M); Debug ->
+      DebugEntry (dcsr.cause/prv, other bits kept) to BackendParams.debugEntryPc (0x800,
+      design parameter until the owner fixes it); Refetch -> pc + 4 without a CSRTrapWrite.
+      Asserts TrapSingleWriter (write/redirect/hand-off are one transfer).
+    - 6 L1 tests (trap.entryM, refetch, delegation, xret, debug, singleWriter), PENDING on the
+      typed shell; 21 mutants all red.
+    - Seam harness CommitUnit + TrapController + CsrController + RecoveryController (no
+      combinational loop reported): committed CSR write via grant + Refetch without a
+      CSRTrapWrite, MRET, TrapEntryM from U, TrapEntryS via medeleg, M interrupt from S,
+      DebugEntry, TranslationContext after each; E-5 end to end (a staged CSR write whose
+      head is presented with an interrupt pending retires first). Seam mutants (CommitUnit
+      without E-5, TrapEntryS writing mepc) red.
 
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
 - Review rounds 1-3 re-ran all gates below after each fix; the numbers are from round 3.
-- `python3 tools/spec-check.py`: 0 errors, 6 warnings (localspec-coverage on protected
-  CSR/Decoder/Debug/Trigger and Util - pre-existing).
+- `python3 tools/spec-check.py`: 0 errors, 4 warnings (localspec-coverage on Decoder,
+  DebugUnit, TriggerUnit, and Util - pre-existing; the CSR.scala warnings left with the file).
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
-  edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
+  edge of FrontendTop (7), BackendTop (62), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 55/55 PASS (6 pre-existing + 2 params +
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 94/94 PASS after RTL block 12 (adds 1 CommitUnit
+  serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
   10 BranchUnit/PublishMux) after RTL block 9.
@@ -271,7 +289,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 51 names (bound since the freeze: funcRobOlder, propArchRedirectWins,
+- spec-test-allow: 49 names (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
+  funcCsrMapContribution stays, see C-4) (bound since the freeze: funcRobOlder, propArchRedirectWins,
   propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
   bound) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
@@ -283,7 +302,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
   propRetireNonBlocking, propPrfPortsFixed, propRsIssueOnlyReady, propRsRecoveryKeepsOlder,
   propRsIssueStable, propRecoveryOnlyOnMispredict, propBranchCompletesOnce, propSingleDrain,
-  and the ADR-019C propBranchControlOnce; now 51) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
+  and the ADR-019C propBranchControlOnce; 51 after block 9; ADR-019D removed
+  propNoSpeculativeCsrWrite and propTrapSingleWriter: now 49) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
@@ -302,7 +322,19 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Open contradictions reported to the OWNER
 
-- None open.
+- C-4 CsrMapContribution vs ADR-019D E-2/E-4 (reported, contracts not amended):
+  funcCsrMapContribution says the CSR map is "merged into the one CsrAccess.readFromCsr call
+  this vertex owns", but CsrAccess infers write intent from the runtime operand
+  (`isReadOnly = !isImm && in === 0 && (RS || RC)`) and applies the write in the access cycle
+  (`csr.commit(sharedWrite, writeEnable && sel)`). Counterexample: CSRRS x0-free form
+  `csrrs a0, mvendorid, t0` with t0 = 0 at run time - E-2 makes it a write attempt
+  (sysOp CsrWrite, illegal on a read-only CSR), CsrAccess makes it a legal read; and any
+  legal write through readFromCsr mutates state before its CommitGrant, violating E-4 and
+  propNoSpeculativeCsrWrite. The CsrController implements the map natively (CsrMapEntry
+  list, base + extension contributions, v0 has none) and funcCsrMapContribution stays in
+  spec-test-allow. Needed ruling: amend funcCsrMapContribution to name the native map (and
+  keep the common/system/csr library for extension CSR legalization only), or rework the
+  library's access protocol to E-2/E-4.
 
 ## Contradictions resolved by owner ruling
 
@@ -335,8 +367,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
-   ADR-019D order: CommitUnit serialize-head sampling fix (done) -> CsrController (done) ->
-   TrapController -> CSR/Trap integration -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
+   ADR-019D order: CommitUnit serialize-head sampling fix, CsrController, TrapController,
+   CSR/Trap integration (all done) -> LSQ -> StoreBuffer -> DecodeUnit -> BackendTop wiring. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness

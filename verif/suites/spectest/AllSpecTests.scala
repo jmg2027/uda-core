@@ -12,7 +12,8 @@ object RunSpecTests {
     UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all ++ RenameUnitSpecTests.all ++ ReorderBufferSpecTests.all ++
       SystemOpDecodeSpecTests.all ++ RecoveryControllerSpecTests.all ++ CommitUnitSpecTests.all ++
       ReservationStationSpecTests.all ++ DispatchUnitSpecTests.all ++ ExecUnitSpecTests.all ++
-      BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++
+      BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++ TrapControllerSpecTests.all ++
+      CsrTrapSeamSpecTests.all ++
       PhysicalRegisterFileSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)

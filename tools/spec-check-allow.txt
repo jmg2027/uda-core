@@ -42,7 +42,6 @@ propDisabledExtensionTraps
 propNoCompressedDecode
 propPreciseCommit
 propRobTagConsecutive
-propTrapSingleWriter
 
 # WP-5 LoadStoreQueue asserts
 propNoWrongPathStoreVisible

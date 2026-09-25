@@ -7,11 +7,9 @@
 # ADR-018 D-18.3). Maintained by hand per work package; never regenerate it
 # wholesale with --update-test-allow (ADR-019 Work Order 07 section 7).
 
-# WP-4 backend vertices: need L1 SpecTests against the RTL (arbitration timing, port structure, CSR map assembly), a harness debugReq input (funcDebugCommitBoundary), or an enabled bit-manipulation config (BitAluUnit is absent in v0)
+# WP-4 backend vertices: need L1 SpecTests against the RTL (arbitration timing, port structure, CSR map assembly), or an enabled bit-manipulation config (BitAluUnit is absent in v0)
 funcCsrMapContribution
-funcDebugCommitBoundary
 funcIntegrateExternalBitAlu
-propTrapSingleWriter
 
 # WP-5 LSQ: needs an uncacheable PMA region in the harness or an L1 LSQ SpecTest (funcHeadMemGrant is bound by commit.headMemGrant)
 propUncachedPerformedOnce
