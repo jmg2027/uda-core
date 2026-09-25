@@ -37,12 +37,14 @@ object BackendTopSpecs {
         intfDtlbStoreRespIn,
         intfDtlbRefillIn,
         intfDCacheLoadRespIn,
+        intfUncachedStoreRespIn,
         intfStoreDrainRespIn,
         intfDCacheCleanRespIn,
         intfRecoveryEventOut,
         intfFtqCommitOut,
         intfDtlbReqOut,
         intfDCacheLoadReqOut,
+        intfUncachedStoreReqOut,
         intfStoreDrainReqOut,
         intfTranslationContextOut,
         intfSfenceVmaOut,
@@ -68,6 +70,7 @@ object BackendTopSpecs {
         dtlbsresp@{shape: text, label: DtlbStoreResp}
         dtlbrefill@{shape: text, label: DtlbRefill}
         dcresp@{shape: text, label: DCacheLoadResp}
+        ucresp@{shape: text, label: UncachedStoreResp}
         sdresp@{shape: text, label: StoreDrainResp}
         dccresp@{shape: text, label: DCacheCleanResp}
     end
@@ -94,10 +97,11 @@ object BackendTopSpecs {
 
     packet --> dec
     irq -.-> csr
-    debugreq -.-> trap
+    debugreq -.-> com
     dtlbsresp --> lsq
     dtlbrefill --> lsq
     dcresp --> lsq
+    ucresp --> lsq
     sdresp --> sb
     dccresp --> com
 
@@ -144,6 +148,8 @@ object BackendTopSpecs {
         sb -- StoreForwardData --> lsq
         com -- StoreBufferDrainReq --> sb
         sb -- StoreBufferDrainResp --> com
+        com -- HeadMemGrant --> lsq
+        sb -. StoreBufferEmpty .-> lsq
         com -. CommitGrant .-> csr
         csr -. InterruptCtrl .-> com
 
@@ -162,6 +168,7 @@ object BackendTopSpecs {
     com --> ftqcommit
     lsq --> dtlbreq
     lsq --> dcreq
+    lsq --> ucreq
     sb --> sdreq
     csr -.-> tctx
     com --> sfence
@@ -174,6 +181,7 @@ object BackendTopSpecs {
         ftqcommit@{shape: text, label: FtqCommit}
         dtlbreq@{shape: text, label: DtlbReq}
         dcreq@{shape: text, label: DCacheLoadReq}
+        ucreq@{shape: text, label: UncachedStoreReq}
         sdreq@{shape: text, label: StoreDrainReq}
         tctx@{shape: text, label: TranslationContext}
         sfence@{shape: text, label: SfenceVma}
@@ -231,7 +239,7 @@ object BackendTopSpecs {
 
   val intfDebugReqIn = spec {
     INTERFACE("DebugReqIn")
-      .desc("Debug request line, wired to the TrapController.")
+      .desc("Debug request line, wired to the CommitUnit (sampled at a precise retire boundary).")
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 2.")
@@ -258,6 +266,22 @@ object BackendTopSpecs {
     INTERFACE("DCacheLoadRespIn")
       .desc("DataCache load answers, wired to the LSQ.")
       .uses(bndDCacheLoadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedStoreRespIn = spec {
+    INTERFACE("UncachedStoreRespIn")
+      .desc("DataCache acknowledgements of uncached stores, wired to the LSQ.")
+      .uses(bndUncachedStoreResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedStoreReqOut = spec {
+    INTERFACE("UncachedStoreReqOut")
+      .desc("Granted uncacheable stores from the LSQ to the DataCache uncached port.")
+      .uses(bndUncachedStoreReq)
       .is(rawReadyValidIntf)
       .build()
   }

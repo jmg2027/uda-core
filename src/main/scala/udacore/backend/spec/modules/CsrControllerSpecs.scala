@@ -42,7 +42,7 @@ object CsrControllerSpecs {
         "ArchRedirect can only follow its own commit."
       )
       .note(
-        "The owner-protected csr/CSR.scala (OQ-E) still carries an epoch input and meta field " +
+        "The legacy csr/CSR.scala (protection waived by the owner for the ADR-019 migration, former OQ-E; rewritten with the RTL) still carries an epoch input and meta field " +
         "from the superseded machine; the ADR-019 contract does not use them."
       )
       .build()
@@ -175,7 +175,7 @@ object CsrControllerSpecs {
     PROPERTY("NoSpeculativeCsrWrite")
       .desc("An architectural CSR register write-enable asserts only in the cycle CommitGrant names the writing uop's robTag.")
       .uses(intfCommitGrantIn)
-      .note("Simulation assert, paired when the CSR body is rewritten (OQ-E).")
+      .note("Simulation assert, paired when the CSR body is rewritten for M/S/U + TranslationContext.")
       .build()
   }
 }

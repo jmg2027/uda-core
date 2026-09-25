@@ -160,7 +160,7 @@ object BackendBundlesSpecs {
           List("cfiOutcome", "CfiOutcome", "Resolved outcome recorded at branch completion (predictor training at commit)."),
           List("ftqIdx, blockEnd", "FtqIdx, Bool", "FTQ reference; blockEnd marks the last committed instruction of its fetch block."),
           List("isLoad, isStore", "Bool", "Memory ordering metadata (SQ commit handoff for stores)."),
-          List("uncacheable", "Bool", "Store to a non-cacheable PMA region, recorded at completion: performed at the head before retirement (precise access fault)."),
+          List("headExecute", "Bool", "Uncacheable load/store reported by the LSQ: not done until CommitUnit grants its execution at the head (HeadMemGrant) and the LSQ completes it."),
           List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior: none | xRET | fence | fence.i | sfence.vma | wfi | csr-with-side-effect."),
           List("predictionFault", "Bool", "Commit triggers an ArchRedirect(Refetch) to pc+4.")
         )
@@ -178,7 +178,7 @@ object BackendBundlesSpecs {
           List("robTag", "RobTag", "Completing uop."),
           List("exception", "ExceptionInfo", "Execution-detected exception (misaligned, page/access fault, illegal CSR access)."),
           List("cfiOutcome", "CfiOutcome", "Present for control-flow uops."),
-          List("uncacheable", "Bool", "Present for stores: translated to a non-cacheable page.")
+          List("headExecute", "Bool", "Memory uops only: the uop is NOT done - it must be granted execution at the ROB head (uncacheable access). The completion that follows the grant has headExecute = 0.")
         )
       )
       .uses(bndRobTag, bndCfiOutcome)
@@ -206,7 +206,7 @@ object BackendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("empty", "Bool", "No live entry (serialization gate in RenameUnit)."),
-          List("headTag", "RobTag", "Tag of the oldest live entry (uncacheable-load gate in the LSQ).")
+          List("headTag", "RobTag", "Tag of the oldest live entry (LQ release in the LSQ).")
         )
       )
       .uses(bndRobTag)
@@ -408,15 +408,29 @@ object BackendBundlesSpecs {
 
   val bndCommittedStore = spec {
     BUNDLE("CommittedStore")
-      .desc("A committed store handed from the SQ head to the StoreBuffer; irrevocable from this transfer on.")
+      .desc("A committed cacheable store handed from the SQ head to the StoreBuffer; irrevocable from this transfer on. Uncacheable stores never take this path (they are performed at the head through the LSQ uncached port).")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("paddr", "UInt(pAddrWidth)", "Physical address."),
           List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes to write."),
-          List("uncacheable", "Bool", "PMA attribute routes the drain around the array.")
         )
       )
+      .build()
+  }
+
+  val bndHeadMemGrant = spec {
+    BUNDLE("HeadMemGrant")
+      .desc(
+        "CommitUnit to LSQ: the ROB head is an uncacheable memory uop and may now perform its " +
+        "single bus access. Issued at most once per robTag; from the grant until that head " +
+        "retires or traps, no interrupt or debug request is taken in front of it."
+      )
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(List("robTag", "RobTag", "The head uop."))
+      )
+      .uses(bndRobTag)
       .build()
   }
 
@@ -455,7 +469,7 @@ object BackendBundlesSpecs {
         List(
           List("robTag", "RobTag", "Completing memory uop."),
           List("prd, wen, data", "", "Load writeback (wen false for stores and faulting loads)."),
-          List("uncacheable", "Bool", "Store completions: the store's page is non-cacheable (the ROB marks the entry)."),
+          List("headExecute", "Bool", "Not a completion: the uncacheable uop waits for HeadMemGrant (the ROB records it, done stays 0)."),
           List("exception", "ExceptionInfo", "Misaligned / page fault / access fault of the right access type.")
         )
       )
@@ -550,7 +564,7 @@ object BackendBundlesSpecs {
       .markdownTable(
         List("field", "meaning"),
         List(
-          List("source", "Sync | Interrupt | SysOp"),
+          List("source", "Sync | Interrupt | Debug | SysOp"),
           List("cause, tval", "RISC-V cause code and trap value (faulting VA for page faults)"),
           List("pc, robTag, ftqIdx", "identity of the head uop"),
           List("sysOp", "xRET / fence.i / sfence.vma / Refetch request for a non-trapping serialization")
@@ -562,7 +576,7 @@ object BackendBundlesSpecs {
   val bndCsrReq = spec {
     BUNDLE("CSRReq")
       .desc("CSR operation request (the CSR uop always executes at the ROB head).")
-      .note("Fields: csr, op, data, meta{rd}; the owner-protected CSR.scala still carries a legacy epoch meta field (OQ-E), which has no ADR-019 meaning.")
+      .note("Fields: csr, op, data, meta{rd}; the legacy CSR.scala (to be rewritten, OQ-E waived) still carries a legacy epoch meta field, which has no ADR-019 meaning.")
       .build()
   }
 

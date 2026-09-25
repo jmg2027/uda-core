@@ -53,17 +53,32 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
    - P0 RAS: HistoryCheckpoint carries the full RAS contents (rasEntries), making
      propHistoryRestoreExact true under wrong-path pushes/pops/wrap.
    - P0 Svade: Sv32 A/D policy named Svade; identity RV32IM_Zicsr_Zifencei + Svade.
-   - P0/P1 precise MMIO stores: CommitUnit funcUncacheableStoreAtHead performs an
-     uncacheable head store through the StoreBuffer and retires only on a fault-free drain
-     response; PMA contract makes cacheable writebacks fault-free. OQ-G closed.
+   - P0/P1 precise MMIO stores (first form, replaced in round 2 below); PMA contract makes
+     cacheable writebacks fault-free. OQ-G closed.
    - P1 checkpoints: freed at resolution via BranchUnit CheckpointRelease -> RenameUnit
      (bitmask pool with owner robTag), or after the recovering restore; not at commit.
    - P1/P2 PTW: globalSeen |= PTE.G over the whole walk.
+5. Review round 2 (owner review of 8f118a4):
+   - P0 uncacheable head execution separated from commit: the round-1 form fired StoreCommit
+     (an irrevocable commit projection) before the store could fault and had no vaddr for
+     tval. Now an uncacheable load/store reports headExecute (not done); CommitUnit sends
+     HeadMemGrant once for the head; the LSQ waits for StoreBufferEmpty, performs the single
+     bus access (stores via the new LSQ -> DataCache UncachedStoreReq/Resp port, keeping the
+     SQ entry and its vaddr), and completes done or with a precise access fault. Retirement
+     is the ordinary atomic commit; StoreCommit of an uncachedPerformed store only releases
+     the SQ entry. StoreBuffer holds committed cacheable stores only; drains never fault.
+     While a grant is in flight no interrupt/debug is taken in front of the head, so an
+     MMIO access is never killed and replayed (propUncachedPerformedOnce).
+   - P1 debug boundary: DebugReq now enters the CommitUnit and is sampled with the
+     interrupt rules at a precise retire boundary (Exception{Debug}); the TrapController
+     no longer reads debugReq.
+   - Owner decisions recorded: OQ-E waived (csr/CSR.scala unprotected, rewritten with the
+     RTL); OQ-D decided (single-hart, non-coherent, no DMA/coherent agent in v0).
 
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
-- Review round 1 re-ran all gates below after the fixes (edge check now 7/57/34 edges).
+- Review rounds 1 and 2 re-ran all gates below after the fixes (edge check now 7/59/36 edges).
 - `python3 tools/spec-check.py`: 0 errors, 6 warnings (localspec-coverage on protected
   CSR/Decoder/Debug/Trigger and Util - pre-existing).
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
@@ -75,21 +90,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 55 names (+funcUncacheableStoreAtHead, needs an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+- spec-test-allow: 56 names (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 67 PROPERTYs, each pairs with its vertex's design assert when RTL lands.
+- spec-check-allow: 68 PROPERTYs, each pairs with its vertex's design assert when RTL lands.
 
 ## Open questions needing the OWNER
 
-- OQ-E (ADR-004): waive AGENT: DO NOT TOUCH on `csr/CSR.scala`. It still carries the
-  legacy epoch input/meta (BackendParams.legacyCsrEpochWidth keeps it compiling) and
-  must be rewritten for M/S/U + TranslationContext.
 - OQ-C: the ADR-008 N=1 PPA bar is superseded by ADR-019; confirm what (if any) PPA bar
   the v0 reference point should meet.
-- OQ-D: single-hart, non-coherent memory model (no load-load ordering check, no
-  memory-order replay) - confirm no second coherent agent or DMA is in v0 scope.
 - OQ-G: closed in review round 1 (uncacheable stores are performed at the ROB head;
   cacheable regions are writeback-fault-free by PMA contract). The owner should confirm the
   platform contract when the SoC memory map is chosen.
@@ -98,6 +108,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - OQ-I (new): confirm the ADR-015 D-15.4/15.5 reinterpretation (ISA-model equivalence,
   one-axis configs without N) recorded in ADR-000 - or write a small ADR amendment.
 - RV64 decode scheduling (carried; v0 is RV32 only).
+- Decided 2026-09-25: OQ-E waived (CSR.scala protection lifted for the ADR-019 rewrite; it
+  still carries the legacy epoch input/meta until then, kept compiling by
+  BackendParams.legacyCsrEpochWidth). OQ-D decided: v0 single-hart, non-coherent, no DMA.
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
@@ -107,17 +120,18 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Predictor training at retirement only; no decode-time redirect for direct JAL.
 - v0 serializes every CSR op (rename into empty ROB) and refetches after CSR writes.
 - Full RAS snapshot per FTQ entry costs FtqDepth x RasDepth x 32 bits (4 Kbit at v0).
-- Uncacheable store latency: each one drains the StoreBuffer and waits for a bus ack at the
-  ROB head.
+- Uncacheable access latency: each one waits for the ROB head, a StoreBuffer drain, and a
+  bus ack, and blocks interrupt sampling while in flight.
 
 ## Next steps (in order)
 
-1. Owner review of the ADR-019 spec tree (Work Order 07 section 9 acceptance).
+1. Owner review passed after round 2; RTL starts with RenameUnit -> ReorderBuffer ->
+   RecoveryController -> CommitUnit.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
    binding) -> RS/Dispatch/PublishMux/PRF/FU wrappers -> LSQ/StoreBuffer -> DataCache +
    DataBusAdapter -> frontend (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer) +
-   InstructionCache/InstBusAdapter -> MMU (TLBs/PTW) -> Trap/Csr (after OQ-E).
+   InstructionCache/InstBusAdapter -> MMU (TLBs/PTW) -> Trap/Csr (CSR.scala rewrite, OQ-E waived).
 3. Replace each allowlisted PROPERTY with its design assert; add L1 SpecTests for the
    predictor history restore (ADR-019 obligation) and cache/bus monitors.
 4. Harness: uncacheable PMA region, bus-stall knob, debugReq input, then SFENCE.VMA scn.

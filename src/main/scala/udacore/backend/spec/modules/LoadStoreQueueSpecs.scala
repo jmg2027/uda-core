@@ -37,6 +37,10 @@ object LoadStoreQueueSpecs {
         intfStoreCommitIn,
         intfCommittedStoreOut,
         intfRobStatusIn,
+        intfHeadMemGrantIn,
+        intfUncachedStoreReqOut,
+        intfUncachedStoreRespIn,
+        intfStoreBufferEmptyIn,
         intfRecoveryEventIn,
         funcLsqAllocate,
         funcAddressCapture,
@@ -53,7 +57,8 @@ object LoadStoreQueueSpecs {
         propNoPassUnresolvedStore,
         propNoSpeculativeStoreVisible,
         propWrongPathLoadNoResult,
-        propLsqRecoveryKeepsOlder
+        propLsqRecoveryKeepsOlder,
+        propUncachedPerformedOnce
       )
       .uses(paramLoadQueueDepth, paramStoreQueueDepth, funcRobOlder, bndLoadQueueEntry, bndStoreQueueEntry)
       .is(rawSpeculativeHolder)
@@ -68,7 +73,7 @@ object LoadStoreQueueSpecs {
         "address, data, and state."
       )
       .note(
-        "Memory model (OQ-D): single hart, non-coherent v0, no other agent writes cacheable " +
+        "Memory model (owner decision, former OQ-D): single hart, non-coherent v0, no DMA or other agent writes cacheable " +
         "memory, so load-load reordering between different or equal addresses is unobservable " +
         "and no load-load ordering check exists. There is no memory-order-violation replay: " +
         "the conservative disambiguation below makes it unnecessary (ADR-019 D-19.5)."
@@ -174,10 +179,42 @@ object LoadStoreQueueSpecs {
 
   val intfRobStatusIn = spec {
     INTERFACE("RobStatusIn")
-      .desc("ROB head position (uncacheable-load gate and LQ release).")
+      .desc("ROB head position (LQ release).")
       .uses(bndRobStatus)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 4.")
+      .build()
+  }
+
+  val intfHeadMemGrantIn = spec {
+    INTERFACE("HeadMemGrantIn")
+      .desc("Execution grant from the CommitUnit for the uncacheable load or store at the ROB head. Always ready.")
+      .uses(bndHeadMemGrant)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedStoreReqOut = spec {
+    INTERFACE("UncachedStoreReqOut")
+      .desc("The single bus write of a granted uncacheable store, to the DataCache uncached port (physical; bypasses the StoreBuffer and the array).")
+      .uses(bndUncachedStoreReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedStoreRespIn = spec {
+    INTERFACE("UncachedStoreRespIn")
+      .desc("Bus acknowledgement of the uncached store (accessFault = denied).")
+      .uses(bndUncachedStoreResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfStoreBufferEmptyIn = spec {
+    INTERFACE("StoreBufferEmptyIn")
+      .desc("StoreBuffer empty view: every older committed store has reached the D-cache or bus.")
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4 (committed-state view).")
       .build()
   }
 
@@ -276,10 +313,10 @@ object LoadStoreQueueSpecs {
   val funcStoreComplete = spec {
     FUNCTION("StoreComplete")
       .desc(
-        "A store whose paddr and data are both known, or that is Faulted, completes on " +
-        "MemResultOut (no register write, with its uncacheable attribute) so the ROB marks it " +
-        "done; it stays in the SQ until commit. An uncacheable store is handed to the " +
-        "StoreBuffer at the ROB head before it retires (CommitUnit funcUncacheableStoreAtHead)."
+        "A cacheable store whose paddr and data are both known, or any Faulted store, " +
+        "completes on MemResultOut (no register write) so the ROB marks it done; it stays in " +
+        "the SQ until commit. An uncacheable store with paddr and data known instead reports " +
+        "headExecute (not done) and waits for its HeadMemGrant (funcUncacheableAtHead)."
       )
       .uses(intfMemResultOut)
       .build()
@@ -288,21 +325,29 @@ object LoadStoreQueueSpecs {
   val funcUncacheableAtHead = spec {
     FUNCTION("UncacheableAtHead")
       .desc(
-        "A load whose translation reports a non-cacheable page (status Uncacheable) is not " +
-        "performed speculatively: it waits until RobStatus.headTag equals its robTag and then " +
-        "re-issues with uncached set. Stores to non-cacheable pages need no gate: they only " +
-        "leave the SQ after commit."
+        "An uncacheable access is never performed speculatively and at most once. A load " +
+        "answered Uncacheable, or a store translated to a non-cacheable page with its data " +
+        "known, reports headExecute on MemResultOut and waits. On HeadMemGrant for its robTag, " +
+        "and once StoreBufferEmpty holds (older committed stores are ordered before it), a load " +
+        "re-issues DCacheLoadReq with uncached set and completes with the value or a load access " +
+        "fault; a store issues UncachedStoreReq{paddr, data, mask}, keeps its SQ entry, and on " +
+        "UncachedStoreResp completes done (marked uncachedPerformed) or with a store access " +
+        "fault (tval = its vaddr, held in the SQ entry). The later StoreCommit or ArchRedirect " +
+        "then releases the entry."
       )
-      .uses(intfRobStatusIn, intfDCacheLoadReqOut)
+      .uses(intfHeadMemGrantIn, intfStoreBufferEmptyIn, intfDCacheLoadReqOut,
+            intfUncachedStoreReqOut, intfUncachedStoreRespIn, intfMemResultOut)
       .build()
   }
 
   val funcStoreCommitHandoff = spec {
     FUNCTION("StoreCommitHandoff")
       .desc(
-        "On StoreCommit for the SQ head, fire CommittedStoreOut{paddr, data, mask, uncacheable} " +
-        "in the same cycle and release the head. The handoff never occurs for a store that is " +
-        "not the ROB head's store."
+        "On StoreCommit for the SQ head: a cacheable store fires CommittedStoreOut{paddr, data, " +
+        "mask} in the same cycle and releases the head; an uncachedPerformed store only " +
+        "releases the head (its write already happened and must not be repeated). StoreCommit " +
+        "is always the projection of the retirement of that very store: it never fires for a " +
+        "store that does not retire in the same cycle."
       )
       .uses(intfStoreCommitIn, intfCommittedStoreOut)
       .build()
@@ -354,6 +399,18 @@ object LoadStoreQueueSpecs {
       )
       .uses(funcLsqRecovery)
       .note("ADR-019 D-19.12 and verification obligation 'wrong-path load may fill cache but leaves no architectural result'.")
+      .build()
+  }
+
+  val propUncachedPerformedOnce = spec {
+    PROPERTY("UncachedPerformedOnce")
+      .desc(
+        "Every uncacheable load or store reaches the bus at most once and only after its " +
+        "HeadMemGrant; its SQ/LQ entry is live until its completion is retired or trapped, and " +
+        "an uncacheable store never enters the StoreBuffer."
+      )
+      .uses(funcUncacheableAtHead)
+      .note("Simulation assert.")
       .build()
   }
 

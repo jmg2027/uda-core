@@ -95,6 +95,8 @@ object CoreTopSpecs {
       |         be -- DCacheLoadReq --> dc
       |         dtlb -- DCacheTranslation --> dc
       |         dc -- DCacheLoadResp --> be
+      |         be -- UncachedStoreReq --> dc
+      |         dc -- UncachedStoreResp --> be
       |         dtlb -- DtlbStoreResp --> be
       |         dtlb -- DtlbRefill --> be
       |         be -- StoreDrainReq --> dc

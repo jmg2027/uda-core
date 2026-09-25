@@ -10,7 +10,7 @@ import udacore.common.ControlSignal.CSRControl
 /** Backend bundle implementations retained ahead of the ADR-019 RTL.
   *
   * Only the CSR-facing bundles exist in the design tree today: they are the
-  * interface of the owner-protected csr/CSR.scala (OQ-E) and must keep their
+  * interface of the legacy csr/CSR.scala (OQ-E waived; rewritten with the ADR-019 RTL) and must keep their
   * shape until that file is rewritten. Every other ADR-019 backend bundle
   * (RobTag, RecoveryEvent, RobEntry, RenameAllocation, LSQ entries, ...) is
   * specified in BackendBundlesSpecs and is authored together with its RTL.

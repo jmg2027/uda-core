@@ -50,9 +50,13 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
     under wrong-path wrap; a write log is a later area optimization.
   - The ISA identity is RV32IM_Zicsr_Zifencei + Svade (A/D faults, no hardware A/D update),
     M/S/U, Sv32. ADR-019's "RV32IM" is read as this precise string.
-  - Uncacheable stores are performed at the ROB head and retire only after the bus ack, so
-    store access faults are precise; cacheable PMA regions are writeback-fault-free by
-    platform contract (resolves the former OQ-G).
+  - Uncacheable loads and stores are executed at the ROB head under a HeadMemGrant, before
+    and separate from commit: the LSQ performs the single bus access (stores through a
+    dedicated uncached D-cache port, never the StoreBuffer) and completes the uop, which then
+    retires through the ordinary atomic commit or traps precisely. Cacheable PMA regions are
+    fill/writeback-fault-free by platform contract (resolves the former OQ-G).
+  - Debug requests are sampled by the CommitUnit at a precise retire boundary, like
+    interrupts, and handed to the TrapController as Exception{Debug}.
   - Rename checkpoints are freed at branch resolution (CheckpointRelease) or right after
     the recovering restore, not at commit; FTQ history checkpoints still live to commit.
   - PTW refills are global when any PTE on the walk has G = 1.
@@ -109,10 +113,13 @@ Still relevant as later performance work:
   (P01 O2) and enters the area-vs-N sweep.
 - OQ-C (ADR-008): +10% area envelope vs a harder "within parity" bar - an
   owner/project-identity call, not an engineering one.
-- OQ-D (ADR-003): the exact single-hart memory-consistency statement (assumed
+- OQ-D (ADR-003) - DECIDED by the owner 2026-09-25: v0 is single-hart, non-coherent, with no
+  DMA or coherent agent; no load-load ordering check and no memory-order replay.
+  Original text: the exact single-hart memory-consistency statement (assumed
   RVWMO, sequentially-consistent-observable) - confirm no coherent second agent
   is ever in scope, because forwarding-only is insufficient if it is.
-- OQ-E (ADR-004): waive `AGENT: DO NOT TOUCH` on `CSRCore` to delete the
+- OQ-E (ADR-004) - WAIVED by the owner 2026-09-25 under the ADR-019 clean-break
+  authority; CSR.scala is rewritten with the RTL. Original text: waive `AGENT: DO NOT TOUCH` on `CSRCore` to delete the
   internal exception/mret writers (`csr/CSR.scala:405-408, 494-524`). Owner
   sign-off is the load-bearing approval; the rest is spec.
 - OQ-F (ADR-015): Spike vs Sail as primary ISS golden (recommend Spike now,

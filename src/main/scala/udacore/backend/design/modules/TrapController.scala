@@ -25,9 +25,6 @@ class TrapController(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfArchRedirectOut)
     val archRedirectOut = ???
-
-    @LocalSpec(intfDebugReqIn)
-    val debugReqIn = ???
   })
 
   @LocalSpec(funcTrapSingleOwner)

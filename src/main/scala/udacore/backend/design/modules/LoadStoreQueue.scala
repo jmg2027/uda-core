@@ -53,6 +53,18 @@ class LoadStoreQueue(val params: BackendParams) extends BackendModule {
     @LocalSpec(intfRobStatusIn)
     val robStatusIn = ???
 
+    @LocalSpec(intfHeadMemGrantIn)
+    val headMemGrantIn = ???
+
+    @LocalSpec(intfUncachedStoreReqOut)
+    val uncachedStoreReqOut = ???
+
+    @LocalSpec(intfUncachedStoreRespIn)
+    val uncachedStoreRespIn = ???
+
+    @LocalSpec(intfStoreBufferEmptyIn)
+    val storeBufferEmptyIn = ???
+
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
   })

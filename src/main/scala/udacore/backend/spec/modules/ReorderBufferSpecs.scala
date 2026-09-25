@@ -101,7 +101,9 @@ object ReorderBufferSpecs {
     FUNCTION("RobComplete")
       .desc(
         "Set done for the named entry and record its exception, for a control-flow uop its " +
-        "resolved cfiOutcome, and for a store its uncacheable flag. Completion order is unconstrained (OoO completion)."
+        "resolved cfiOutcome. A completion with headExecute = 1 does not set done: it marks the " +
+        "entry headExecute so CommitUnit can grant it at the head; the later completion " +
+        "(headExecute = 0) sets done. Completion order is unconstrained (OoO completion)."
       )
       .uses(intfRobCompletionIn)
       .build()

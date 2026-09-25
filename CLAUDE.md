@@ -51,7 +51,7 @@ are operationalized in the **spec-first skill** (`.claude/skills/spec-first/SKIL
 invoke it before touching `src/main/scala`. The spec DSL guide is `AGENTS.md`.
 
 Owner-gated items (never decide as an agent): project identity calls, PPA bars (OQ-C),
-protected-file waivers (OQ-E), RV64 decode scheduling. Record them in
+protected-file waivers, RV64 decode scheduling. Record them in
 `document/HANDOFF.md` under "Open questions needing the OWNER".
 
 ## Current State (calibrate before promising results)
@@ -125,8 +125,9 @@ hook): staged-ASCII check + spec-check on any src/main/scala commit.
 
 ## Protected (do not modify without owner permission)
 
-- `src/main/scala/udacore/backend/design/modules/csr/CSR.scala` (AGENT: DO NOT TOUCH;
-  OQ-E pending)
+- `csr/CSR.scala` is no longer protected: the owner waived OQ-E for the ADR-019 migration; it
+  is rewritten (M/S/U, satp, TranslationContext, TrapController single writer) with the RTL.
+
 - `src/main/scala/assembler/*` (it can emit RVC; the v0 core treats those encodings as illegal)
 - `src/test/scala/cluster/*`, `src/test/scala/assembler/*` (stale vs the rebuild APIs but
   owner-held)

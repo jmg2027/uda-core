@@ -18,9 +18,8 @@ object StoreBufferSpecs {
   val contStoreBuffer = spec {
     CONTRACT("StoreBuffer")
       .desc(
-        "A FIFO of StoreBufferDepth committed stores. Each entry is irrevocable from the cycle " +
-        "it is accepted; the head drains to the D-cache (or, for a non-cacheable address, " +
-        "around the array to the bus) in commit order, one at a time. It answers " +
+        "A FIFO of StoreBufferDepth committed cacheable stores (uncacheable stores are performed at the ROB head by the LSQ and never enter it). Each entry is irrevocable from the cycle " +
+        "it is accepted; the head drains to the D-cache in commit order, one at a time. It answers " +
         "physical-address forwarding queries from the LSQ and completes drain requests from " +
         "the CommitUnit when empty."
       )
@@ -32,6 +31,7 @@ object StoreBufferSpecs {
         intfStoreForwardDataOut,
         intfStoreBufferDrainReqIn,
         intfStoreBufferDrainRespOut,
+        intfStoreBufferEmptyOut,
         funcCommitOrderDrain,
         funcCommittedForward,
         funcDrainFence,
@@ -96,9 +96,16 @@ object StoreBufferSpecs {
 
   val intfStoreBufferDrainRespOut = spec {
     INTERFACE("StoreBufferDrainRespOut")
-      .desc("Drain completion to the CommitUnit, with the accessFault of an uncacheable head store.")
-      .uses(bndStoreDrainResp)
+      .desc("Drain completion to the CommitUnit.")
       .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfStoreBufferEmptyOut = spec {
+    INTERFACE("StoreBufferEmptyOut")
+      .desc("True when no committed store is buffered or draining; consumed by the LSQ uncacheable-access gate.")
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 4 (committed-state view).")
       .build()
   }
 
@@ -129,10 +136,7 @@ object StoreBufferSpecs {
     FUNCTION("DrainFence")
       .desc(
         "Accept a StoreBufferDrainReq and answer StoreBufferDrainResp once every entry present " +
-        "at acceptance has drained (no new store can arrive meanwhile: commit is waiting). The " +
-        "response carries accessFault = 1 iff the last drained entry was an uncacheable store " +
-        "whose bus write was denied; that is how the head uncacheable store's fault becomes " +
-        "precise (CommitUnit funcUncacheableStoreAtHead)."
+        "at acceptance has drained (no new store can arrive meanwhile: commit is waiting)."
       )
       .uses(intfStoreBufferDrainReqIn, intfStoreBufferDrainRespOut)
       .build()

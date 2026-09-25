@@ -31,6 +31,8 @@ object DataCacheSpecs {
         intfPtwMemRespOut,
         intfDCacheCleanReqIn,
         intfDCacheCleanRespOut,
+        intfUncachedStoreReqIn,
+        intfUncachedStoreRespOut,
         intfDataMemReqOut,
         intfDataMemRespIn,
         funcDCacheViptLookup,
@@ -135,6 +137,22 @@ object DataCacheSpecs {
       .build()
   }
 
+  val intfUncachedStoreReqIn = spec {
+    INTERFACE("UncachedStoreReqIn")
+      .desc("Granted uncacheable stores from the LoadStoreQueue (physical).")
+      .uses(bndUncachedStoreReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfUncachedStoreRespOut = spec {
+    INTERFACE("UncachedStoreRespOut")
+      .desc("Bus acknowledgement of each uncached store, to the LoadStoreQueue.")
+      .uses(bndUncachedStoreResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
   val intfDataMemReqOut = spec {
     INTERFACE("DataMemReqOut")
       .desc("Fills, writebacks, and uncached accesses to the DataBusAdapter (physical).")
@@ -208,12 +226,12 @@ object DataCacheSpecs {
   val funcDCacheUncached = spec {
     FUNCTION("DCacheUncached")
       .desc(
-        "An uncached load (issued only at the ROB head) or a store drain to a non-cacheable " +
-        "address bypasses the array as a single GetUncached/PutUncached bus access; nothing is " +
-        "installed. An uncacheable store drain is answered only after the bus acknowledgement, " +
-        "with accessFault = denied, so the head store can trap precisely."
+        "An uncached load (issued only after its HeadMemGrant) or an UncachedStoreReq bypasses " +
+        "the array as a single GetUncached/PutUncached bus access; nothing is installed. Each " +
+        "is answered only after the bus acknowledgement, with the access fault = denied, so the " +
+        "head uop can trap precisely."
       )
-      .uses(intfDataMemReqOut)
+      .uses(intfDataMemReqOut, intfUncachedStoreReqIn, intfUncachedStoreRespOut)
       .build()
   }
 

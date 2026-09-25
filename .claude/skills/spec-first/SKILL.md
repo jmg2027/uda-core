@@ -86,8 +86,7 @@ Full guide: AGENTS.md; naming: `<cat-prefix><Module><Feature>` (cont/intf/func/p
 bnd/cap), module classes PascalCase with acronyms as words (Alu, Csr).
 
 ## Protected files (do not modify without owner permission)
-- `src/main/scala/udacore/backend/design/modules/csr/CSR.scala` (marked AGENT: DO NOT
-  TOUCH; pending OQ-E sign-off)
+- (`csr/CSR.scala` protection was waived by the owner for the ADR-019 migration, former OQ-E.)
 - `src/test/scala/cluster/*`, `src/test/scala/assembler/*`, `src/main/scala/assembler/*`
 - `verif/` engine core may be extended, but the Gate discipline must never be weakened.
 

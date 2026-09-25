@@ -16,7 +16,7 @@ sealed protected trait HasBackendParams {
   def robTagWidth: Int      = params.robTagWidth
   def physRegIdWidth: Int   = params.physRegIdWidth
 
-  /** Only the owner-protected csr/CSR.scala reads this (OQ-E legacy field). */
+  /** Only the legacy csr/CSR.scala reads this (removed when it is rewritten). */
   def epochWidth: Int = params.legacyCsrEpochWidth
 
   val bytesize: Int = 8

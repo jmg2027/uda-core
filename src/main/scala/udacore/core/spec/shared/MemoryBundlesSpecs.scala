@@ -221,8 +221,7 @@ object MemoryBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("paddr", "UInt(pAddrWidth)", "Physical address."),
-          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes."),
-          List("uncacheable", "Bool", "Bypass the array and issue a PutPartialData.")
+          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes.")
         )
       )
       .build()
@@ -230,10 +229,34 @@ object MemoryBundlesSpecs {
 
   val bndStoreDrainResp = spec {
     BUNDLE("StoreDrainResp")
-      .desc("Completion of one committed store drain (the write is in the array or acknowledged on the bus).")
+      .desc("Completion of one committed cacheable store drain (the bytes are in the array). Never faults: cacheable regions are fill/writeback-fault-free by the paramPmaMap contract.")
+      .build()
+  }
+
+  val bndUncachedStoreReq = spec {
+    BUNDLE("UncachedStoreReq")
+      .desc("LSQ to D-cache uncached port: the single bus write of a granted uncacheable store. Physical address.")
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("accessFault", "Bool", "Bus denied an uncacheable write. Precise: the uncacheable store is still at the ROB head (funcUncacheableStoreAtHead). Cacheable drains never fault (paramPmaMap)."))
+        List(
+          List("sqIdx", "UInt", "SQ entry (response reassociation)."),
+          List("paddr", "UInt(pAddrWidth)", "Physical address."),
+          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes (PutPartialData).")
+        )
+      )
+      .uses(paramPAddrWidth)
+      .build()
+  }
+
+  val bndUncachedStoreResp = spec {
+    BUNDLE("UncachedStoreResp")
+      .desc("Bus acknowledgement of an uncached store, returned only after the TileLink AccessAck.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("sqIdx", "UInt", "Echo."),
+          List("accessFault", "Bool", "TileLink denied/corrupt: precise store access fault, the store is still at the ROB head.")
+        )
       )
       .build()
   }

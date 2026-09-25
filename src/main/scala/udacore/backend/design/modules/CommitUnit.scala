@@ -58,6 +58,12 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfRecoveryEventIn)
     val recoveryEventIn = ???
+
+    @LocalSpec(intfHeadMemGrantOut)
+    val headMemGrantOut = ???
+
+    @LocalSpec(intfDebugReqIn)
+    val debugReqIn = ???
   })
 
   @LocalSpec(funcCommitHead)
@@ -66,8 +72,8 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   @LocalSpec(funcTrapHold)
   val trapHold = ???
 
-  @LocalSpec(funcUncacheableStoreAtHead)
-  val uncacheableStoreAtHead = ???
+  @LocalSpec(funcHeadMemGrant)
+  val headMemGrant = ???
 
   @LocalSpec(funcPreciseTrapHandoff)
   val preciseTrapHandoff = ???

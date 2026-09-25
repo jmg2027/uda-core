@@ -155,7 +155,8 @@ class CSR(val params: BackendParams) extends BackendModule {
   io.interruptCtrl      := core.io.interruptCtrl
 }
 
-// AGENT: DO NOT TOUCH CORE LOGICS
+// Legacy core logic of the superseded machine. The owner waived its protection (OQ-E) for
+// the ADR-019 migration; it is replaced by the M/S/U + TranslationContext rewrite.
 class CSRCore(val params: BackendParams) extends BackendModule {
   import udacore.common.system.CSR._
   import CSRControl._

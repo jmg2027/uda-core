@@ -71,7 +71,7 @@ case class BackendParams(
   def regIdWidth: Int        = 5
 
   /** Width of the legacy epoch meta field of the owner-protected CSR.scala
-    * interface (OQ-E). It has no ADR-019 recovery meaning. */
+    * interface (OQ-E waived; removed when CSR.scala is rewritten). It has no ADR-019 recovery meaning. */
   def legacyCsrEpochWidth: Int = 1
 
   private def log2(x: Int): Int     = Integer.numberOfTrailingZeros(x)

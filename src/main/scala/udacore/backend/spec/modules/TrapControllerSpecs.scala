@@ -5,7 +5,6 @@ import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
-import udacore.core.spec.shared.CoreBundlesSpecs.bndDebugReq
 
 /** TrapController: single owner of trap-CSR/privilege transitions and the only
   * producer of commit-head architectural redirects (ADR-004, ADR-019 D-19.9).
@@ -24,7 +23,6 @@ object TrapControllerSpecs {
         intfCsrTrapReadIn,
         intfCsrTrapWriteOut,
         intfArchRedirectOut,
-        intfDebugReqIn,
         funcTrapSingleOwner,
         funcTrapDelegation,
         funcXRet,
@@ -72,15 +70,6 @@ object TrapControllerSpecs {
       .build()
   }
 
-  val intfDebugReqIn = spec {
-    INTERFACE("DebugReqIn")
-      .desc("Asynchronous debug request line.")
-      .uses(bndDebugReq)
-      .is(rawNoDecoupled)
-      .note("rawNoDecoupled class 2; acted on only at a commit boundary.")
-      .build()
-  }
-
   val funcTrapSingleOwner = spec {
     FUNCTION("TrapSingleOwner")
       .desc(
@@ -120,10 +109,12 @@ object TrapControllerSpecs {
   val funcDebugCommitBoundary = spec {
     FUNCTION("DebugCommitBoundary")
       .desc(
-        "Debug request, trigger, and step effects are taken only at a commit boundary and are " +
-        "emitted as CSRTrapWrite(DebugEntry) plus ArchRedirect through this single owner."
+        "A debug hand-off (Exception{Debug} from the CommitUnit, which alone samples the debug " +
+        "request at a precise retire boundary) and trigger/step/ebreak effects qualified at " +
+        "the commit head are emitted as CSRTrapWrite(DebugEntry) plus ArchRedirect through this " +
+        "single owner. The TrapController itself never decides when a boundary is safe."
       )
-      .uses(intfDebugReqIn, intfCsrTrapWriteOut, intfArchRedirectOut)
+      .uses(intfExceptionIn, intfCsrTrapWriteOut, intfArchRedirectOut)
       .note("ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP.")
       .build()
   }

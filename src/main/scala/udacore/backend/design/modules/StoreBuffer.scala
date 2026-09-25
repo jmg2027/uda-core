@@ -34,6 +34,9 @@ class StoreBuffer(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfStoreBufferDrainRespOut)
     val storeBufferDrainRespOut = ???
+
+    @LocalSpec(intfStoreBufferEmptyOut)
+    val storeBufferEmptyOut = ???
   })
 
   @LocalSpec(funcCommitOrderDrain)

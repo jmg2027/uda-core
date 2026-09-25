@@ -39,9 +39,11 @@ object CommitUnitSpecs {
         intfDCacheCleanRespIn,
         intfSfenceVmaOut,
         intfRecoveryEventIn,
+        intfHeadMemGrantOut,
+        intfDebugReqIn,
         funcCommitHead,
         funcTrapHold,
-        funcUncacheableStoreAtHead,
+        funcHeadMemGrant,
         funcPreciseTrapHandoff,
         funcInterruptSampling,
         funcBlockEndCommit,
@@ -181,11 +183,28 @@ object CommitUnitSpecs {
       .build()
   }
 
+  val intfHeadMemGrantOut = spec {
+    INTERFACE("HeadMemGrantOut")
+      .desc("Execution grant for an uncacheable memory uop at the ROB head, to the LoadStoreQueue.")
+      .uses(bndHeadMemGrant)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfDebugReqIn = spec {
+    INTERFACE("DebugReqIn")
+      .desc("Asynchronous debug request line, sampled only at a precise retire boundary like an interrupt.")
+      .uses(udacore.core.spec.shared.CoreBundlesSpecs.bndDebugReq)
+      .is(rawNoDecoupled)
+      .note("rawNoDecoupled class 2.")
+      .build()
+  }
+
   val funcCommitHead = spec {
     FUNCTION("CommitHead")
       .desc(
-        "A done head with no exception, no pending interrupt, no sysOp, no predictionFault, " +
-        "and not an uncacheable store (funcUncacheableStoreAtHead) retires when all of its views are ready in the same cycle: " +
+        "A done head with no exception, no pending interrupt, no sysOp, and no " +
+        "predictionFault retires when all of its views are ready in the same cycle: " +
         "RenameCommit always; StoreCommit if isStore; FtqCommit if blockEnd; CommitGrant if a " +
         "CSR uop; the retire token when usingRvvi. Otherwise the head waits."
       )
@@ -206,19 +225,23 @@ object CommitUnitSpecs {
       .build()
   }
 
-  val funcUncacheableStoreAtHead = spec {
-    FUNCTION("UncacheableStoreAtHead")
+  val funcHeadMemGrant = spec {
+    FUNCTION("HeadMemGrant")
       .desc(
-        "A head store whose entry is marked uncacheable is performed before it retires: " +
-        "CommitUnit fires StoreCommit (the SQ hands it to the StoreBuffer), then a " +
-        "StoreBufferDrainReq, and waits for the StoreBufferDrainResp that follows the bus " +
-        "acknowledgement of that store. accessFault = 0: the store retires (RenameCommit, " +
-        "retire token). accessFault = 1: the store does not retire; CommitUnit hands off " +
-        "Exception{Sync, store access fault (7), tval = its vaddr} and the trap is precise, " +
-        "because a denied write has no architectural effect and nothing younger has committed."
+        "When the head entry is not done and is marked headExecute (an uncacheable load or " +
+        "store), and no trap hold is active, send HeadMemGrant{robTag} once and set " +
+        "grantInFlight. While grantInFlight, no interrupt or debug request is sampled in front " +
+        "of that head, so the single bus access it performs is never killed and replayed. The " +
+        "head then completes normally (done, possibly with an exception) and retires through " +
+        "the ordinary atomic commit, or traps precisely; grantInFlight clears at that retirement " +
+        "or trap hand-off."
       )
-      .uses(intfStoreCommitOut, intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfExceptionOut)
-      .note("Replaces the imprecise platform-error path (former OQ-G). Cacheable stores need no such wait: the PMA contract makes cacheable writebacks fault-free (paramPmaMap).")
+      .uses(intfHeadMemGrantOut, intfRobHeadIn)
+      .note(
+        "The commit broadcast is untouched: a StoreCommit only ever fires for a store that " +
+        "retires in that cycle. For an uncacheable store it releases the SQ entry, which was " +
+        "already performed, without a StoreBuffer handoff (LSQ funcStoreCommitHandoff)."
+      )
       .build()
   }
 
@@ -238,14 +261,16 @@ object CommitUnitSpecs {
   val funcInterruptSampling = spec {
     FUNCTION("InterruptSampling")
       .desc(
-        "At a retire boundary (before offering the next head for retirement), if an enabled " +
-        "interrupt is pending for the current privilege (mip & mie, mideleg, MIE/SIE, priv) " +
-        "and not in debug mode, send Exception{Interrupt, cause, pc = head pc, robTag = head} " +
-        "without accepting the head from the ROB, then hold (funcTrapHold); the head is " +
-        "killed by the ArchRedirect and re-executes after the handler returns. Interrupts are " +
-        "never taken in the middle of a serialization sequence."
+        "At a retire boundary (before offering the next head for retirement), if a debug " +
+        "request is pending (debug mode not active), or an enabled interrupt is pending for " +
+        "the current privilege (mip & mie, mideleg, MIE/SIE, priv) and not in debug mode, send " +
+        "Exception{Debug | Interrupt, cause, pc = head pc, robTag = head} without accepting the " +
+        "head from the ROB, then hold (funcTrapHold); the head is killed by the ArchRedirect and " +
+        "re-executes after the handler returns. Debug has priority over interrupts. Never " +
+        "sampled during a trap hold, a serialization sequence, or while a HeadMemGrant is in " +
+        "flight (funcHeadMemGrant)."
       )
-      .uses(intfInterruptCtrlIn, intfExceptionOut)
+      .uses(intfInterruptCtrlIn, intfDebugReqIn, intfExceptionOut)
       .build()
   }
 
