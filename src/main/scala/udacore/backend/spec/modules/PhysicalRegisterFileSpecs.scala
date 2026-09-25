@@ -20,6 +20,8 @@ object PhysicalRegisterFileSpecs {
         intfPhysicalRegWriteIn,
         intfRegisterFileReadReqIn,
         intfRegisterFileReadRespOut,
+        intfCommitPrfReadReqIn,
+        intfCommitPrfReadRespOut,
         funcReadAtSelect,
         propPrfPortsFixed
       )
@@ -56,15 +58,32 @@ object PhysicalRegisterFileSpecs {
       .build()
   }
 
+  val intfCommitPrfReadReqIn = spec {
+    INTERFACE("CommitPrfReadReqIn")
+      .desc("Verification-only commit-time read request from the CommitUnit (ADR-019B E-3); always ready; elaborated only when usingRvvi.")
+      .uses(bndCommitPrfReadReq)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val intfCommitPrfReadRespOut = spec {
+    INTERFACE("CommitPrfReadRespOut")
+      .desc("Same-cycle answer to CommitPrfReadReqIn (ADR-019B E-3); elaborated only when usingRvvi.")
+      .uses(bndCommitPrfReadResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
   val funcReadAtSelect = spec {
     FUNCTION("ReadAtSelect")
       .desc(
         "Operands are read when the RS selects a uop: 2 x IssueWidth read ports, plus " +
-        "CommitWidth commit-time read ports that exist only when usingRvvi elaborates the " +
-        "retire stream (ADR-010 D-10.3). A read in the same cycle as a write to the same prd " +
+        "CommitWidth commit-time read ports (CommitPrfReadReqIn/RespOut, always ready, answered " +
+        "in the same cycle) that exist only when usingRvvi elaborates the retire stream " +
+        "(ADR-010 D-10.3, ADR-019B E-3). A read in the same cycle as a write to the same prd " +
         "returns the new value."
       )
-      .uses(intfRegisterFileReadReqIn, intfRegisterFileReadRespOut)
+      .uses(intfRegisterFileReadReqIn, intfRegisterFileReadRespOut, intfCommitPrfReadReqIn, intfCommitPrfReadRespOut)
       .build()
   }
 

@@ -76,8 +76,9 @@ class RecoveryController(val params: BackendParams) extends BackendModule {
   // Request legality: each producer names only its own causes.
   private val brCause = VecInit(RecoveryCause.DirectionMispredict, RecoveryCause.TargetMispredict,
     RecoveryCause.UnpredictedCfi).contains(br.bits.cause)
-  private val arCause = VecInit(RecoveryCause.Trap, RecoveryCause.Interrupt, RecoveryCause.XRet,
-    RecoveryCause.Refetch).contains(ar.bits.cause)
+  // ADR-019B E-1: Debug is its own ArchRedirect cause (never aliased to Trap).
+  private val arCause = VecInit(RecoveryCause.Trap, RecoveryCause.Interrupt, RecoveryCause.Debug,
+    RecoveryCause.XRet, RecoveryCause.Refetch).contains(ar.bits.cause)
   when(br.valid) { assert(brCause, "RecoveryPublish: request cause does not match its kind") }
   when(ar.valid) { assert(arCause, "RecoveryPublish: request cause does not match its kind") }
 

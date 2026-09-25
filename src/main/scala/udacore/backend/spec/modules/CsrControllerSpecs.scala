@@ -101,7 +101,7 @@ object CsrControllerSpecs {
 
   val intfInterruptCtrlOut = spec {
     INTERFACE("InterruptCtrlOut")
-      .desc("Pending-and-enabled interrupt view to the CommitUnit.")
+      .desc("Pending-and-enabled interrupt view, debugMode, and the committed privilege (ADR-019B E-4) to the CommitUnit.")
       .uses(bndInterruptCtrl)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 2/4.")

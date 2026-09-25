@@ -143,6 +143,8 @@ object BackendTopSpecs {
         pub -- RobCompletion --> rob
 
         rob -- RobHead --> com
+        com -- CommitPrfReadReq --> prf
+        prf -- CommitPrfReadResp --> com
         rob -. RobStatus .-> rn & lsq
 
         com -- RenameCommit --> rn
@@ -215,6 +217,8 @@ object BackendTopSpecs {
         "StoreBuffer.StoreBufferDrainRespOut -> CommitUnit.StoreBufferDrainRespIn; LSQ.{CommittedStoreOut, " +
         "StoreForwardQueryOut} -> StoreBuffer; StoreBuffer.StoreForwardDataOut -> LSQ; " +
         "CommitUnit.ExceptionOut -> Trap.ExceptionIn; Csr.CSRTrapReadOut -> Trap; " +
+        "CommitUnit.CommitPrfReadReqOut -> PRF.CommitPrfReadReqIn and PRF.CommitPrfReadRespOut -> " +
+        "CommitUnit.CommitPrfReadRespIn (usingRvvi only, ADR-019B E-3); " +
         "Trap.CSRTrapWriteOut -> Csr; Trap.ArchRedirectOut and BranchUnit." +
         "BranchResolutionOut -> RecoveryController; RecoveryController.RecoveryEventOut -> " +
         "every *RecoveryEventIn and the boundary."

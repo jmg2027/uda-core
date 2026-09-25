@@ -116,6 +116,7 @@ object TrapControllerSpecs {
       )
       .uses(intfExceptionIn, intfCsrTrapWriteOut, intfArchRedirectOut)
       .note("ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP.")
+      .note("ADR-019B E-1: the debug-entry ArchRedirect carries cause Debug, never Trap.")
       .build()
   }
 

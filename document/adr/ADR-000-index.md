@@ -30,7 +30,10 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
 ADR-019 is amended by **ADR-019A (v0 Erratum 01)**: RS allocation only for uops that need
 execution, an explicit `sysOp` in the decoded uop, RobStatus timing, the domain of
 `funcRobOlder`, and same-cycle commit/ArchRedirect ordering. The `242feaf` freeze is the
-baseline; ADR-019A is applied on top of it.
+baseline; ADR-019A is applied on top of it. **ADR-019B (v0 Erratum 02)** follows it:
+RecoveryCause.Debug, WFI as a serializing NOP, the usingRvvi commit PRF read path, the
+executing-privilege meaning of RetireToken.priv, trap-entry observation tokens, and atomic
+retiring redirects.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -91,6 +94,7 @@ baseline; ADR-019A is applied on top of it.
 | [018](ADR-018-spec-tdd.md) | Spec-TDD: every spec object bound to a test, red before green | accepted | owner directive 2026-07-06; extends ADR-015 enforcement |
 | [019](ADR-019-conventional-ooo-root-architecture.md) | Conventional OoO root architecture | **accepted (current root)** | owner directive 2026-09-25; supersedes epoch/predecode/ROB-less base where stated |
 | [019A](ADR-019A-v0-erratum-01.md) | ADR-019 v0 erratum 01 (RS allocation set, sysOp, recovery ordering) | **accepted** | owner ruling 2026-09-25; amends 019 on top of the 242feaf freeze |
+| [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
 
 ## Status of pre-ADR-019 proposed experiments
 

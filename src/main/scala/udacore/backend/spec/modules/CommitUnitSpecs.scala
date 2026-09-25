@@ -32,6 +32,8 @@ object CommitUnitSpecs {
         intfExceptionOut,
         intfInterruptCtrlIn,
         intfRetireStreamOut,
+        intfCommitPrfReadReqOut,
+        intfCommitPrfReadRespIn,
         intfStoreBufferDrainReqOut,
         intfStoreBufferDrainRespIn,
         intfICacheInvalidateOut,
@@ -48,6 +50,7 @@ object CommitUnitSpecs {
         funcInterruptSampling,
         funcBlockEndCommit,
         funcSystemOpSequencing,
+        funcRetireStreamEmit,
         propCommitInOrder,
         propNoCommitPastException,
         propTrapHoldUntilRedirect,
@@ -121,10 +124,28 @@ object CommitUnitSpecs {
 
   val intfRetireStreamOut = spec {
     INTERFACE("RetireStreamOut")
-      .desc("One verification retire token per retirement or trap entry (ADR-010), elaborated only when usingRvvi.")
+      .desc("One verification observation event per retirement or precise trap entry (ADR-010, ADR-019B E-5), elaborated only when usingRvvi.")
       .uses(bndRetireToken)
       .is(rawReadyValidIntf)
       .note("Observation-only: ready is tied high by the harness; commit never waits on it (propRetireNonBlocking).")
+      .build()
+  }
+
+  val intfCommitPrfReadReqOut = spec {
+    INTERFACE("CommitPrfReadReqOut")
+      .desc("Commit-time read of the retiring head's newPrd for RetireToken.wdata (ADR-019B E-3); elaborated only when usingRvvi.")
+      .uses(bndCommitPrfReadReq)
+      .is(rawReadyValidIntf)
+      .note("The PRF is always ready; the read never backpressures retirement.")
+      .build()
+  }
+
+  val intfCommitPrfReadRespIn = spec {
+    INTERFACE("CommitPrfReadRespIn")
+      .desc("Same-cycle PRF answer for CommitPrfReadReqOut (ADR-019B E-3); elaborated only when usingRvvi.")
+      .uses(bndCommitPrfReadResp)
+      .is(rawReadyValidIntf)
+      .note("The CommitUnit is always ready for the answer.")
       .build()
   }
 
@@ -222,6 +243,14 @@ object CommitUnitSpecs {
         "sent. trapPending clears only in the cycle a RecoveryEvent of kind ArchRedirect with " +
         "that robTag is observed. The TrapController may take any number of cycles."
       )
+      .note(
+        "ADR-019B E-6: for a retiring redirect (FenceI/SfenceVma/CsrWrite/predictionFault " +
+        "Refetch, Mret/Sret XRet) the ExceptionOut transfer is part of the retirement itself: " +
+        "RobHeadIn.fire, the required commit-broadcast views, the retire token, and ExceptionOut " +
+        "fire in one cycle, and none of them fires unless ExceptionOut is ready. An unrelated " +
+        "RecoveryEvent (BranchMispredict, or an ArchRedirect naming another robTag) never clears " +
+        "trapPending."
+      )
       .uses(intfExceptionOut, intfRobHeadIn, intfRecoveryEventIn)
       .build()
   }
@@ -251,8 +280,9 @@ object CommitUnitSpecs {
     FUNCTION("PreciseTrapHandoff")
       .desc(
         "A head whose entry carries an exception is not retired: CommitUnit accepts it as a " +
-        "hand-off (the ROB locks its head), sends Exception{Sync, cause, tval, pc, robTag, " +
-        "ftqIdx}, emits a trap retire token, and holds (funcTrapHold). No younger uop has " +
+        "hand-off (the ROB locks its head) in the same transfer as Exception{Sync, cause, tval, " +
+        "pc, robTag, ftqIdx}, fires no RenameCommit, StoreCommit, FtqCommit, or CommitGrant, " +
+        "emits a trap-entry observation token (ADR-019B E-5), and holds (funcTrapHold). No younger uop has " +
         "updated architectural state, so the trap is precise; the TrapController's " +
         "ArchRedirect then discards the whole window."
       )
@@ -271,6 +301,12 @@ object CommitUnitSpecs {
         "re-executes after the handler returns. Debug has priority over interrupts. Never " +
         "sampled during a trap hold, a serialization sequence, or while a HeadMemGrant is in " +
         "flight (funcHeadMemGrant)."
+      )
+      .note(
+        "ADR-019B: the pending/enabled decision, debugMode, and the committed privilege come " +
+        "from InterruptCtrl; a Debug hand-off carries cause 3 (haltreq). Once offered, the " +
+        "hand-off is held stable until ExceptionOut transfers, and a trap-entry observation " +
+        "token is emitted in that transfer cycle."
       )
       .uses(intfInterruptCtrlIn, intfDebugReqIn, intfExceptionOut)
       .build()
@@ -293,13 +329,31 @@ object CommitUnitSpecs {
         "StoreBuffer, cleans the D-cache, invalidates the I-cache, retires, and sends " +
         "Exception{SysOp, Refetch}. SFENCE.VMA drains the StoreBuffer, sends the TLB flush, " +
         "retires, and sends Refetch. A retiring CsrWrite, and a predictionFault uop, retire " +
-        "and send Refetch. Mret/Sret retire and send XRet. WFI retires and waits for a pending " +
-        "interrupt (or debug request) before the next head is offered."
+        "and send Refetch. Mret/Sret retire and send XRet. v0 WFI is a serializing " +
+        "architectural NOP: it retires like an ordinary head, sends nothing, and waits for " +
+        "nothing (ADR-019B E-2). Each maintenance step (drain, clean, invalidate, TLB flush) " +
+        "completes before the next starts, and the final retirement of a redirecting system op " +
+        "is one atomic transfer with its ExceptionOut (ADR-019B E-6)."
       )
       .uses(intfStoreBufferDrainReqOut, intfStoreBufferDrainRespIn, intfICacheInvalidateOut,
             intfDCacheCleanReqOut, intfDCacheCleanRespIn, intfSfenceVmaOut, intfExceptionOut)
       .note("ADR-019A E-2/E-5: sysOp names Mret/Sret/CsrWrite; each of these retiring redirects commits before (or in the cycle of) its ArchRedirect.")
       .note("SFENCE.VMA drains committed stores first so a page-table store is visible to the next walk; v0 flushes every TLB entry for every encoding (ADR-019 D-19.6).")
+      .build()
+  }
+
+  val funcRetireStreamEmit = spec {
+    FUNCTION("RetireStreamEmit")
+      .desc(
+        "When usingRvvi, emit one RetireToken per observation event in the cycle it happens: a " +
+        "retirement (trap = 0; rd, wen = hasDest && rd != x0, wdata from a same-cycle " +
+        "CommitPrfReadReq of the head's newPrd when wen, else 0) or a precise trap entry " +
+        "(trap = 1; source Sync | Interrupt | Debug, cause, tval; wen = 0). pc and insn are the " +
+        "head's; priv is InterruptCtrl.priv; order is the count of earlier events. When " +
+        "usingRvvi is false no port, read, mux, register, or counter of this path is elaborated."
+      )
+      .uses(intfRetireStreamOut, intfCommitPrfReadReqOut, intfCommitPrfReadRespIn, intfInterruptCtrlIn)
+      .note("ADR-010 D-10.1/D-10.3 as amended by ADR-019B E-3/E-4/E-5.")
       .build()
   }
 

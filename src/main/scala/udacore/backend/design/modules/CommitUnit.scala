@@ -1,6 +1,8 @@
 package udacore.backend.design.modules
 
 import chisel3._
+import chisel3.util._
+import udacore.core.design.shared.{CacheMaintenance, DebugReq, TlbFlush}
 import framework.macros.LocalSpec
 import udacore.backend.design.shared._
 import udacore.backend.spec.modules.CommitUnitSpecs._
@@ -15,55 +17,61 @@ import udacore.backend.spec.modules.CommitUnitSpecs._
 class CommitUnit(val params: BackendParams) extends BackendModule {
   val io = IO(new Bundle {
     @LocalSpec(intfRobHeadIn)
-    val robHeadIn = ???
+    val robHeadIn = Flipped(Decoupled(new RobHead(params)))
 
     @LocalSpec(intfRenameCommitOut)
-    val renameCommitOut = ???
+    val renameCommitOut = Decoupled(new RenameCommit(params))
 
     @LocalSpec(intfStoreCommitOut)
-    val storeCommitOut = ???
+    val storeCommitOut = Decoupled(new StoreCommit(params))
 
     @LocalSpec(intfFtqCommitOut)
-    val ftqCommitOut = ???
+    val ftqCommitOut = Decoupled(new FtqCommit(params))
 
     @LocalSpec(intfCommitGrantOut)
-    val commitGrantOut = ???
+    val commitGrantOut = Output(new CommitGrant(params))
 
     @LocalSpec(intfExceptionOut)
-    val exceptionOut = ???
+    val exceptionOut = Decoupled(new ExceptionReq(params))
 
     @LocalSpec(intfInterruptCtrlIn)
-    val interruptCtrlIn = ???
+    val interruptCtrlIn = Input(new InterruptCtrl)
 
     @LocalSpec(intfRetireStreamOut)
-    val retireStreamOut = ???
+    val retireStreamOut = if (params.usingRvvi) Some(Decoupled(new RetireToken(params))) else None
+
+    @LocalSpec(intfCommitPrfReadReqOut)
+    val commitPrfReadReqOut = if (params.usingRvvi) Some(Decoupled(new CommitPrfReadReq(params))) else None
+
+    @LocalSpec(intfCommitPrfReadRespIn)
+    val commitPrfReadRespIn = if (params.usingRvvi) Some(Flipped(Decoupled(new CommitPrfReadResp(params)))) else None
 
     @LocalSpec(intfStoreBufferDrainReqOut)
-    val storeBufferDrainReqOut = ???
+    val storeBufferDrainReqOut = Decoupled(new HandshakeToken)
 
     @LocalSpec(intfStoreBufferDrainRespIn)
-    val storeBufferDrainRespIn = ???
+    val storeBufferDrainRespIn = Flipped(Decoupled(new HandshakeToken))
 
     @LocalSpec(intfICacheInvalidateOut)
-    val iCacheInvalidateOut = ???
+    val iCacheInvalidateOut = Decoupled(new CacheMaintenance)
 
     @LocalSpec(intfDCacheCleanReqOut)
-    val dCacheCleanReqOut = ???
+    val dCacheCleanReqOut = Decoupled(new CacheMaintenance)
 
     @LocalSpec(intfDCacheCleanRespIn)
-    val dCacheCleanRespIn = ???
+    val dCacheCleanRespIn = Flipped(Decoupled(new CacheMaintenance))
 
     @LocalSpec(intfSfenceVmaOut)
-    val sfenceVmaOut = ???
+    val sfenceVmaOut = Decoupled(new TlbFlush(vAddrWidth))
 
     @LocalSpec(intfRecoveryEventIn)
-    val recoveryEventIn = ???
+    val recoveryEventIn = Input(new RecoveryEvent(params))
 
     @LocalSpec(intfHeadMemGrantOut)
-    val headMemGrantOut = ???
+    val headMemGrantOut = Decoupled(new HeadMemGrant(params))
 
     @LocalSpec(intfDebugReqIn)
-    val debugReqIn = ???
+    val debugReqIn = Input(new DebugReq)
   })
 
   @LocalSpec(funcCommitHead)
@@ -86,4 +94,7 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
   @LocalSpec(funcSystemOpSequencing)
   val systemOpSequencing = ???
+
+  @LocalSpec(funcRetireStreamEmit)
+  val retireStreamEmit = ???
 }

@@ -42,6 +42,16 @@ object RecoveryCause {
   val Interrupt           = 4.U(width.W)
   val XRet                = 5.U(width.W)
   val Refetch             = 6.U(width.W)
+  val Debug               = 7.U(width.W) // ADR-019B E-1: never aliased to Trap
+}
+
+/** bndException.source. */
+object ExceptionSource {
+  val width     = 2
+  val Sync      = 0.U(width.W)
+  val Interrupt = 1.U(width.W)
+  val Debug     = 2.U(width.W)
+  val SysOp     = 3.U(width.W)
 }
 
 object CfiType {
@@ -292,6 +302,77 @@ class RobHead(val params: BackendParams) extends BackendBundle {
   val robTag = new RobTag(params)
   val entry  = new RobEntry(params)
 }
+
+/** StoreCommit view of the commit broadcast. */
+@LocalSpec(bndCommitBroadcast)
+class StoreCommit(val params: BackendParams) extends BackendBundle {
+  val robTag = new RobTag(params)
+}
+
+/** CommitGrant view of the commit broadcast (rawNoDecoupled class 4). */
+@LocalSpec(bndCommitBroadcast)
+class CommitGrant(val params: BackendParams) extends BackendBundle {
+  val valid  = Bool()
+  val robTag = new RobTag(params)
+}
+
+@LocalSpec(bndFtqCommit)
+class FtqCommit(val params: BackendParams) extends BackendBundle {
+  val ftqIdx = UInt(ftqIdxWidth.W)
+  val exit   = new CfiOutcome(params)
+}
+
+@LocalSpec(bndException)
+class ExceptionReq(val params: BackendParams) extends BackendBundle {
+  val source = UInt(ExceptionSource.width.W)
+  val cause  = UInt(5.W)
+  val tval   = UInt(xLen.W)
+  val pc     = UInt(vAddrWidth.W)
+  val robTag = new RobTag(params)
+  val ftqIdx = UInt(ftqIdxWidth.W)
+  val sysOp  = UInt(SysOp.width.W)
+}
+
+@LocalSpec(bndInterruptCtrl)
+class InterruptCtrl extends Bundle {
+  val interruptPending = Bool()
+  val interruptCause   = UInt(5.W)
+  val debugMode        = Bool()
+  val priv             = UInt(2.W)
+}
+
+@LocalSpec(bndRetireToken)
+class RetireToken(val params: BackendParams) extends BackendBundle {
+  val order  = UInt(64.W)
+  val pc     = UInt(vAddrWidth.W)
+  val insn   = UInt(iLen.W)
+  val rd     = UInt(regIdWidth.W)
+  val wdata  = UInt(xLen.W)
+  val wen    = Bool()
+  val trap   = Bool()
+  val source = UInt(ExceptionSource.width.W)
+  val cause  = UInt(5.W)
+  val tval   = UInt(xLen.W)
+  val priv   = UInt(2.W)
+}
+
+@LocalSpec(bndCommitPrfReadReq)
+class CommitPrfReadReq(val params: BackendParams) extends BackendBundle {
+  val prd = UInt(physRegIdWidth.W)
+}
+
+@LocalSpec(bndCommitPrfReadResp)
+class CommitPrfReadResp(val params: BackendParams) extends BackendBundle {
+  val data = UInt(xLen.W)
+}
+
+@LocalSpec(bndHeadMemGrant)
+class HeadMemGrant(val params: BackendParams) extends BackendBundle {
+  val robTag = new RobTag(params)
+}
+
+/** Payload-free handshake token (StoreBufferDrainReq/Resp carry no fields in the spec). */
+class HandshakeToken extends Bundle
 
 @LocalSpec(bndRobStatus)
 class RobStatus(val params: BackendParams) extends BackendBundle {

@@ -71,7 +71,7 @@ object BackendBundlesSpecs {
           List("target", "UInt(vAddrWidth)", "Redirect target PC, 4-byte aligned."),
           List("ftqIdx", "FtqIdx", "FTQ entry of the recovering instruction (frontend history restore and truncation)."),
           List("cfiOutcome", "CfiOutcome", "Resolved type/direction/pc-slot of the recovering control-flow instruction, applied to GHR/RAS after restore (BranchMispredict only)."),
-          List("cause", "RecoveryCause", "DirectionMispredict | TargetMispredict | UnpredictedCfi | Trap | Interrupt | XRet | Refetch.")
+          List("cause", "RecoveryCause", "DirectionMispredict | TargetMispredict | UnpredictedCfi | Trap | Interrupt | XRet | Refetch | Debug (ADR-019B E-1).")
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId, funcRecoveryKills)
@@ -280,7 +280,7 @@ object BackendBundlesSpecs {
           List("robTag", "RobTag", "The commit-head uop that caused it."),
           List("ftqIdx", "FtqIdx", "Its FTQ entry (history restore choice for the frontend)."),
           List("target", "UInt(vAddrWidth)", "Trap vector, xEPC, or pc+4 (Refetch)."),
-          List("cause", "RecoveryCause", "Trap | Interrupt | XRet | Refetch.")
+          List("cause", "RecoveryCause", "Trap | Interrupt | Debug | XRet | Refetch (Debug per ADR-019B E-1, never aliased to Trap).")
         )
       )
       .uses(bndRobTag)
@@ -521,24 +521,48 @@ object BackendBundlesSpecs {
 
   val bndRetireToken = spec {
     BUNDLE("RetireToken")
-      .desc("Per-retirement verification token emitted by CommitUnit (ADR-010 D-10.1).")
+      .desc("Verification observation event emitted by CommitUnit (ADR-010 D-10.1 as amended by ADR-019B E-5): one per retirement or precise trap entry.")
       .markdownTable(
         List("field", "meaning"),
         List(
-          List("order", "64b monotone retire sequence (verif-only, gated by usingRvvi)"),
+          List("order", "64b sequence, +1 per stream event (retirement or trap entry; verif-only, gated by usingRvvi)"),
           List("pc", "architectural PC of the retiring instruction"),
           List("insn", "32-bit instruction word"),
           List("rd", "architectural destination register"),
-          List("wdata", "committed value from a commit-time PRF read"),
-          List("wen", "register-write-enable"),
-          List("trap", "1 for a trap-entry retire token (ADR-010 D-10.4)"),
+          List("wdata", "value of the retiring head's newPrd read through CommitPrfReadReq/Resp in the retire cycle; 0 when wen = 0 (ADR-019B E-3)"),
+          List("wen", "register-write-enable: hasDest && rd != x0 on a retirement, 0 on a trap entry"),
+          List("trap", "1 for a precise trap-entry event (ADR-010 D-10.4); such an event is not a retirement (ADR-019B E-5)"),
+          List("source", "Sync | Interrupt | Debug for a trap-entry event; Sync (don't care) on a retirement"),
           List("cause, tval", "trap cause and value"),
-          List("priv", "privilege mode after the retirement")
+          List("priv", "privilege the instruction executed in, before any transition it causes (ADR-019B E-4), from InterruptCtrl.priv")
         )
       )
       .note(
-        "Emitted only for tokens that actually retire; observation-only, ready tied high (ADR-010 D-10.2). " +
-        "The whole path including the order counter folds away at usingRvvi=false (ADR-010 D-10.3)."
+        "Emitted for every program-order observation event - a normal retirement or a precise " +
+        "trap entry (ADR-019B E-5); a trap-entry event fires no commit-broadcast view. " +
+        "Observation-only, ready tied high (ADR-010 D-10.2). The whole path including the order " +
+        "counter and the commit PRF read folds away at usingRvvi=false (ADR-010 D-10.3)."
+      )
+      .build()
+  }
+
+  val bndCommitPrfReadReq = spec {
+    BUNDLE("CommitPrfReadReq")
+      .desc("Verification-only commit-time PRF read request (ADR-019B E-3), elaborated only when usingRvvi.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(List("prd", "UInt(PhysRegIdWidth)", "newPrd of the retiring head."))
+      )
+      .uses(paramPhysRegIdWidth)
+      .build()
+  }
+
+  val bndCommitPrfReadResp = spec {
+    BUNDLE("CommitPrfReadResp")
+      .desc("Same-cycle answer to CommitPrfReadReq (ADR-019B E-3); a same-cycle write of that prd is bypassed.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(List("data", "UInt(XLen)", "Value of the requested prd."))
       )
       .build()
   }
@@ -557,6 +581,16 @@ object BackendBundlesSpecs {
   val bndInterruptCtrl = spec {
     BUNDLE("InterruptCtrl")
       .desc("Pending-and-enabled interrupt view (mip & mie, mideleg, mstatus.MIE/SIE, priv) consumed by CommitUnit at a retire boundary.")
+      .markdownTable(
+        List("Name", "Type", "Description"),
+        List(
+          List("interruptPending", "Bool", "An interrupt is pending, enabled, and takeable at the current privilege."),
+          List("interruptCause", "UInt(5)", "Highest-priority pending interrupt cause code."),
+          List("debugMode", "Bool", "The hart is in debug mode (debug requests and interrupts are not sampled)."),
+          List("priv", "UInt(2)", "Committed privilege: the privilege the current head executes in (ADR-019B E-4).")
+        )
+      )
+      .note("ADR-019B E-4: this is the committed privilege view the CommitUnit stamps into RetireToken.priv.")
       .build()
   }
 
@@ -567,9 +601,9 @@ object BackendBundlesSpecs {
         List("field", "meaning"),
         List(
           List("source", "Sync | Interrupt | Debug | SysOp"),
-          List("cause, tval", "RISC-V cause code and trap value (faulting VA for page faults)"),
+          List("cause, tval", "RISC-V cause code and trap value (faulting VA for page faults); Debug uses cause 3 (haltreq, ADR-019B E-5)"),
           List("pc, robTag, ftqIdx", "identity of the head uop"),
-          List("sysOp", "xRET / fence.i / sfence.vma / Refetch request for a non-trapping serialization")
+          List("sysOp", "source SysOp only: the retiring head's SysOp - Mret/Sret request XRet; FenceI, SfenceVma, CsrWrite, and None (predictionFault) request Refetch (ADR-019B E-6)")
         )
       )
       .build()

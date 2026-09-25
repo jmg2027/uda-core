@@ -215,6 +215,11 @@ object CoreTopSpecs {
         "when usingRvvi; it is the harness observation point for propIsaRetireEquivalence and " +
         "is absent from the product boundary."
       )
+      .note(
+        "ADR-019B E-3/E-5: each token is a retirement or precise trap-entry observation event; " +
+        "wdata comes from the backend-internal CommitUnit -> PhysicalRegisterFile commit read " +
+        "(CommitPrfReadReq/Resp), which elaborates only with this port."
+      )
       .uses(paramUsingRvvi)
       .is(rawReadyValidIntf)
       .build()

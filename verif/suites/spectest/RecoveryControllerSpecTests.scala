@@ -148,6 +148,7 @@ object RecoveryControllerSpecTests {
         val (e1, _, n1) = d.cycle(Some(br1), None)
         val (e2, _, _)  = d.cycle(Some(taken), None)
         val (e3, _, n3) = d.cycle(None, Some(ar1.copy(s = 31, ftq = 4, target = 0x1234, cause = RecoveryCause.Refetch)))
+        val (e4, _, _)  = d.cycle(None, Some(ar1.copy(s = 8, cause = RecoveryCause.Debug)))
         Seq(
           chk(e1 == Ev(true, BM, tagOf(5), 3, 0x1004, 9, code(CfiType.Branch), 2, false, 0x1800,
             code(RecoveryCause.DirectionMispredict)),
@@ -158,7 +159,9 @@ object RecoveryControllerSpecTests {
           chk(e3.valid && e3.kind == AR && e3.tag == tagOf(31) && e3.target == 0x1234 && e3.ftq == 4 &&
             e3.cause == code(RecoveryCause.Refetch),
             "ArchRedirect = {robTag, target, ftqIdx, cause}", s"$e3"),
-          chk(!n1.valid && !n3.valid, "the event is published in the request cycle only", s"$n1 $n3")
+          chk(!n1.valid && !n3.valid, "the event is published in the request cycle only", s"$n1 $n3"),
+          chk(e4.valid && e4.kind == AR && e4.cause == code(RecoveryCause.Debug) && e4.cause == 7,
+            "Debug (7) is a legal ArchRedirect cause, published as Debug, not Trap (ADR-019B E-1)", s"$e4")
         )
       }
       main ++ Seq(
@@ -177,7 +180,8 @@ object RecoveryControllerSpecTests {
   // ---- Randomized request stream ----------------------------------------------------
 
   private val brCauses = Seq(RecoveryCause.DirectionMispredict, RecoveryCause.TargetMispredict, RecoveryCause.UnpredictedCfi)
-  private val arCauses = Seq(RecoveryCause.Trap, RecoveryCause.Interrupt, RecoveryCause.XRet, RecoveryCause.Refetch)
+  private val arCauses = Seq(RecoveryCause.Trap, RecoveryCause.Interrupt, RecoveryCause.Debug, RecoveryCause.XRet,
+    RecoveryCause.Refetch)
 
   /** Random request pairs; the published event must be exactly the selected request. */
   private def randomRun(d: Drv, seed: Long, steps: Int): (Seq[String], Int, Int) = {
@@ -189,7 +193,7 @@ object RecoveryControllerSpecTests {
         rnd.nextInt(1 << 20).toLong * 4, code(CfiType.Branch), rnd.nextInt(4), rnd.nextBoolean(),
         rnd.nextInt(1 << 20).toLong * 4, rnd.nextInt(1 << 20).toLong * 4, brCauses(rnd.nextInt(3)))) else None
       val ar = if (rnd.nextInt(3) == 0) Some(Ar(rnd.nextInt(2 * D), rnd.nextInt(32),
-        rnd.nextInt(1 << 20).toLong * 4, arCauses(rnd.nextInt(4)))) else None
+        rnd.nextInt(1 << 20).toLong * 4, arCauses(rnd.nextInt(arCauses.size)))) else None
       val (e, r, _) = d.cycle(br, ar)
       if (br.nonEmpty && ar.nonEmpty) collisions += 1
       if (e.valid) events += 1

@@ -1,6 +1,8 @@
 # ADR-010: Commit-Stream Verification Port
 
 Status: **accepted**.
+Amended for the ADR-019 machine by ADR-019B E-5 (trap-entry tokens are observation events, not
+retirements) and E-3/E-4 (commit PRF read path, executing-privilege priv).
 
 Depends on: ADR-002 (commit is the authoritative order point), ADR-012 (retire
 token uses the canonical seqTag; `order` is a separate verif counter), ADR-015

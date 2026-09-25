@@ -73,7 +73,8 @@ case class BackendFrontendView(
 case class BackendParams(
     contract: BackendContractParams = BackendContractParams(),
     tuning: BackendTuningParams = BackendTuningParams(),
-    frontend: BackendFrontendView = BackendFrontendView()
+    frontend: BackendFrontendView = BackendFrontendView(),
+    usingRvvi: Boolean = false // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
 ) {
   def xLen: Int             = contract.xLen
   def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)

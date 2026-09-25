@@ -22,6 +22,12 @@ class PhysicalRegisterFile(val params: BackendParams) extends BackendModule {
 
     @LocalSpec(intfRegisterFileReadRespOut)
     val registerFileReadRespOut = ???
+
+    @LocalSpec(intfCommitPrfReadReqIn)
+    val commitPrfReadReqIn = ???
+
+    @LocalSpec(intfCommitPrfReadRespOut)
+    val commitPrfReadRespOut = ???
   })
 
   @LocalSpec(funcReadAtSelect)
