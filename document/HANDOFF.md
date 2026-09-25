@@ -343,6 +343,19 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     draining mutant first survived; the test now checks StoreBufferEmpty during the last
     drain). Allowlists: spec-test-allow 46 -> 45, spec-check-allow 43 -> 40. The LSQ+SB
     forwarding contract is exercised end to end in the BackendTop integration block.
+26. RTL block 15 - DecodeUnit (ADR-019 D-19.1/D-19.3, ADR-019E E-3/E-4): per lane the legacy
+    DecodeCore table (RV32I + enabled M contribution; untouched) supplies ALU/branch/memory/M
+    rows; SystemOpDecode classifies system/CSR rows and their DecodePrivView legality; fetch
+    fault > illegal (unknown, 16-bit, privilege) > EBREAK (tval = pc) > ECALL (cause 8/9/11 by
+    priv; Debug Mode decodes as M); excepting uops are fuType System, sysOp None, no CFI or
+    memory flags; op layouts AluOp/MulDivOp/BranchOp (Call/Ret/Jal/Jalr hints)/MemOp/CsrOp;
+    unread registers reported as x0 (CSR immediate forms carry uimm in insn only); one held
+    packet discarded by any RecoveryEvent, nothing accepted in an event cycle. New frontend
+    design bundles FetchFault/FetchInst/FetchPacket. Asserts NoCompressedDecode,
+    DisabledExtensionTraps, FetchPacket lane contiguity. 7 L1 tests (red: 7 PENDING); 18
+    mutants red after strengthening (event-cycle acceptance into an empty stage, a
+    fetch-faulted branch, Debug Mode ECALL); the explicit 16-bit check is equivalent (no
+    table row has bits[1:0] != 11). spec-check-allow 40 -> 38.
 
 ## Validation status (run this session)
 
