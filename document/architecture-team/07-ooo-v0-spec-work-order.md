@@ -225,8 +225,7 @@ Remove from the new FrontendTop CONTRACT:
 - indirect-stall-until-backend-commit behavior;
 - first-taken predecode feedback.
 
-Do not delete old files until all imports/references are mapped. It is acceptable
-for the migration commit to delete them once their references reach zero.
+Old frontend files do not need to survive the migration. Delete obsolete files in the same dependency-bounded change that removes or replaces their imports/references. Prefer deletion over compatibility shims when a concept has no ADR-019 role.
 
 ### WP-4: ROB / rename / selective recovery
 
@@ -389,7 +388,7 @@ The spec authoring change must remove normative references that claim:
 - D-cache presence necessarily enables TL-C;
 - the base L1 cache is PIPT.
 
-Historical ADR files may remain. Active spec objects must reflect ADR-019.
+Historical ADR files may remain as rationale, but non-ADR architecture documents and stale specs/design shells MAY be deleted when they describe the superseded machine. Active code/spec/docs must describe ADR-019 only; do not keep dead compatibility layers for the old architecture.
 
 ## 7. Spec-TDD handling
 
@@ -420,8 +419,7 @@ Spec migration should be split by dependency, not by arbitrary file count:
 6. VIPT caches/CoreTop graph.
 7. Red/PENDING tests and allowlist shrink.
 
-Each commit must keep Scala compilation and `tools/spec-check.py` at the
-documented expected state.
+Each commit SHOULD keep Scala compilation and `tools/spec-check.py` green. If a dependency-bounded clean-break change must temporarily remove a shell before its replacement lands, keep that break within the same commit series and do not merge a branch state that leaves unresolved imports or ambiguous old/new architecture ownership.
 
 ## 9. Acceptance criteria for the spec-authoring phase
 
@@ -439,3 +437,27 @@ The phase is complete when:
 - every rawTop mermaid reconciles with its interfaces;
 - every new FUNCTION/PROPERTY has a test binding or explicit narrow allowlist entry;
 - no design RTL for the new architecture is added before these specs are reviewed.
+
+
+## 10. Clean-break deletion authority
+
+The owner explicitly authorizes destructive cleanup for this migration.
+
+Agents MAY:
+
+- delete superseded frontend/backend/MMU/cache spec files;
+- delete matching design shells that no longer correspond to ADR-019 vertices;
+- delete RVC-only implementation and spec code;
+- remove obsolete parameters, bundles, imports, tests, diagrams, and documentation;
+- rename files/classes/objects instead of preserving compatibility aliases;
+- replace an old file wholesale rather than incrementally editing around stale content.
+
+Agents MUST NOT:
+
+- delete reusable leaf execution units merely because their surrounding topology changes;
+- weaken ADR-015/018 verification gates to make cleanup easier;
+- delete protected test/assembler files unless a later owner directive explicitly changes their protected status;
+- keep two competing architectural paths "temporarily" without a removal plan.
+
+Deletion preference: if a concept has no role in ADR-019, remove it. Do not create
+adapter code solely to preserve the superseded RVC/predecode/epoch-only architecture.
