@@ -2,8 +2,9 @@
 
 Status: **accepted** (owner directive, 2026-09-25).
 
-Supersedes or amends: ADR-002, ADR-003, ADR-005, ADR-006, ADR-009,
-ADR-011, ADR-016. ADR-015/017/018 remain binding.
+Supersedes or amends: ADR-001, ADR-002, ADR-003, ADR-005, ADR-006, ADR-007,
+ADR-008, ADR-009, ADR-011, ADR-012, ADR-013, ADR-016. ADR-015/017/018 remain
+binding; ADR-014 remains the v0 single-lane throughput point.
 
 ## Context
 
@@ -204,6 +205,12 @@ same younger-than decision, including at minimum:
 ROB, RS, LSQ, frontend fetch buffer/FTQ, and other speculative holders SHALL
 declare how they discard younger entries on RecoveryEvent.
 
+If an execute-time branch recovery and an older architectural redirect from the
+commit head are presented in the same cycle, the commit-head architectural
+redirect wins. The branch event belongs to younger speculative work and is
+discarded with it. V0 has at most one branch-recovery producer selected per
+cycle.
+
 ### D-19.10 - role of epoch after this ADR
 
 The single global epoch is no longer the correctness mechanism for branch
@@ -275,14 +282,19 @@ must be derived locally from the common RecoveryEvent identity.
 
 | Existing decision | ADR-019 ruling |
 |---|---|
+| ADR-001 bulk branch recovery from architectural map | superseded for branch recovery by branch checkpoints; rRAT remains the architectural full-recovery source |
 | ADR-002 no ROB | superseded by explicit data-less ROB |
-| ADR-003 store lifecycle | retained conceptually, but speculative ordering moves into an LSQ/SQ; committed store drain may remain |
+| ADR-003 store lifecycle | amended: speculative ordering lives in LSQ/SQ; a committed store-drain buffer may remain below commit |
 | ADR-005 global epoch as speculative kill | superseded for program-order speculation; epoch may remain transaction-generation metadata |
 | ADR-006 epoch/redirect distribution | amended; execute-time RecoveryEvent is the branch-recovery path |
+| ADR-007 N-based critical-edge budgets | recurrence-registry idea retained, but budgets must be re-derived for the ADR-019 pipeline |
+| ADR-008 N=1 degeneracy/PPA bar | superseded; v0 is an OoO reference core, not an in-order-to-OoO single-mechanism sweep |
 | ADR-009 RVC/predecode frontend | superseded by BTB+TAGE+RAS+FTQ fixed-width frontend |
 | ADR-011 commit-head branch redirect | superseded by execute-time selective branch recovery |
-| ADR-016 PIPT base and dcache=>TL-C | amended to VIPT L1 reference point and independent coherence enable |
+| ADR-012 canonical tag | concept retained; width/lifetime must be re-derived from ROB + LSQ + committed-store horizons |
+| ADR-013 old redirect merge | amended: older commit-head architectural redirect wins over same-cycle execute branch recovery |
 | ADR-014 single result lane | retained for v0 unless a later width ADR changes it |
+| ADR-016 PIPT base and dcache=>TL-C | amended to VIPT L1 reference point and independent coherence enable |
 | ADR-015/017/018 spec enforcement | retained unchanged |
 
 ## Consequences
