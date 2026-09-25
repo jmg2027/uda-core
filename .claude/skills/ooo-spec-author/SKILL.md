@@ -21,7 +21,7 @@ ADR-019 overrides older architecture specs where it explicitly conflicts.
 
 Write the architecture as Scala DSL objects under
 `src/main/scala/udacore/**/spec/`. The design tree is not the source of truth.
-Do not preserve stale structures just because a shell file already exists.
+Do not preserve stale structures just because a shell file already exists. This is a clean-break migration; delete or replace obsolete files instead of preserving compatibility with the superseded architecture.
 
 For this phase, stop before new OoO RTL implementation unless the owner
 explicitly asks for implementation.
@@ -140,3 +140,19 @@ Report:
 - older contracts superseded/deleted;
 - remaining allowlist debt;
 - unanswered architecture questions.
+
+## Clean-break authority
+
+The owner permits destructive cleanup during ADR-019 migration.
+
+Prefer deleting dead concepts over compatibility shims. RVC-only code,
+BranchPredecoder/SlotSlicer-era contracts, ROB-less retirement structures,
+commit-head-only branch-recovery plumbing, and universal epoch-kill assumptions
+may be removed wholesale when their replacements are introduced.
+
+Keep reusable leaf FUs, TileLink infrastructure, the spec framework, and
+verification machinery unless ADR-019 work proves a concrete conflict.
+
+Do not preserve old class/file names merely for compatibility. Rename or replace
+them when clearer, and remove stale imports/docs/tests in the same dependency
+change.
