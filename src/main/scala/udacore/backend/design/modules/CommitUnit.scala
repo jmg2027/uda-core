@@ -102,6 +102,10 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   /** Retiring architectural redirects (ADR-019B E-6). */
   private val redirecting = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
     op === SysOp.Mret || op === SysOp.Sret || head.predictionFault
+  /** Intrinsic retiring redirects keep their sysOp in ExceptionOut; a redirect caused only by
+    * predictionFault carries sysOp None (ADR-019B E-6). */
+  private val intrinsicRedirect = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
+    op === SysOp.Mret || op === SysOp.Sret
   /** A CSR uop: serialize with sysOp None (read-only) or CsrWrite (ADR-019A E-2). */
   private val isCsr       = head.serialize && (op === SysOp.None || op === SysOp.CsrWrite)
 
@@ -253,7 +257,12 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   exc.bits.pc     := head.pc
   exc.bits.robTag := tag
   exc.bits.ftqIdx := head.ftqIdx
-  exc.bits.sysOp  := Mux(!takeAsync && !syncGo, op, SysOp.None)
+  exc.bits.sysOp  := Mux(!takeAsync && !syncGo && intrinsicRedirect, op, SysOp.None)
+
+  when(exc.valid && exc.bits.source === ExceptionSource.SysOp) {
+    assert(exc.bits.sysOp === SysOp.None || intrinsicRedirect,
+      "SystemOpSequencing: ExceptionOut{SysOp} carries a non-redirect sysOp")
+  }
 
   // The head leaves on a retirement, or is locked in the ROB by the trap hand-off.
   io.robHeadIn.ready := (syncGo && exc.ready) || retireFire
@@ -262,7 +271,10 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
   @LocalSpec(funcTrapHold)
   val trapHold: Unit = {
-    when(exc.fire) {
+    // A matching ArchRedirect in the transfer cycle (a zero-latency TrapController) satisfies
+    // the hold at once.
+    val releasedNow = archEv && ev.robTag.asUInt === tag.asUInt
+    when(exc.fire && !releasedNow) {
       trapPending := true.B
       pendingTag  := tag
     }
@@ -326,8 +338,9 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   @LocalSpec(propNoCommitPastException)
   val noCommitPastException: Unit = {
     val syncHeld = RegInit(false.B)
-    when(exc.fire && syncGo) { syncHeld := true.B }
-    when(archEv && ev.robTag.asUInt === pendingTag.asUInt) { syncHeld := false.B }
+    val syncTag  = Reg(new RobTag(params))
+    when(exc.fire && syncGo && !(archEv && ev.robTag.asUInt === tag.asUInt)) { syncHeld := true.B; syncTag := tag }
+    when(syncHeld && archEv && ev.robTag.asUInt === syncTag.asUInt) { syncHeld := false.B }
     assert(!(syncGo && views), "NoCommitPastException: a commit view offered with a trapping head")
     assert(!(syncHeld && (views || io.robHeadIn.fire)), "NoCommitPastException: commit after an exception hand-off")
   }

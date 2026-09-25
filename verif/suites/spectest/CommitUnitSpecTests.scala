@@ -93,6 +93,9 @@ object CommitUnitSpecTests {
     var intCause = 7
     var priv     = 3
     var event: Option[(UInt, Int)] = None
+    /** A zero-latency TrapController: it returns the matching ArchRedirect in the same cycle
+      * it accepts an ExceptionOut (a legal instance of funcTrapHold). */
+    var zeroLatencyTc = false
     var prf: Int => Long = p => 0x10000L + p
 
     private def pokeHead(h: Option[HE]): Unit = {
@@ -139,6 +142,12 @@ object CommitUnitSpecTests {
       ev.valid.poke(event.nonEmpty.B)
       event.foreach { case (k, s) =>
         ev.kind.poke(k); ev.robTag.wrap.poke(tagOf(s)._1.B); ev.robTag.idx.poke(tagOf(s)._2.U)
+      }
+      if (zeroLatencyTc && event.isEmpty && excReady && io.exceptionOut.valid.peek().litToBoolean) {
+        val s = head.map(_.s).getOrElse(-1)
+        event = Some((RecoveryKind.ArchRedirect, s))
+        ev.valid.poke(true.B); ev.kind.poke(RecoveryKind.ArchRedirect)
+        ev.robTag.wrap.poke(tagOf(s)._1.B); ev.robTag.idx.poke(tagOf(s)._2.U)
       }
       // The PRF commit read answers combinationally (ADR-019B E-3).
       var prfReq: Option[Int] = None
@@ -373,6 +382,31 @@ object CommitUnitSpecTests {
     }
   }
 
+  /** ADR-019B E-6: only intrinsic retiring redirects keep their sysOp; a redirect that exists
+    * only because of predictionFault carries sysOp None. */
+  val sysopPredictionFault = new SpecTest("commit.sysop.predictionFault", Seq("funcSystemOpSequencing")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.autoService = Some(1)
+      val cases = Seq(
+        ("ALU + predictionFault", HE(0, rd = 5, newPrd = 40, oldPrd = 5, predFault = true), SysOp.None),
+        ("WFI + predictionFault", sys(0, SysOp.Wfi).copy(predFault = true), SysOp.None),
+        ("FENCE + predictionFault", sys(0, SysOp.Fence).copy(predFault = true), SysOp.None),
+        ("CsrWrite + predictionFault", csrWrite(0).copy(predFault = true), SysOp.CsrWrite),
+        ("MRET + predictionFault", sys(0, SysOp.Mret).copy(predFault = true), SysOp.Mret),
+        ("SRET + predictionFault", sys(0, SysOp.Sret).copy(predFault = true), SysOp.Sret)
+      )
+      var s = 0
+      cases.map { case (name, h, want) =>
+        d.rob += h.copy(s = s)
+        val os = d.run(8)
+        val ret = os.find(_.headFire)
+        d.arch(s); s += 1
+        chk(ret.exists(o => o.excF && o.rcF && o.excSource == SYSOP && o.exc._3 == code(want)),
+          s"$name retires with Refetch/XRet carrying sysOp ${code(want)}", s"$ret")
+      }
+    }
+  }
+
   // ---- funcPreciseTrapHandoff -----------------------------------------------------------------
 
   val trap = new SpecTest("commit.trap", Seq("funcPreciseTrapHandoff")) {
@@ -459,6 +493,38 @@ object CommitUnitSpecTests {
           "trapPending persists: no transfer, view, hand-off, or grant", s"${all.filter(o => o.headFire || o.anyProjection || o.excV)}"),
         chk(go.headFire, "only the ArchRedirect naming the hand-off robTag clears it", s"$go")
       )
+    }
+  }
+
+  /** A zero-latency TrapController: the matching ArchRedirect arrives in the ExceptionOut
+    * transfer cycle and must satisfy the hold at once (no deadlock). */
+  val trapHoldZeroLatency = new SpecTest("commit.trapHold.zeroLatency", Seq("funcTrapHold")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.zeroLatencyTc = true
+      d.autoService = Some(1)
+      val cases: Seq[(String, Int => HE, Boolean, Boolean)] = Seq(
+        ("Sync trap", s => HE(s).withExc(2), false, false),
+        ("Interrupt", s => HE(s), true, false),
+        ("Debug", s => HE(s), false, true),
+        ("CsrWrite Refetch", s => csrWrite(s), false, false),
+        ("predictionFault Refetch", s => HE(s, predFault = true), false, false),
+        ("MRET XRet", s => sys(s, SysOp.Mret), false, false),
+        ("SRET XRet", s => sys(s, SysOp.Sret), false, false),
+        ("FENCE.I Refetch", s => sys(s, SysOp.FenceI), false, false)
+      )
+      var s = 0
+      cases.map { case (name, mk, intr, dbg) =>
+        d.rob += mk(s)
+        d.intPending = intr; d.debugReq = dbg
+        val hand = d.run(16).find(_.excF) // FENCE.I needs drain, clean, and invalidate first
+        d.intPending = false; d.debugReq = false
+        d.rob += HE(s + 1)
+        val next = d.run(3).find(_.headFire)
+        d.rob.clear()
+        s += 2
+        chk(hand.nonEmpty && next.exists(_.headS.contains(s - 1)),
+          s"$name: a same-cycle matching ArchRedirect releases the hold; the next head retires", s"hand=$hand next=$next")
+      }
     }
   }
 
@@ -661,6 +727,7 @@ object CommitUnitSpecTests {
         }
   }
 
-  val all: Seq[SpecTest] = Seq(commitHead, blockEnd, sysopRedirect, sysopMaintenance, trap, interrupt, trapHold,
+  val all: Seq[SpecTest] = Seq(commitHead, blockEnd, sysopRedirect, sysopMaintenance, sysopPredictionFault, trap,
+    interrupt, trapHold, trapHoldZeroLatency,
     headMemGrant, retireStream, inOrder, noPastException, trapHoldProp, retireNonBlocking)
 }

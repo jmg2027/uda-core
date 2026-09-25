@@ -160,6 +160,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
      commit PRF read, and the 64-bit order counter exist only when usingRvvi.
    - CSR uops are recognized as serialize && sysOp in {None, CsrWrite} (the ROB entry has
      no fuType); SfenceVma operands are not available at commit (TlbFlush valid bits 0).
+   - Review fixes: a matching ArchRedirect in the ExceptionOut transfer cycle (zero-latency
+     TrapController) satisfies the hold at once; ExceptionOut{SysOp}.sysOp keeps only the
+     intrinsic redirects (FenceI/SfenceVma/CsrWrite/Mret/Sret) and is None for a
+     predictionFault-only Refetch (asserted). 15 L1 tests; 19 mutants all red.
 
 ## Validation status (run this session)
 
@@ -170,9 +174,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (59), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 44/44 PASS (6 pre-existing + 2 params +
-  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 13 CommitUnit)
-  after RTL block 4.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 46/46 PASS (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit)
+  after RTL block 4 and its review fixes.
 - `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
 - Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
@@ -227,9 +231,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 ## Next steps (in order)
 
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
-   RecoveryController, CommitUnit RTL are green. Next (HANDOFF step 2 order): RS /
-   Dispatch / PublishMux / PRF / FU wrappers, then TrapController/CsrController so the
-   commit path closes, each red-first. RenameUnit spec ambiguities found
+   RecoveryController, CommitUnit RTL are green. Next (owner order): PhysicalRegisterFile,
+   ReservationStation, DispatchUnit + ALU/MUL/DIV wrappers + BranchUnit, PublishMux; each
+   red-first with asserts, mutant controls, and allowlist shrink. RenameUnit spec ambiguities found
    during implementation are reported to the owner, not fixed in the frozen spec.
 2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
    RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
