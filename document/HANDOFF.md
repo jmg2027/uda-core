@@ -386,6 +386,34 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     (cause 2, tval = insn); ECALL cause no longer looks at debugMode. Red first:
     decode.sysPrivLegality (mret/sret/ecall in dm) and decode.exceptions failed before the
     SystemOpDecode change.
+29. ADR-019G (v0 Erratum 07, owner ruling 2026-09-26; ADR-019F approved at cd2b74b): the
+    requested fetch PC (possibly mid-block) is carried by PredictReq/Prediction/FtqEntry/
+    FetchRequest; blockBase = alignDown(fetchPc, FetchBytes) and startSlot = fetchPc[3:2] are
+    derived (FetchPc helper), never stored. BTB/TAGE index and tag with blockBase, a BTB entry is
+    eligible only at slot >= startSlot, fall-through = blockBase + 16, cfiPc = blockBase +
+    4 * slot (RAS push, HistoryRestore.pc), PredictorTrain.fetchPc = blockBase, FetchUnit
+    I-cache lookup at blockBase with valid slots startSlot..lastSlot and the fault on startSlot.
+    Frontend Chisel bundles and typed IO shells for BranchPredictor/FTQ/FetchUnit landed with
+    the E-8 directed tests: bp.midBlock* (6), ftq.midBlockRequest/RestorePc/Train (3),
+    fu.midBlockSlots/Fault (2), all PENDING first. FrontendParams carries the BackendParams
+    whose RecoveryEvent/FtqCommit it consumes (mirror equality required).
+30. RTL block 17 - BranchPredictor (ADR-019 D-19.2/D-19.11, ADR-019G): combinational
+    prediction from the request PC (request, Prediction, and NextPc transfer in one cycle,
+    atomic fork); BTB 64x2 full tag with per-set LRU ranks, lowest eligible slot wins; TAGE =
+    bimodal 1024 x 2b + 4 tagged tables (256 x {8b tag, 3b ctr, 2b useful}, histories
+    8/16/32/64, folded-history index/tag), weak-and-not-useful provider defers to the alternate;
+    speculative GHR shifts only for a tracked Branch, RAS circular with full snapshot;
+    RecoveryEvent counts an outstanding restore and holds PredictReq until each HistoryRestore;
+    restore = checkpoint then the resolved outcome (Branch shift, Call push pc+4, Ret pop);
+    training only at PredictorTrain (BTB allocate/update for a committed taken exit, TAGE
+    provider/useful update, allocation on a misprediction, useful decay otherwise); TAGE
+    training recomputes the lookup on current tables rather than trusting the stored meta.
+    Asserts PredictFromPcOnly, OneTakenCfiPerBlock, HistoryRestoreExact, restore-counter
+    overflow. 13 L1 tests (bp.*; red: 12 PENDING, plus bp.tageUseAlt added for a survivor);
+    22 mutants all red after strengthening (event-cycle hold, LRU victim, useAlt first
+    survived). ADR-019G mutants (fall-through and RAS push from the raw fetch PC) are red; the
+    HistoryRestore.pc mutant belongs to the FTQ block. spec-test-allow 46 -> 36,
+    spec-check-allow 39 -> 36.
 
 ## Validation status (run this session)
 
@@ -396,7 +424,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 150 PASS + 5 PENDING (the FTQ/FetchUnit ADR-019G tests) after
+  RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
@@ -406,7 +435,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 46 names (ADR-019F added propDrainResponseMakesStoreVisible, pending the
+- spec-test-allow: 36 names after the BranchPredictor (its functions and three PROPERTYs bound;
+  propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
   propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
@@ -414,7 +444,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 39 PROPERTYs after ADR-019F (propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 36 PROPERTYs after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -489,7 +519,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-0. After ADR-019F (owner order): BranchPredictor, FetchTargetQueue, FetchPcGen, FetchBuffer,
+0. After ADR-019F/G (owner order): BranchPredictor (done), FetchTargetQueue, FetchPcGen, FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and

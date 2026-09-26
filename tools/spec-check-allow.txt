@@ -30,10 +30,7 @@ propFetchInOrder
 propFetchPcAligned
 propFtqInOrderRelease
 propFtqRecoveryKeepsOlder
-propHistoryRestoreExact
 propNoStaleFetchBlock
-propOneTakenCfiPerBlock
-propPredictFromPcOnly
 propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
