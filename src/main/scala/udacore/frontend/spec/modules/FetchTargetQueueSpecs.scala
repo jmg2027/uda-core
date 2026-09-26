@@ -74,7 +74,7 @@ object FetchTargetQueueSpecs {
 
   val intfHistoryRestoreOut = spec {
     INTERFACE("HistoryRestoreOut")
-      .desc("One restore token per RecoveryEvent to the BranchPredictor.")
+      .desc("Exactly one restore token per RecoveryEvent to the BranchPredictor, in RecoveryEvent order (ADR-019H E-5).")
       .uses(bndHistoryRestore)
       .is(rawReadyValidIntf)
       .build()
@@ -124,7 +124,9 @@ object FetchTargetQueueSpecs {
         "e.ftqIdx, and send HistoryRestore{checkpoint of e.ftqIdx, applyOutcome, outcome, pc = " +
         "alignDown(entry fetchPc, FetchBytes) + 4 * e.cfiOutcome.slot (ADR-019G E-5)}. " +
         "ArchRedirect: send HistoryRestore{checkpoint of e.ftqIdx if that entry is live, else " +
-        "the current tail checkpoint, applyOutcome = false} and then discard all entries."
+        "the current tail checkpoint, applyOutcome = false} and then discard all entries. " +
+        "Every RecoveryEvent yields exactly one HistoryRestore, and restores leave in " +
+        "RecoveryEvent order, including back-to-back events (ADR-019H E-5)."
       )
       .uses(intfRecoveryEventIn, intfHistoryRestoreOut, funcRecoveryKills)
       .note(

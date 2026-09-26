@@ -59,7 +59,11 @@ object BranchPredictorSpecs {
 
   val intfPredictReqIn = spec {
     INTERFACE("PredictReqIn")
-      .desc("Fetch PC from FetchPcGen. Ready is low while a history restore is outstanding.")
+      .desc(
+        "Fetch PC from FetchPcGen. Ready is low in a RecoveryEvent cycle and while any " +
+        "RecoveryEvent observed so far lacks its accepted HistoryRestore (ADR-019H E-5); the " +
+        "outstanding count is bounded by BranchCheckpointCount + 1 (ADR-019H E-4)."
+      )
       .uses(bndPredictReq)
       .is(rawReadyValidIntf)
       .build()
@@ -113,7 +117,7 @@ object BranchPredictorSpecs {
         "keeps an absolute block slot; among hitting ways, consider only entries whose slot is " +
         ">= startSlot = (fetchPc - blockBase) / 4 (an entry for an earlier slot is ignored, " +
         "ADR-019G E-3); the lowest such slot is the " +
-        "block's tracked control-flow instruction, with its type (Branch/Jal/Jalr/Call/Ret) " +
+        "block's tracked control-flow instruction, with its type (Branch/Jal/Jalr/Call/Ret/CallRet) " +
         "and last-seen target. A JALR that is not a return is predicted to its BTB target; " +
         "v0 has no indirect-target predictor (ITTAGE is a later extension)."
       )
@@ -140,9 +144,11 @@ object BranchPredictorSpecs {
       .desc(
         "A predicted-taken Call pushes cfiPc + 4 onto the speculative RAS, where cfiPc = " +
         "blockBase + 4 * cfiSlot (ADR-019G E-5, never requestedFetchPc + 4 * slot); a " +
-        "predicted Ret pops and uses the popped value as the target; a Ret that is also a " +
-        "Call (coroutine hint) pops then pushes. Call/Ret classification follows the RISC-V " +
-        "link-register hints (rd or rs1 in {x1, x5})."
+        "predicted Ret pops and uses the popped value as the target; a predicted CallRet " +
+        "(coroutine hint) uses the current top as its target, pops it, then pushes cfiPc + 4 - " +
+        "exactly pop-then-push, net-zero top movement that replaces the top entry (ADR-019H " +
+        "E-3). Call/Ret/CallRet classification follows the RISC-V link-register hints (rd or " +
+        "rs1 in {x1, x5}; ADR-019H E-2)."
       )
       .uses(paramRasDepth)
       .build()
@@ -151,7 +157,7 @@ object BranchPredictorSpecs {
   val funcBlockExitSelect = spec {
     FUNCTION("BlockExitSelect")
       .desc(
-        "The block exit is the tracked CFI if it is predicted taken (Jal/Jalr/Call/Ret always, " +
+        "The block exit is the tracked CFI if it is predicted taken (Jal/Jalr/Call/Ret/CallRet always, " +
         "Branch per TAGE); nextPc = its target. Otherwise nextPc = blockBase + FetchBytes " +
         "(the next block boundary, not fetchPc + FetchBytes; ADR-019G E-4) and the block is " +
         "predicted to fall through all remaining slots."
@@ -165,8 +171,8 @@ object BranchPredictorSpecs {
       .desc(
         "After capturing the checkpoint {ghr, rasTop, rasEntries} into the Prediction, update " +
         "speculatively: the GHR shifts in exactly one bit, the predicted direction, iff the " +
-        "block's tracked CFI is a Branch; otherwise it is unchanged. The RAS updates per " +
-        "funcRasPredict."
+        "block's tracked CFI is a Branch; otherwise (Jal/Jalr/Call/Ret/CallRet or no CFI) it is " +
+        "unchanged. The RAS updates per funcRasPredict."
       )
       .uses(paramGhrLength)
       .build()
@@ -175,10 +181,12 @@ object BranchPredictorSpecs {
   val funcHistoryRestore = spec {
     FUNCTION("HistoryRestore")
       .desc(
-        "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until a " +
-        "HistoryRestore arrives. Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
+        "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until the " +
+        "HistoryRestore of every RecoveryEvent observed so far has been accepted (one per " +
+        "event, in event order; ADR-019H E-5). Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
         "outcome with the same rules as the speculative update: shift in the resolved " +
-        "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret. pc is " +
+        "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret; pop then push " +
+        "pc+4, exactly once, for a CallRet (ADR-019H E-3). pc is " +
         "HistoryRestore.pc = blockBase + 4 * outcome.slot (ADR-019G E-5)."
       )
       .uses(intfHistoryRestoreIn, intfRecoveryEventIn)
@@ -191,12 +199,18 @@ object BranchPredictorSpecs {
         "The single deterministic training point is block commit (a PredictorTrain token, in " +
         "program order), indexed and tagged by PredictorTrain.fetchPc = blockBase (ADR-019G " +
         "E-7). BTB: allocate or update the entry for the committed taken exit " +
-        "(slot, type, target); a committed fall-through leaves the BTB unchanged. TAGE " +
-        "(a committed taken Branch exit, or a tracked Branch that committed not-taken): " +
-        "update the provider counter toward the outcome, " +
-        "update the useful counter when provider and alternate disagree, and on a " +
-        "misprediction allocate one entry in a longer-history table whose useful counter is " +
-        "zero (decaying useful counters otherwise). Training never touches speculative GHR/RAS."
+        "(slot, type, target; a CallRet may be recorded, its target unused); a committed " +
+        "fall-through leaves the BTB unchanged. TAGE " +
+        "(a committed taken Branch exit, or a tracked Branch that committed not-taken) trains " +
+        "the prediction-time identity PredictorTrain.meta, never a provider found by a new " +
+        "lookup (ADR-019H E-1): the provider is meta.provider, its index and expected tag are " +
+        "recomputed from PredictorTrain {fetchPc, ghr}; provider 0 updates the prediction-time " +
+        "bimodal entry; a tagged provider entry is updated toward the outcome only if it is " +
+        "still valid with the expected tag (else that update is skipped); the useful counter " +
+        "changes when meta.providerCtr's direction and meta.altPred disagree; on a " +
+        "misprediction allocate one entry in a table longer than meta.provider (prediction-time " +
+        "index and tag) whose useful counter is zero, decaying those tables' useful counters " +
+        "otherwise. Training never touches speculative GHR/RAS."
       )
       .uses(intfPredictorTrainIn)
       .note("ADR-019 D-19.11: resolution-time training is not used in v0.")

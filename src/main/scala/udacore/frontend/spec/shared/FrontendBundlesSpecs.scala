@@ -38,9 +38,9 @@ object FrontendBundlesSpecs {
           List("fetchPc", "UInt(vAddrWidth)", "The requested PredictReq.fetchPc, not the block base (ADR-019G E-2); blockBase is derived by alignment."),
           List("cfiValid", "Bool", "A tracked control-flow instruction exists at or after startSlot in this block (eligible BTB hit)."),
           List("cfiSlot", "UInt(log2(FetchWidth))", "Its absolute slot within the block (>= startSlot); its PC is blockBase + 4 * cfiSlot."),
-          List("cfiType", "CfiType", "Branch | Jal | Jalr | Call | Ret."),
+          List("cfiType", "CfiType", "Branch | Jal | Jalr | Call | Ret | CallRet (ADR-019H E-2)."),
           List("taken", "Bool", "Predicted taken (jumps always; branches per TAGE)."),
-          List("target", "UInt(vAddrWidth)", "RAS top for Ret, BTB target otherwise."),
+          List("target", "UInt(vAddrWidth)", "RAS top for Ret and CallRet, BTB target otherwise."),
           List("nextPc", "UInt(vAddrWidth)", "taken ? target : blockBase + FetchBytes (ADR-019G E-4)."),
           List("meta", "PredictorMeta", "Training metadata."),
           List("checkpoint", "HistoryCheckpoint", "GHR/RAS state BEFORE this block's speculative update.")

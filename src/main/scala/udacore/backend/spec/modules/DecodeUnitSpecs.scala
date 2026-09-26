@@ -146,8 +146,10 @@ object DecodeUnitSpecs {
   val funcPredictionCheck = spec {
     FUNCTION("PredictionCheck")
       .desc(
-        "Classify control flow (Branch, Jal, Jalr, and the Call/Ret link-register hints) and " +
-        "set isCfi. If the frontend marked a slot predictedTaken but it decodes as a non-CFI, " +
+        "Classify control flow (Branch, Jal, Jalr, and the Call/Ret/CallRet link-register " +
+        "hints, link = x1 or x5; ADR-019H E-2): JAL with link rd -> Call; JALR with link rd and " +
+        "non-link rs1 -> Call; non-link rd and link rs1 -> Ret; link rd and link rs1 with rd = " +
+        "rs1 -> Call, with rd != rs1 -> CallRet; otherwise Jal / Jalr. Set isCfi. If the frontend marked a slot predictedTaken but it decodes as a non-CFI, " +
         "set predictionFault: the uop executes normally and its commit triggers an " +
         "ArchRedirect(Refetch) to pc + 4. Decode never redirects fetch itself."
       )
