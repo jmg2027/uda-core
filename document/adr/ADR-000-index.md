@@ -46,7 +46,9 @@ the core integration contract, adds DRET, and adds the committed DecodePrivView.
 committed-store visibility point contractual, rules on WFI, and makes ECALL/MRET/SRET illegal in
 Debug Mode. **ADR-019G (v0 Erratum 07)** separates the requested (possibly mid-block) fetch PC
 from the aligned block base: predictions carry the requested PC, tables and fall-through use
-the block base, and CFI PCs are rebuilt as blockBase + 4 * slot.
+the block base, and CFI PCs are rebuilt as blockBase + 4 * slot. **ADR-019H (v0 Erratum 08)**
+trains TAGE with the prediction-time provider identity, adds the CallRet coroutine CFI type
+(pop-then-push), derives the restore-counter bound, and fixes one HistoryRestore per event.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -110,6 +112,7 @@ the block base, and CFI PCs are rebuilt as blockBase + 4 * slot.
 | [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
 | [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
 | [019D](ADR-019D-v0-erratum-04.md) | ADR-019 v0 erratum 04 (native CSR execution and trap-state seam) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B + 019C |
+| [019H](ADR-019H-v0-erratum-08.md) | ADR-019 v0 erratum 08 (TAGE training identity, CallRet RAS action) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..G |
 | [019G](ADR-019G-v0-erratum-07.md) | ADR-019 v0 erratum 07 (mid-block fetch-PC semantics) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..F |
 | [019F](ADR-019F-v0-erratum-06.md) | ADR-019 v0 erratum 06 (committed-store visibility, backend memory seam) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..E |
 | [019E](ADR-019E-v0-erratum-05.md) | ADR-019 v0 erratum 05 (native CSR map contribution, debug entry/return, DecodePrivView) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A..D; amends ADR-017 D-17.3 |
