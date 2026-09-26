@@ -57,6 +57,8 @@ object CfiType {
   val Jalr   = 3.U(width.W)
   val Call   = 4.U(width.W)
   val Ret    = 5.U(width.W)
+  /** JALR with rd and rs1 both link registers and rd != rs1: pop then push (ADR-019H E-2). */
+  val CallRet = 6.U(width.W)
 }
 
 object FuType {

@@ -90,7 +90,7 @@ object BackendBundlesSpecs {
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("cfiType", "CfiType", "None | Branch | Jal | Jalr | Call | Ret (Call/Ret per the RISC-V link-register hint rules on x1/x5)."),
+          List("cfiType", "CfiType", "None | Branch | Jal | Jalr | Call | Ret | CallRet (Call/Ret/CallRet per the RISC-V link-register hint rules on x1/x5; CallRet = 6 is the JALR pop-then-push hint, rd and rs1 both link, rd != rs1, ADR-019H E-2)."),
           List("slot", "UInt(log2(FetchWidth))", "Instruction slot within its fetch block."),
           List("taken", "Bool", "Resolved direction (always true for jumps)."),
           List("target", "UInt(vAddrWidth)", "Resolved target when taken.")

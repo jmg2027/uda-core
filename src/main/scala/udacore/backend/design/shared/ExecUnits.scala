@@ -57,7 +57,7 @@ object MemOp {
 }
 
 /** Branch: op[3:0] = BranchControl code (BEQ..BGEU, JAL, JALR); op[6:4] = CfiType of the
-  * instruction (Branch, Jal, Jalr, Call, Ret per the link-register hints). */
+  * instruction (Branch, Jal, Jalr, Call, Ret, CallRet per the link-register hints). */
 object BranchOp {
   def encode(ctrl: Int, cfiType: Int): Int = ctrl | (cfiType << 4)
 }
