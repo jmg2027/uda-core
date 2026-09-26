@@ -11,8 +11,8 @@ import udacore.frontend.design.shared._
 object FrontendTestKit {
   val fp = FrontendParams()
 
-  val NONE = 0; val BRANCH = 1; val JAL = 2; val JALR = 3; val CALL = 4; val RET = 5
-  def cfiName(t: Int): String = Seq("None", "Branch", "Jal", "Jalr", "Call", "Ret").lift(t).getOrElse(s"?$t")
+  val NONE = 0; val BRANCH = 1; val JAL = 2; val JALR = 3; val CALL = 4; val RET = 5; val CALLRET = 6
+  def cfiName(t: Int): String = Seq("None", "Branch", "Jal", "Jalr", "Call", "Ret", "CallRet").lift(t).getOrElse(s"?$t")
 
   case class Outcome(cfiType: Int = NONE, slot: Int = 0, taken: Boolean = false, target: Long = 0)
   case class Checkpoint(ghr: BigInt = 0, rasTop: Int = 0, ras: Seq[Long] = Seq.fill(fp.tuning.rasDepth)(0L))

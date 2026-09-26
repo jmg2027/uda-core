@@ -336,6 +336,131 @@ object BranchPredictorSpecTests {
     }
   }
 
+  // ---- ADR-019H E-1: TAGE trains the prediction-time provider identity --------------------------------
+
+  /** Force the speculative GHR (and an empty RAS) through an ArchRedirect restore. */
+  def setGhr(d: Drv, g: BigInt): Unit =
+    d.recover(Event(RecoveryKind.ArchRedirect, 0, 0), Restore(Checkpoint(ghr = g), apply = false, Outcome(), 0))
+  def predictAt(d: Drv, g: BigInt, pc: Long): Pred = { setGhr(d, g); d.predict(pc).get }
+  def trainPred(d: Drv, p: Pred, g: BigInt, taken: Boolean): Unit =
+    d.trainOne(Train(p.fetchPc & ~15L, if (taken) Outcome(BRANCH, p.cfiSlot, taken = true, p.fetchPc) else Outcome(), Some(p), g, p.meta))
+
+  val trainIdentity = new SpecTest("bp.trainIdentity", Seq("funcPredictorTraining", "funcTageDirection")) {
+    def run(): Seq[TCheck] = {
+      val A = 0x1000L; val B = 0x2000L // same TAGE T1 index for equal histories, different tags
+      // (1) A provider that became visible after P's prediction is never trained for P.
+      val newer = withDrv(this) { d =>
+        d.trainOne(Train(A, Outcome(BRANCH, 0, taken = true, A)))
+        val G = BigInt("5a3c", 16)
+        val p0 = predictAt(d, G, A); val p1 = predictAt(d, G, A)
+        trainPred(d, p0, G, taken = false) // older instance: mispredicted, allocates T1 at (A, G)
+        trainPred(d, p1, G, taken = true)  // P = p1 was predicted by the bimodal base (provider 0)
+        val q = predictAt(d, G, A)
+        Seq(
+          chk(p0.meta.provider == 0 && p1.meta.provider == 0 && p1.taken, "P is predicted by the bimodal base (provider 0), taken",
+            s"$p0 ${p0.meta} $p1 ${p1.meta}"),
+          chk(q.meta.provider == 1 && q.meta.providerCtr == -1,
+            "the T1 entry allocated after P's prediction keeps its allocation counter (-1): P's training went to the base",
+            s"$q ${q.meta}"))
+      }
+      // (2) A provider entry replaced before P's training is skipped (not the replacing entry).
+      val replaced = withDrv(this) { d =>
+        d.trainOne(Train(A, Outcome(BRANCH, 0, taken = true, A))); d.trainOne(Train(B, Outcome(BRANCH, 0, taken = true, B)))
+        val G = BigInt("77", 16)
+        trainPred(d, predictAt(d, G, A), G, taken = false) // allocates T1 at (A, G)
+        val p = predictAt(d, G, A)                          // P: provider T1 (A's entry)
+        trainPred(d, predictAt(d, G, B), G, taken = false) // B replaces that T1 entry
+        trainPred(d, p, G, taken = true)                    // P's own training arrives late
+        val qb = predictAt(d, G, B); val qa = predictAt(d, G, A)
+        Seq(
+          chk(p.meta.provider == 1 && p.meta.providerCtr == -1, "P is predicted by T1 (A's entry, counter -1)", s"$p ${p.meta}"),
+          chk(qb.meta.provider == 1 && qb.meta.providerCtr == -1,
+            "the replacing T1 entry (B's) is not trained by P: its counter is still -1", s"$qb ${qb.meta}"),
+          chk(qa.meta.provider == 2 && qa.meta.providerCtr == 0,
+            "P's misprediction allocates in a table longer than its prediction-time provider (T2, counter 0)", s"$qa ${qa.meta}"))
+      }
+      newer ++ replaced
+    }
+  }
+
+  // ---- ADR-019H E-3: CallRet (pop then push) --------------------------------------------------------------
+
+  val callRet = new SpecTest("bp.callRet", Seq("funcRasPredict", "funcSpeculativeHistoryUpdate", "funcHistoryRestore")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.trainOne(taken(0x3000, CALL, 1, 0x3000)); d.trainOne(taken(0x5000, CALLRET, 2, 0x9990))
+      d.predict(0x3000); d.predict(0x3000) // RAS: ..., 0x3008, 0x3008
+      d.trainOne(taken(0x3100, CALL, 3, 0x3100)); val before = d.predict(0x3100).get // pushes 0x3110
+      val cr = d.predict(0x5000).get
+      val after = d.predict(0x7000).get.cp
+      val depth = fp.tuning.rasDepth
+      val top = (before.cp.rasTop + 1) % depth
+      // Restore: a recovering CallRet at pc 0x5008 applied to checkpoint `cr.cp`.
+      d.recover(Event(RecoveryKind.BranchMispredict, 0x3110, 0, Outcome(CALLRET, 2, taken = true, 0x3110)),
+        Restore(cr.cp, apply = true, Outcome(CALLRET, 2, taken = true, 0x3110), 0x5008))
+      val rs = d.predict(0x7000).get.cp
+      Seq(
+        chk(cr.cfiType == CALLRET && cr.cfiSlot == 2 && cr.taken && cr.target == 0x3110 && cr.nextPc == 0x3110,
+          "a predicted CallRet targets the current RAS top (0x3110), not its BTB target", s"$cr"),
+        chk(cr.cp.rasTop == top && after.rasTop == top && after.ras(top) == 0x500c &&
+            after.ras.indices.filter(_ != top).forall(i => after.ras(i) == cr.cp.ras(i)) && after.ghr == cr.cp.ghr,
+          "after it the RAS top is unchanged and the top entry is cfiPc + 4 = 0x500c (pop then push; GHR unchanged)",
+          s"${cr.cp} -> $after"),
+        chk(rs == after, "a restored CallRet performs the same pop-then-push exactly once", s"$rs vs $after"))
+    }
+  }
+
+  // ---- ADR-019H E-4/E-5: one restore per event, back to back ----------------------------------------------
+
+  val backToBack = new SpecTest("bp.backToBack", Seq("funcHistoryRestore")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      val c1 = Checkpoint(ghr = 0x11, rasTop = 1, ras = Seq(1L, 0x100L, 0, 0, 0, 0, 0, 0))
+      val c2 = Checkpoint(ghr = 0x22, rasTop = 2, ras = Seq(2L, 0x200L, 0x300L, 0, 0, 0, 0, 0))
+      val c3 = Checkpoint(ghr = 0x33, rasTop = 3, ras = Seq(3L, 0, 0, 0x400L, 0, 0, 0, 0))
+      d.req = Some(0x8000)
+      d.event = Some(Event()); d.cycle(); d.event = Some(Event(RecoveryKind.ArchRedirect)); d.cycle(); d.event = None
+      val n0 = d.preds.size
+      d.restore = Some(Restore(c1, apply = false, Outcome(), 0)); d.cycle(); val r1 = d.restoreFire; d.restore = None
+      d.run(3); val heldAfterFirst = d.preds.size == n0
+      // A third event arrives in the same cycle as the second restore.
+      d.restore = Some(Restore(c2, apply = false, Outcome(), 0)); d.event = Some(Event()); d.cycle()
+      val r2 = d.restoreFire; d.restore = None; d.event = None
+      d.run(3); val heldAfterSecond = d.preds.size == n0
+      d.restore = Some(Restore(c3, apply = false, Outcome(), 0)); d.cycle(); d.restore = None
+      var k = 0; while (d.preds.size == n0 && k < 5) { d.cycle(); k += 1 }
+      d.req = None
+      val resumed = d.preds.drop(n0).headOption.map(_._2)
+      Seq(
+        chk(r1 && heldAfterFirst, "after two back-to-back events, the first restore alone does not release PredictReq", s"${d.preds.drop(n0)}"),
+        chk(r2 && heldAfterSecond, "a restore accepted in the cycle of a new event does not release it either", s"${d.preds.drop(n0)}"),
+        chk(resumed.exists(_.cp == c3), "prediction resumes only after the last restore, from its checkpoint", s"$resumed"))
+    }
+  }
+
+  val restoreBound = new SpecTest("bp.restoreBound", Seq("funcHistoryRestore")) {
+    def run(): Seq[TCheck] = {
+      val bound = fp.backend.checkpointCount + 1
+      val ok = withDrv(this) { d =>
+        (0 until bound).foreach { _ => d.event = Some(Event()); d.cycle() }; d.event = None
+        (0 until bound).foreach(_ => d.restoreOne(Restore(Checkpoint(), apply = false, Outcome(), 0)))
+        val p = d.predict(0x1000)
+        Seq(chk(p.nonEmpty, s"$bound outstanding events (BranchCheckpointCount + 1) are legal and drain with $bound restores", ""))
+      }
+      var reachedEnd = false
+      val over = try {
+        withDrv(this) { d => (0 to bound).foreach { _ => d.event = Some(Event()); d.cycle() }; d.event = None; d.run(2); reachedEnd = true; Nil }
+        TCheck(false, "a burst beyond the bound fires the design assertion", "simulation ended normally")
+      } catch {
+        case e: NotImplementedError => throw e
+        case _: Throwable =>
+          val fired = chisel3.simulator.CachedSimulator.lastSimulationLog.linesIterator.filter(_.contains("Assertion failed")).toSeq
+          val good = !reachedEnd && fired.exists(_.contains("exceed BranchCheckpointCount + 1"))
+          chk(good, s"a burst of ${bound + 1} events without restores fires the bound assertion", fired.headOption.getOrElse("no assertion"))
+      }
+      ok :+ over
+    }
+  }
+
   val all: Seq[SpecTest] = Seq(midBlockSlot0, midBlockFallThrough, midBlockEarlierSlot, midBlockLaterSlot, midBlockCallPush,
-    midBlockRestorePc, tageBias, tageHistory, tageUseAlt, specUpdate, restoreExact, btbTraining, fork)
+    midBlockRestorePc, tageBias, tageHistory, tageUseAlt, specUpdate, restoreExact, btbTraining, fork, trainIdentity, callRet,
+    backToBack, restoreBound)
 }
