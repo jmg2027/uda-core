@@ -6,25 +6,24 @@ import chisel3._
 sealed protected trait HasBackendParams {
   val params: BackendParams
 
-  // Backend-specific parameter access
-  def xLen: Int           = params.xLen
-  def iLen: Int           = params.iLen
-  def regNum: Int         = params.regNum
-  def regIdWidth: Int     = params.regIdWidth
-  def memOpWidth: Int     = params.memOpWidth
-  def hartId: Int    = params.hartId
+  def xLen: Int             = params.xLen
+  def iLen: Int             = params.iLen
+  def regNum: Int           = params.regNum
+  def regIdWidth: Int       = params.regIdWidth
+  def hartId: Int           = params.hartId
   def enableMulDiv: Boolean = params.enableMulDiv
   def enableBitAlu: Boolean = params.enableBitAlu
-  def epochWidth: Int     = params.epochWidth
-  def executionUnits: Int = params.executionUnits
+  def robTagWidth: Int      = params.robTagWidth
+  def physRegIdWidth: Int   = params.physRegIdWidth
+  def checkpointIdWidth: Int = params.checkpointIdWidth
+  def ftqIdxWidth: Int      = params.ftqIdxWidth
+  def fetchSlotWidth: Int   = params.fetchSlotWidth
+  def vAddrWidth: Int       = params.vAddrWidth
+  def pAddrWidth: Int       = params.pAddrWidth
 
-  // Backend constants
   val bytesize: Int = 8
   val halfsize: Int = bytesize * 2
   val wordsize: Int = bytesize * 4
-
-  // RVE support
-  def isRVE: Boolean = params.isRVE
 }
 
 /** Backend domain abstract classes */

@@ -109,10 +109,10 @@ val funcPcGeneration = spec {
 }
 
 // PROPERTY: State a guarantee
-val propEpochFiltering = spec {
-  PROPERTY("EpochFiltering")
-    .desc("Stale tokens are automatically filtered by epoch mismatch")
-    .note("No explicit flush signals required")
+val propOlderSurvivesRecovery = spec {
+  PROPERTY("OlderSurvivesRecovery")
+    .desc("A branch RecoveryEvent never invalidates an entry older than the recovering branch")
+    .note("No explicit flush signals: each holder applies funcRecoveryKills locally")
     .build()
 }
 
@@ -209,7 +209,7 @@ Connect specs using three relationship types:
 CONTRACT("CoreTop")
   .is(rawTop)                    // "CoreTop IS a raw top module"
   .has(intfBootAddr, intfHartEn) // "CoreTop HAS boot address and hart enable"
-  .uses(paramEpochWidth)         // "CoreTop USES epoch width parameter"
+  .uses(paramDataCoherence)      // "CoreTop USES data-coherence parameter"
 
 INTERFACE("MemoryPort")
   .is(rawReadyValidIntf)         // "MemoryPort IS a ready/valid interface"
@@ -285,14 +285,14 @@ Use relationships to create traceable dependency chains:
 val funcFetchLogic = spec {
   FUNCTION("FetchLogic")
     .desc("Main fetch control logic")
-    .uses(paramProgramMemoryAddrWidth, funcEpochCheck)
+    .uses(paramFetchBytes, funcFetchGeneration)
     .build()
 }
 
-val funcEpochCheck = spec {
-  FUNCTION("EpochCheck")
-    .desc("Validates epoch of returning memory responses")
-    .uses(paramEpochWidth)
+val funcFetchGeneration = spec {
+  FUNCTION("FetchGeneration")
+    .desc("Drops I-cache responses whose fetch generation predates the last RecoveryEvent")
+    .uses(paramFtqDepth)
     .build()
 }
 ```
@@ -329,7 +329,7 @@ subsystem/
 
 **Spec Files:**
 - Format: `<DesignFileName>Specs.scala`
-- Example: `FetchUnit.scala` → `FetchUnitSpecs.scala`
+- Example: `FetchUnit.scala` -> `FetchUnitSpecs.scala`
 
 **Spec Objects:**
 - Format: `<category><ModuleName><Feature>`
@@ -381,7 +381,7 @@ Refer to actual signal and parameter names:
 
 ```scala
 // Good: Uses real names
-.desc("Compares token.epoch with globalEpoch to filter stale tokens")
+.desc("Kills entries for which robOlder(event.robTag, entry.robTag) holds")
 
 // Avoid: Generic descriptions
 .desc("Compares values to filter invalid data")
@@ -392,7 +392,7 @@ Refer to actual signal and parameter names:
 Use `.note()` for additional information that supports but doesn't replace the main description:
 
 ```scala
-.desc("Decodes RV32IMC instructions into micro-operations")
+.desc("Decodes RV32IM instructions into micro-operations")
 .note("Single-cycle decode for all instructions")
 .note("Future: consider two-cycle decode for complex instructions")
 ```
@@ -405,10 +405,9 @@ Add diagrams when structure is complex:
 .draw("mermaid", """
   graph LR
     Frontend --> Backend
-    Backend --> MemorySubsystem
-    Backend --> Frontend
-    GlobalEpoch -.-> Frontend
-    GlobalEpoch -.-> Backend
+    Backend --> DataCache
+    Backend -- FtqCommit --> Frontend
+    Backend -. RecoveryEvent .-> Frontend
 """)
 ```
 
@@ -451,13 +450,13 @@ val intfMemoryPort = spec {
 ### Documenting Parameters
 
 ```scala
-val paramEpochWidth = spec {
-  PARAMETER("EpochWidth")
-    .desc("Width of epoch counter in bits")
-    .entry("Default", "2")
-    .entry("Range", "1-8")
-    .entry("Impact", "Determines max speculation depth")
-    .note("Wider epochs allow deeper speculation but increase token overhead")
+val paramRobDepth = spec {
+  PARAMETER("RobDepth")
+    .desc("Reorder buffer entries")
+    .entry("Default", "16")
+    .entry("Range", "power of two, 8-128")
+    .entry("Impact", "Bounds the in-flight window; PRF must be >= 32 + RobDepth")
+    .note("Deeper ROBs hide more latency but widen robTag and every age compare")
     .build()
 }
 ```
@@ -465,12 +464,12 @@ val paramEpochWidth = spec {
 ### Documenting Capabilities
 
 ```scala
-val capEpochControl = spec {
-  CAPABILITY("EpochBasedControl")
-    .desc("Epoch-based speculation eliminates flush signals")
-    .entry("Global epoch counter", "Tracks program flow branches")
-    .entry("Automatic filtering", "Stale tokens filtered by epoch mismatch")
-    .entry("Scalable depth", "Configurable via epochWidth parameter")
+val capSelectiveRecovery = spec {
+  CAPABILITY("SelectiveRecovery")
+    .desc("Execute-time branch recovery without flush signals")
+    .entry("RecoveryEvent", "One broadcast fact naming the recovery point by robTag")
+    .entry("Local filtering", "Each holder discards only entries younger than the recovery point")
+    .entry("Checkpoints", "Rename state restored from the recovering branch's checkpoint")
     .build()
 }
 ```
@@ -518,10 +517,10 @@ val debugInterface = {
 
 **Never use stub assignments:**
 ```scala
-// ❌ Wrong
+// Wrong
 io.debug.valid := false.B
 
-// ✅ Correct
+// Correct
 @LocalSpec(funcDebugInterface)
 val debugInterface = {
   // Pending implementation

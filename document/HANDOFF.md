@@ -1,229 +1,560 @@
-# Handoff: UDACore identity + TileLink boundary + spec hardening + verified-IP port (2026-07-06)
+# Handoff: ADR-019 conventional OoO v0 - spec-DSL migration (2026-09-25)
 
-Branch: `claude/verif-harness-synthesis-porting-ry6spw` (rebuild lineage; 16 commits ahead
-of `origin/rebuild`, fast-forward). This file is the durable state for the next session;
-the container is ephemeral. Sessions recorded here: the verif/synthesis port (commits
-`1fb7ceb4`/`2eece6db`), the identity/boundary rework (`70fd8761`/`97226929`), the CSR
-library / cache specs / philosophy review (`af4377c1`/`ec29f7c3`/`ac2ccf10`), ADR-017 +
-harness (`ed744db0`/`a1c217ea`), ADR-018 Spec-TDD (`bd83c2e5`), and the verified-IP port
-with the multiplier correction (`24dbb9b7`/`9a8b9d3e`/`20fc9fcb`).
+Branch: `claude/adr-019-spec-dsl-8orhnc` (on top of `main` 5c73eda, which merged
+`architecture/ooo-v0-spec-dsl`). Supersedes the 2026-07-06 handoff; the earlier session
+history (verif/PPA port, ADR-016/017/018, verified FU IP port) lives in git history.
 
 ## Goal
 
-The rebuild line is a **personal research vehicle for parametric in-order-to-OoO scaling**
-(unified PRF, window parameter `SpeculativeRegNum` = N), now fully decoupled from the
-company line by owner directive: renamed **UDACore** (package `udacore`), XLEN-parametric,
-standard full-TileLink memory boundary, with accommodation seams for caches, TLBs, and the
-U/S/H privilege ladder. All of it recorded as **ADR-016** (read it; it amends ADR-003
-D-3.14). Method unchanged: spec-first, contracts hardened before shell RTL.
+UDACore is a personal, conventional out-of-order RV32IM core (ADR-019): PC-indexed
+BTB+TAGE+RAS frontend with FTQ, explicit data-less ROB, sRAT/rRAT + free list +
+checkpoints, RS, LSQ, execute-time selective recovery via one RecoveryEvent, VIPT L1
+caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Work Order
+07 at the specification level only: no new-architecture RTL.
 
 ## Done this session
 
-1. `1fb7ceb4`/`2eece6db` - main's verif harness (scn/gate/trace/daemon, CachedSimulator,
- one-compile batching) and the yosys+sky130+OpenSTA synthesis/STA flow ported into
- `verif/`, sbt-free (pinned scalac + chisel 6.2.0 jars). DUT-facing commands answer
- `harness-not-ready` (exit 3) until CoreTop has RTL; the synthesis flow works today on
- the implemented functional units (EmitUnit / sta.sh unit / ppa-unit.sh).
-2. `70fd8761` - rename klase32 -> udacore across 172 files (packages, dirs, docs, verif,
- `UDACoreElab`). Repo URL and references to the company line (KLASE32) kept.
-3. `97226929` - ADR-016 implemented spec-first:
- - `common/tilelink/`: standard TileLink 1.8.x five-channel spec + bundles
-   (TLLinkParams/TLBundle, hasBCE gates B/C/E; channel-priority PROPERTY).
- - CoreTop boundary: the four external memory req/resp interfaces replaced by two
-   TileLink master links `instBus`/`dataBus`; internal ProgMem/DataMem edges kept, with
-   CoreTop-owned InstBusAdapter/DataBusAdapter vertices specified as the translators
-   (cache/TLB vertices later splice into the internal edges; boundary never changes).
- - CoreParams: XLEN in {32,64} (require), PrivilegeParams (U/S/H ladder with legality
-   requires), Option[CacheParams] icache/dcache, Option[TlbParams] itlb/dtlb (TCM point =
-   all None), single link-geometry derivation (instBusParams/dataBusParams; dcache flips
-   the data link to TL-C).
- - MemorySubsystem: `memOpWidth == 32` fixed require relaxed to XLEN-following
-   (ADR-003 D-3.14 amended); preset `rv32Tcm` -> `tcm(xLen)`.
- - CAPABILITY specs (PrivilegeModes / AddressTranslation / CacheHierarchy) on CoreTop;
-   stub Spec DSL gained the missing CAPABILITY category.
- - verif: harness binding contract now specifies TileLink channel service (A->D Gets,
-   Put-to-DONE sentinel, B/C/E tied off until coherent); STA SDC memory-boundary glob is
-   `io_*Bus_*`.
+1. `ff19cf1` - WP-0..WP-8 spec migration (clean-break).
+   - Doctrine: RecoveryEvent is rawNoDecoupled class 6; epoch survives only as a local
+     transaction generation (propGenerationTagScope); rawSpeculativeHolder stance
+     template; propIsaRetireEquivalence replaces N-equivalence.
+   - One order rule: BackendParamsSpecs.funcRobOlder + funcRecoveryKills. robTag is
+     allocated by RenameUnit; after any event the next tag is e.robTag + 1.
+   - Frontend: FetchPcGen, BranchPredictor (BTB/TAGE/RAS RAW subcores), FetchTargetQueue
+     (checkpoints, commit-time training), FetchUnit (parallel ITLB + VIPT I$, fetch
+     generation), FetchBuffer, FrontendTop graph. Deleted BranchPredecoder, SlotSlicer,
+     RvcExpander (290-line RTL), NextPcGen, IssueQueue.
+   - Backend: ReorderBuffer, RecoveryController (only RecoveryEvent producer; ArchRedirect
+     wins), RenameUnit (sRAT/rRAT/FIFO free list with spec/arch heads/checkpoints/busy
+     table), RS (oldest-ready), BranchUnit, CommitUnit (fence/fence.i/sfence sequencing),
+     TrapController (M/S delegation, sole ArchRedirect producer), CsrController
+     (TranslationContext view), LoadStoreQueue, StoreBuffer (moved from the dissolved
+     memorysubsystem domain), FU wrappers, BackendTop graph. Deleted RedirectUnit.
+   - Core: Sv32Specs (shared semantics, A/D policy = fault, no hardware update),
+     InstructionTlb, DataTlb (non-blocking miss + fault record), PageTableWalker
+     (physical PTE reads through D$, SFENCE.VMA distribution, Retry on overlap),
+     InstructionCache, DataCache (2 MSHRs x 2 targets, write-back/allocate, clean-all),
+     InstBusAdapter, DataBusAdapter, CoreTop graph. Deleted GlobalEpochUnit.
+   - Design: every new/changed vertex is a generated `???` shell (PENDING on elaboration).
+     Implemented-but-epoch-based FU wrappers (AluUnit..DividerUnit) became shells; the
+     external IP is untouched. Params case classes carry the v0 defaults plus two paired
+     requires (propPrfSizingCoversRob, propViptGeometryLegal). misa default IMAFDCSU ->
+     IMSU. spec-check check 5 re-based to `reg-queue-recovery`.
+2. `8cf8815` - red/PENDING bindings: 21 new L2 `.scn` (all assemble, all < 0x200 bytes;
+   they answer harness-not-ready today) + L1 ParamSpecTests (FAIL observed with the
+   requires disabled, then PASS). spec-test-allow shrank to 54 entries.
+3. `62aed52` - deleted superseded non-ADR architecture papers/docs; README, CLAUDE.md,
+   AGENTS.md, skills, docs index, ADR-000 migration record updated.
 
-4. `af4377c1`/`ec29f7c3`/`ac2ccf10` - follow-on owner directives:
- - main's CSR decorator library ported spec-first to `common/system/csr/`
-   (Csr/Mirror/Shadow/Indirect/Counter/Custom + CsrAccess on the rebuild's
-   CSRControl enum, no rocket Parameters). Mechanism only; ownership stays with
-   TrapController (ADR-004). The protected backend `csr/CSR.scala` and the thin
-   CSRTemplateBase are untouched - migration happens with the TrapController RTL.
- - Cache system vertex contracts written: `core/spec/modules/InstructionCacheSpecs.scala`
-   (read-only, TL-UH fill, fence.i token, epoch-blind) and `DataCacheSpecs.scala`
-   (TL-C coherent, committed-only-by-construction, probe liveness bound to the TL
-   channel-priority property, function-transparency acceptance). New PROPERTYs are
-   allowlisted per ADR-015 until their paired asserts land with RTL.
- - Full UDA-philosophy spec review (subagent, 12 findings): doctrine now enumerates
-   the sanctioned rawNoDecoupled classes (epoch / async inputs / boot statics /
-   commit-broadcast strobes / wakeup broadcast) and the FACT-vs-TRANSFER projection
-   rule; external-IP kill ports documented as tied-inactive under the no-flush
-   doctrine; BackendTop/MemorySubsystemTop contract descriptions written; ~40
-   backend/memory interfaces got explicit .is(rawReadyValidIntf); owned members
-   moved .uses -> .has; PRF epoch stance corrected to epoch-free-by-construction;
-   Divider sub-core CONTRACTs demoted to RAW subcore. Accepted deviations: section
-   ordering, doubled In/Out interface names, CoreTop's integration FUNCTION list.
+4. Review round 1 (owner review of 6d7ce25), all spec-level:
+   - P0 trap hand-off: ReorderBuffer headLocked on an exception hand-off; CommitUnit
+     funcTrapHold/propTrapHoldUntilRedirect (+ RecoveryEventIn) holds RobHeadIn until the
+     ArchRedirect with that robTag; propRobRetireInOrder rewritten (interrupts skip a tag).
+   - P0 RAS: HistoryCheckpoint carries the full RAS contents (rasEntries), making
+     propHistoryRestoreExact true under wrong-path pushes/pops/wrap.
+   - P0 Svade: Sv32 A/D policy named Svade; identity RV32IM_Zicsr_Zifencei + Svade.
+   - P0/P1 precise MMIO stores (first form, replaced in round 2 below); PMA contract makes
+     cacheable writebacks fault-free. OQ-G closed.
+   - P1 checkpoints: freed at resolution via BranchUnit CheckpointRelease -> RenameUnit
+     (bitmask pool with owner robTag), or after the recovering restore; not at commit.
+   - P1/P2 PTW: globalSeen |= PTE.G over the whole walk.
+5. Review round 2 (owner review of 8f118a4):
+   - P0 uncacheable head execution separated from commit: the round-1 form fired StoreCommit
+     (an irrevocable commit projection) before the store could fault and had no vaddr for
+     tval. Now an uncacheable load/store reports headExecute (not done); CommitUnit sends
+     HeadMemGrant once for the head; the LSQ waits for StoreBufferEmpty, performs the single
+     bus access (stores via the new LSQ -> DataCache UncachedStoreReq/Resp port, keeping the
+     SQ entry and its vaddr), and completes done or with a precise access fault. Retirement
+     is the ordinary atomic commit; StoreCommit of an uncachedPerformed store only releases
+     the SQ entry. StoreBuffer holds committed cacheable stores only; drains never fault.
+     While a grant is in flight no interrupt/debug is taken in front of the head, so an
+     MMIO access is never killed and replayed (propUncachedPerformedOnce).
+   - P1 debug boundary: DebugReq now enters the CommitUnit and is sampled with the
+     interrupt rules at a precise retire boundary (Exception{Debug}); the TrapController
+     no longer reads debugReq.
+   - Owner decisions recorded: OQ-E waived (csr/CSR.scala unprotected, rewritten with the
+     RTL); OQ-D decided (single-hart, non-coherent, no DMA/coherent agent in v0).
 
-5. `ed744db0`/`a1c217ea` - Feature-pattern import + agent harness:
- - ADR-017 (extension contribution): extensions are optional vertices + data
-   contributions (decode rows absent-when-disabled -> illegal trap, the F-3 lesson as
-   propDisabledExtensionTraps; CSR Map[Int,Csr] entries into the one readFromCsr map).
-   Feature-style host-signal weaving, side-effect hardware construction, and `def`
-   feature handles are forbidden (doctrine: DesignRuleSpecs.rawExtensionContribution).
- - Agent harness rebuilt for this branch: CLAUDE.md rewritten (authority order, current
-   shell-vs-implemented state, scalac-gate commands, UDA one-screen rules), .claude
-   session hook (toolchain + githooks + readiness line), .githooks/pre-commit
-   (staged-ASCII with grandfathered-debt allowlist + spec-check gate), four skills
-   (verif / spec-first / ppa / handoff).
+6. Review round 3 (owner review of 8647d26) - spec freeze:
+   - P0 head presentation: RobHeadOut.valid = head.valid && (done || headExecute); a
+     headExecute && !done head is observed by the CommitUnit (ready held low) so it can send
+     HeadMemGrant; only a done head is ever transferred. Round 2 would have deadlocked.
+   - P0 uncached load path: symmetric to stores - LSQ -> DataCache UncachedLoadReq{lqIdx,
+     lqGen, paddr, size} / UncachedLoadResp{data, accessFault}; the paddr comes from the
+     first cached lookup's translation, so no DTLB pairing is needed. DCacheLoadReq is now
+     the speculative cached path only (its uncached field is removed).
+   - P1: propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible and restated for
+     the cacheable (commit-time) and granted-uncacheable (head-time) visibility rules.
+   - The owner declared spec freeze at 242feaf; the next work is RTL with assertions/tests.
+7. RTL block 1 - RenameUnit (frozen spec unchanged):
+   - L1 SpecTests `verif/suites/spectest/RenameUnitSpecTests.scala` (7 tests) bind
+     funcRenameMap, funcFreeListAllocate, funcBranchCheckpoint, funcBranchRecoveryRestore,
+     propPhysRegConservation, propCheckpointReleasedOnce; observed PENDING x7 against the
+     typed-IO shell before any RTL.
+   - RTL `backend/design/modules/RenameUnit.scala`: sRAT/rRAT, FIFO free list
+     (FreeSlots = PRF - 32, tail = archHead + FreeSlots implicit), 4-slot checkpoint
+     pool, busy table, serialize gate, atomic ROB/RS/LSQ fork, both recovery kinds.
+     ADR-019 design bundles + RobOrder.{robOlder, recoveryKills} in
+     `backend/design/shared/BackendBundles.scala`; BackendFrontendView mirrors the
+     frontend widths (decodeWidth, fetchWidth, ftqDepth, vAddrWidth).
+   - @LocalSpec asserts for propPhysRegConservation and propCheckpointReleasedOnce; the
+     negative SpecTest checks require the named assertion text in the simulation log
+     (CachedSimulator.lastSimulationLog). Mutation controls (asserts off, snapshot before
+     own dest, kill not freeing, no head restore, commit pushing newPrd, rename in the
+     event cycle) each turned at least one test red.
+   - Implemented but only L2-bound (ooo_rename_checkpoint.scn, PENDING until CoreTop):
+     funcRobTagAllocate, funcBusyTable, funcAllocateAtomic, funcSerializeGate,
+     funcRetirementMapUpdate, funcArchRecoveryRestore, propCheckpointRestoreExact,
+     propRobTagConsecutive.
+8. RTL block 2 - ReorderBuffer (frozen spec unchanged):
+   - L1 SpecTests `verif/suites/spectest/ReorderBufferSpecTests.scala` (8 tests) bind
+     funcRobAllocate, funcRobComplete, funcRobHeadOffer, funcRobRecovery, funcRobOlder,
+     propRobRetireInOrder, propOlderSurvivesRecovery, propRobCompletionTargetsLive;
+     observed PENDING x7 against the typed-IO shell (rob.order bound the already
+     implemented RobOrder.robOlder; its red is the robOlder mutant below).
+   - RTL `backend/design/modules/ReorderBuffer.scala`: RobDepth data-less entries, head/tail
+     RobTag pointers, headLocked trap hand-off, two-phase headExecute completion,
+     selective BranchMispredict kill with tail rewind and blockEnd, ArchRedirect reset.
+     Uops with a decode exception or fuType System are done at allocation; sysOp comes
+     from DecodedUop.op for System uops and is Csr for every Csr uop.
+   - Asserts: window integrity and transfer legality (RobRetireInOrder), survivor state
+     preservation and live recovering tag (OlderSurvivesRecovery), completion targets a
+     live, not-done entry (RobCompletionTargetsLive), allocation at the tail.
+   - Mutation controls (10): 9 turned tests red; the same-cycle-killed-completion filter
+     mutant is equivalent (a killed entry's done bit is unobservable and reallocation
+     re-initializes the entry).
+9. ADR-019A (v0 Erratum 01, owner ruling) applied on top of the 242feaf freeze:
+   RS/LSQ allocation only for uops that need execution (needsRs = !exception &&
+   fuType != System); explicit DecodedUop.sysOp (None/Fence/FenceI/SfenceVma/Wfi/Mret/
+   Sret/CsrWrite) carried to the ROB; RobStatus is the registered occupancy view;
+   funcRobOlder's domain excludes the tail sentinel; a retiring ArchRedirect restores
+   from rRATNext/archHeadNext, a non-retiring one from the committed state. DSL changes
+   cite ADR-019A. New L1: rename.allocateAtomic, rename.archRecovery, rob.allocate.sysOp,
+   decode.sysOpClassify (SystemOpDecode pins the table ahead of the DecodeUnit RTL);
+   13 mutants all red.
+10. RTL block 3 - RecoveryController (spec 242feaf + ADR-019A):
+   - L1 SpecTests `verif/suites/spectest/RecoveryControllerSpecTests.scala` (4 tests) bind
+     funcRecoverySelect, funcRecoveryPublish, propSingleRecoveryPerCycle,
+     propArchRedirectWins; PENDING x4 against the typed-IO shell.
+   - RTL: both inputs always ready; the event is formed combinationally in the request
+     cycle (published or discarded, never queued); ArchRedirect wins; checkpointId and
+     cfiOutcome are driven 0 on an ArchRedirect. BranchResolution/ArchRedirect bundles added.
+   - Asserts check the output port every consumer observes: event valid iff a request,
+     the event equals the selected request (SingleRecoveryPerCycle), ArchRedirect kind on
+     a collision (ArchRedirectWins); plus request-cause legality.
+   - Mutation controls (7) all red; four of them stopped by the property asserts, and the
+     registered-publish mutant too once the asserts read the output port.
+11. ADR-019B (v0 Erratum 02, owner ruling) on top of 242feaf + ADR-019A: RecoveryCause.Debug
+    (7); v0 WFI is a serializing NOP; usingRvvi-only CommitPrfReadReq/Resp between the
+    CommitUnit and the PRF (new BackendTop edges); RetireToken.priv is the executing
+    privilege (InterruptCtrl.priv); trap-entry tokens are observation events, not
+    retirements; retiring redirects are atomic with their ExceptionOut.
+12. RTL block 4 - CommitUnit:
+   - L1 SpecTests `verif/suites/spectest/CommitUnitSpecTests.scala` (13 tests) bind every
+     CommitUnit FUNCTION (incl. funcRetireStreamEmit) and propCommitInOrder,
+     propNoCommitPastException, propTrapHoldUntilRedirect, propRetireNonBlocking;
+     PENDING x13 against the typed-IO shell (commit 2dcbb40).
+   - RTL: priority interrupt/debug (latched once offered) > precise trap hand-off >
+     HeadMemGrant > maintenance step > atomic retirement; FENCE/FENCE.I/SFENCE.VMA
+     sequencer; trapPending released only by the matching ArchRedirect; retire stream,
+     commit PRF read, and the 64-bit order counter exist only when usingRvvi.
+   - CSR uops are recognized as serialize && sysOp in {None, CsrWrite} (the ROB entry has
+     no fuType); SfenceVma operands are not available at commit (TlbFlush valid bits 0).
+   - Review fixes: a matching ArchRedirect in the ExceptionOut transfer cycle (zero-latency
+     TrapController) satisfies the hold at once; ExceptionOut{SysOp}.sysOp keeps only the
+     intrinsic redirects (FenceI/SfenceVma/CsrWrite/Mret/Sret) and is None for a
+     predictionFault-only Refetch (asserted). 15 L1 tests; 19 mutants all red.
+13. RTL block 5 - PhysicalRegisterFile: storage for p1..p(N-1) only (p0 is a constant zero),
+    one always-ready write port, combinational RS operand reads and (usingRvvi only) the
+    ADR-019B commit read port, both with the same-cycle write bypass; p0 write asserted;
+    port counts width-derived (propPrfPortsFixed, checked on the normalized io type across
+    PRF/ROB depths). 3 L1 tests, 7 mutants all red (the p0 mutant became observable only
+    after removing p0 storage: Verilator zero-fills registers).
+14. ADR-019C (v0 Erratum 03, owner ruling): FuAvailability view (rawNoDecoupled class 7),
+    oldest ready among available FU classes, RS output stability, BranchUnit control and
+    result channels independent (CheckpointRelease XOR BranchResolution), RecoveryEvent kept
+    combinational. Commit 411a4d8; the new names sat in the allowlists until verified.
+15. RTL block 6 - ReservationStation: unordered entries with ready bits (rename capture and
+    allocation-cycle wakeup), oldest eligible among available classes by funcRobOlder, held
+    offer stable until transfer or kill, PRF read and entry release at the issue transfer,
+    selective kill; asserts RsIssueOnlyReady, RsRecoveryKeepsOlder, RsIssueStable, and
+    needsRs-only allocation. 6 L1 tests (3 reference-model runs), 10 mutants all red.
+16. RTL block 7 - DispatchUnit: stateless router (one edge per fuType, IssuedUopIn.ready =
+    availability of the presented class, same-cycle killed token not routed), FuAvailability
+    = per-class downstream readiness. 2 L1 tests (incl. a 200-step request-independence
+    sweep), 7 mutants all red. The CSR edge still uses the legacy bndCsrReq, which carries no
+    robTag and a 5-bit rd (reported: C-3).
+17. RTL block 8 - ALU / AGU / MUL / DIV wrappers: shared one-entry ResultHolder
+    (backend/design/shared/ExecUnits.scala; canAccept = !held || drained, held result dropped
+    in the event cycle, a request killed in its accept cycle never loads), unit-local op
+    layouts (AluOp, MulDivOp, MemOp, BranchOp; UopOp widened to 8 bits), MUL/DIV hold one
+    in-flight operation with its operands (the external cores need them stable until done)
+    and a killed flag, so an uncancelable core result of a killed uop is discarded. 4 L1
+    tests; 17 mutants: 15 red, 2 equivalent (MUL sliceWidth 32 completes in its start cycle,
+    so it is never busy and the in-flight kill flag is never read; the same mutants are red
+    on DIV).
+18. RTL block 9 - BranchUnit + PublishMux (ADR-019C E-4..E-7):
+    - BranchUnit: resolve (BEQ..BGEU, JAL, JALR with bit 0 cleared, misaligned target ->
+      exception + release), mispredict detect (Direction / Target / UnpredictedCfi; a taken
+      conditional branch predicted not-taken is DirectionMispredict), one control token
+      (BranchResolution XOR CheckpointRelease) and one result token held independently.
+      BranchResolution.valid is registered state only. Asserts RecoveryOnlyOnMispredict,
+      BranchCompletesOnce, BranchControlOnce.
+    - PublishMux: oldest valid candidate by funcRobOlder, atomic PRF write + wakeup + ROB
+      completion (withheld while a needed output is not ready; wen = 0 needs no PRF),
+      losers held; SingleDrain asserts. No RecoveryEvent input (producers filter). The CSR
+      input is never accepted until C-3 (asserted).
+    - C-2 integration harness (BranchUnit + AluUnit + RecoveryController + PublishMux):
+      the killed younger ALU result never publishes, the branch result survives; with the
+      old "resolution waits for the result" rule firtool reports the combinational cycle
+      bu.branchResolutionOut.valid <- ... <- rc.recoveryEventOut <- ... <- pm grant.
+    - 10 L1 tests (3 reference-model runs); 14 mutants, all red except the assert-only
+      mutant B1 (no input can reach the BranchUnit asserts from outside; B4 shows they fire).
+19. ADR-019D (v0 Erratum 04, owner ruling on C-3): native CSR execution and trap-state seam.
+    - Spec: IssuedUop gains insn and sysOp; Dispatch CsrReqOut is Decoupled[IssuedUop] and
+      PublishMux CsrResultIn is Decoupled[FuResult]; CSRReq/CSRResult deleted; Interrupt is
+      the one six-line core bundle; CSRTrapRead/CSRTrapWrite get field tables (kind selects M
+      or S registers); CsrController gains funcCsrOpSemantics, funcCsrTrapWriteApply,
+      funcInterruptCtrlPublish, propCsrWriteIntent, propCsrSingleOwner; funcInterruptSampling
+      suppresses sampling at a presented serialize head (E-5).
+    - Design: legacy CsrReq/CsrResult/meta/epoch classes, BackendParams.legacyCsrEpochWidth,
+      BackendModule.epochWidth, and csr/CSR.scala deleted (the three trigger bundles moved
+      verbatim into TriggerUnit.scala); new Interrupt/CsrTrapRead/CsrTrapWrite/
+      TranslationContext classes, Priv/TrapWriteKind/CsrOp encodings; RS carries insn/sysOp;
+      the CSR FuResult joins PublishMux oldest-live arbitration (C-3 assert removed).
+    - Tests: dispatch.route checks the native CSR IssuedUop (robTag, operand, insn, sysOp);
+      rs.wakeup checks insn/sysOp propagation; pm.arbitrate includes a CSR candidate.
+      Mutants: RS insn dropped, RS sysOp dropped, CSR unrouted, CSR excluded from
+      arbitration - all red.
+    - Gaps reported: debug-entry target PC (design parameter until the owner fixes the ROM
+      address); DRet kind has no v0 SysOp producer.
+20. RTL block 10 - CommitUnit serialize-head sampling fix (ADR-019D E-5): sampling requires
+    `!head.serialize`, so a presented CSR read/write, FENCE, FENCE.I, SFENCE.VMA, WFI, MRET, or
+    SRET head is never preempted; the pending request is taken at the next boundary. New
+    directed test commit.interrupt.serializeHead (interrupt + debug pending on cycle 0 of each
+    class); red on the old RTL for all 8 classes; mutants (no suppression, CSR-only,
+    redirect-only) all red.
+21. RTL block 11 - CsrController (ADR-019D E-1..E-4, E-6, E-7): the sole committed CSR-state
+    owner (plain registers, not the CsrAccess library: that path infers write intent from the
+    runtime operand and writes at access time, which E-2/E-4 forbid). v0 map: M (mstatus WARL
+    incl. MPP, misa RV32 IMSU, medeleg 0xb3ff, mideleg 0x222, mie, mtvec, mcounteren 0,
+    mstatush 0, mscratch, mepc, mcause, mtval, mip = raw lines | soft SEIP/STIP/SSIP,
+    mvendorid/marchid/mimpid/mconfigptr 0, mhartid = hartId), S (sstatus/sie/sip views,
+    stvec, scounteren 0, sscratch, sepc, scause, stval, satp), D (dcsr, dpc, dscratch0, debug
+    mode only). One-entry result register, ready = !staged && (!resValid || out.ready); legal
+    writes staged and applied only on the matching CommitGrant. InterruptCtrl picks M-destined
+    before S-destined, MEI MSI MTI SEI SSI STI within each. Asserts: CsrWriteIntent (sysOp vs
+    encoding, CsrOp vs funct3), CommitGrant mismatch, NoSpeculativeCsrWrite (state-change
+    monitor), CsrSingleOwner.
+    - 14 L1 tests (csr.ops, readOnlyBoundaries, rdX0, metadata, accessCheck, backpressure,
+      commitGating, writeIntent, singleOwner, supervisor, interruptView, trapWrite,
+      translationContext, publish through PublishMux); red = PENDING on the typed shell.
+    - 33 mutants (write-intent boundaries, access checks, staging/grant, result handling,
+      trap-write kinds, interrupt view, WARL views, assert removals) all red; the first
+      M-before-S mutant survived and the test was strengthened (SEI delegated vs STI in M).
+22. RTL block 12 - TrapController + trap/CSR seam integration (ADR-019D E-6/E-7):
+    - TrapController owns no CSR state; it maps each hand-off to one CSRTrapWrite and one
+      ArchRedirect in a single transfer (each valid waits only for the other consumer's
+      ready; ExceptionIn.ready is their conjunction). Sync/Interrupt -> TrapEntryM/S by
+      medeleg/mideleg (never from M), xcause interrupt bit, tval 0 for interrupts, vectored
+      target only for interrupts; MRET/SRET pops (MPRV cleared unless MRET to M); Debug ->
+      DebugEntry (dcsr.cause/prv, other bits kept) to BackendParams.debugEntryPc (0x800,
+      design parameter until the owner fixes it); Refetch -> pc + 4 without a CSRTrapWrite.
+      Asserts TrapSingleWriter (write/redirect/hand-off are one transfer).
+    - 6 L1 tests (trap.entryM, refetch, delegation, xret, debug, singleWriter), PENDING on the
+      typed shell; 21 mutants all red.
+    - Seam harness CommitUnit + TrapController + CsrController + RecoveryController (no
+      combinational loop reported): committed CSR write via grant + Refetch without a
+      CSRTrapWrite, MRET, TrapEntryM from U, TrapEntryS via medeleg, M interrupt from S,
+      DebugEntry, TranslationContext after each; E-5 end to end (a staged CSR write whose
+      head is presented with an interrupt pending retires first). Seam mutants (CommitUnit
+      without E-5, TrapEntryS writing mepc) red.
+23. ADR-019E (v0 Erratum 05, owner ruling on C-4 and the debug gaps):
+    - E-1: the CsrController's native staged-write map is authoritative; ADR-017 D-17.3 is
+      amended (pointer in ADR-017). Contributions are `CsrMapContribution` objects whose
+      `entries()` return `CsrMapEntry` descriptors (address, read source, legalizing write
+      target), built inside the CsrController; duplicates fail elaboration; a monitor asserts
+      a contributed CSR never changes outside the grant/trap-write paths.
+    - E-2: `CoreContractParams.debugEntryAddr` (paramDebugEntryAddr, default 0x800 for the
+      verification platform), exposed in CoreApiParams, mirrored as
+      `BackendParams.debugEntryAddr` (renamed from debugEntryPc).
+    - E-3: `SysOp.Dret` (SysOp is 4 bits); SystemOpDecode classifies DRET (System, serialize);
+      CommitUnit treats it as an intrinsic retiring redirect; TrapController emits
+      CSRTrapWrite{DRet, privNext = dcsr.prv} and XRet to dpc; CsrController applies it.
+    - E-4: `DecodePrivView` {priv, debugMode, tvm, tw, tsr} from the CsrController;
+      `SystemOpDecode.privLegal` implements funcSystemPrivLegality (debug mode decodes as M;
+      U-mode WFI illegal); BackendTop edge `csr -. DecodePrivView .-> dec`; the DecodeUnit
+      shell carries the port until its RTL block.
+    - Tests: decode.sysOpClassify (DRET row), decode.sysPrivLegality (all priv x debugMode x
+      TVM x TW x TSR), rename/ROB DRET execution-free, commit.sysop.dret + zero-latency DRET,
+      trap.dret, trap.debugEntryAddr (non-default 0x40000800), csr.decodePrivView,
+      csr.mapContribution (read, staged legalized write, operand-0 intent, read-only
+      contributed CSR, address privilege, collision rejection x2, rogue second write path),
+      seam.debugDret (U -> DebugEntry at a non-default address -> debug code -> DRET -> U at
+      dpc). Red: 10 FAIL before the RTL (trap.debugEntryAddr passed at once: the rename kept
+      the existing parameter path).
+    - Mutants (28, all red): privLegal ignoring TVM / TW / TSR / debugMode, debug mode not as M,
+      U-mode WFI legal, MRET legal in S, DRET unclassified; DecodePrivView TVM/TW/TSR/debugMode
+      dropped; contributions dropped, no duplicate check, no contribution monitor, contributed
+      write applied at accept, contributed intent from the operand; DRET target mepc / entry
+      address, DRET priv M, DRET kind missing, DRET not XRet, entry address hardcoded, dpc =
+      entry address; CommitUnit DRET not redirecting / not intrinsic; seam DRET target mepc and
+      priv M (the first seam run let "target mepc" survive because dpc equalled mepc; the test
+      now retires one U instruction first so dpc != mepc).
+    - Allowlist: funcCsrMapContribution bound and removed (spec-test-allow 49 -> 48).
+24. RTL block 13 - LoadStoreQueue (ADR-019 D-19.5/D-19.12): circular LQ/SQ with wrap-bit
+    pointers, per-entry generations for DTLB/D-cache transactions, store translation first
+    then paired DtlbReq{Load}+DCacheLoadReq for the oldest Ready load whose older stores all
+    have physical addresses, forwarding decided in the D-cache answer cycle (SQ bytes of
+    older stores by paddr, youngest wins, then the StoreBuffer answer of the same cycle, then
+    the cache word), WaitStoreDrain on a StoreBuffer partial, refill-before-miss races kept by
+    a sawRefill flag, uncached loads/stores only after HeadMemGrant + StoreBufferEmpty and
+    exactly once, StoreCommit hands the SQ head to the StoreBuffer in the same cycle (an
+    uncached performed store is only released), LQ release at retirement via RobStatus,
+    selective kill with tail rewind, one-entry MemResult holder (oldest pending first).
+    New core design bundles (TranslateReq, Translation, WalkResp/TlbEntry/PmaAttr,
+    DCacheLoadReq/Resp, Uncached*), backend CommittedStore/StoreForwardQuery/Data,
+    BackendParams pAddrWidth and LSQ index/generation widths. Timing contracts this design
+    relies on (spec-compatible, recorded here): the StoreBuffer answers a forwarding query
+    combinationally in the query cycle, and a DCacheLoadResp's data reflects every drain
+    completed before its response cycle. CommittedStore/UncachedStoreReq paddr is the byte
+    address; data and mask are lane-aligned.
+    - 14 L1 tests (allocate, addressCapture, translationWait, refillRace, staleAnswer,
+      disambig, loadIssue, forward incl. synonym VAs, loadComplete, storeComplete, uncached,
+      storeCommit, recovery, and a random reference model: two seeds x 300 retirements with
+      out-of-order D-cache answers, replays, DTLB misses, synonyms, device accesses, faults,
+      traps, and mispredicts, checked against sequential memory semantics and final memory).
+      Red: 12 PENDING on the typed shell (the two race tests were added after the first
+      mutant pass).
+    - 31 mutants: all red after strengthening (first pass left the generation check, both
+      refill races, and the drain-wait gate alive; new tests catch them). Equivalent under
+      the protocol: dropping the event-cycle allocation guard (RenameUnit never allocates in
+      an event cycle; now asserted) and moving a faulting uncached store's state (its
+      exception still reports).
+    - Allowlists: spec-test-allow 48 -> 46 (funcUncacheableAtHead, propUncachedPerformedOnce),
+      spec-check-allow 49 -> 43 (six LSQ properties now asserted).
+25. RTL block 14 - StoreBuffer (ADR-003/ADR-019 D-19.12): FIFO of committed cacheable stores;
+    the head is offered whenever no drain is outstanding and freed only by StoreDrainResp
+    (so a draining entry still forwards and StoreBufferEmpty stays low); forwarding answers in
+    the query cycle, youngest entry per byte (partial never raised in v0: entries are aligned
+    words with masks); drain fence answered when empty, a store during a pending fence
+    asserts; asserts InOrderDrain, CommittedSurvivesRecovery (occupancy monitor),
+    StoreBufferLiveness. 5 L1 tests (red: 5 PENDING); 9 mutants all red (the empty-while-
+    draining mutant first survived; the test now checks StoreBufferEmpty during the last
+    drain). Allowlists: spec-test-allow 46 -> 45, spec-check-allow 43 -> 40. The LSQ+SB
+    forwarding contract is exercised end to end in the BackendTop integration block.
+26. RTL block 15 - DecodeUnit (ADR-019 D-19.1/D-19.3, ADR-019E E-3/E-4): per lane the legacy
+    DecodeCore table (RV32I + enabled M contribution; untouched) supplies ALU/branch/memory/M
+    rows; SystemOpDecode classifies system/CSR rows and their DecodePrivView legality; fetch
+    fault > illegal (unknown, 16-bit, privilege) > EBREAK (tval = pc) > ECALL (cause 8/9/11 by
+    priv; Debug Mode ECALL was M here, illegal since ADR-019F E-5); excepting uops are fuType System, sysOp None, no CFI or
+    memory flags; op layouts AluOp/MulDivOp/BranchOp (Call/Ret/Jal/Jalr hints)/MemOp/CsrOp;
+    unread registers reported as x0 (CSR immediate forms carry uimm in insn only); one held
+    packet discarded by any RecoveryEvent, nothing accepted in an event cycle. New frontend
+    design bundles FetchFault/FetchInst/FetchPacket. Asserts NoCompressedDecode,
+    DisabledExtensionTraps, FetchPacket lane contiguity. 7 L1 tests (red: 7 PENDING); 18
+    mutants red after strengthening (event-cycle acceptance into an empty stage, a
+    fetch-faulted branch, Debug Mode ECALL); the explicit 16-bit check is equivalent (no
+    table row has bits[1:0] != 11). spec-check-allow 40 -> 38.
+27. RTL block 16 - BackendTop (rawTop, wiring only): every vertex instantiated and every edge of
+    the BackendTop graph connected (RecoveryEvent to all twelve holders and the boundary;
+    usingRvvi retire stream and commit PRF read as Options; BitAluUnit absent in v0).
+    9 end-to-end L1 programs through the whole backend (verif/suites/spectest/BackendTopSpecTests.scala: a
+    two-pass assembler, a sequential no-prediction frontend recovered by RecoveryEvents, a
+    Bare DTLB, a RAM D-cache written only through StoreBuffer drains, an MMIO uncached port):
+    arith, loop (every taken CFI recovered), memory (SQ/SB/memory forwarding with byte/half
+    extension), M extension (incl. divide-by-zero and overflow), calls (x1/x5 links), traps
+    (ECALL + illegal, MRET, mstatus after two returns), interrupt (timer interrupt into a spin
+    loop, MMIO store/load at head exactly once), debugDret (halt request -> code at
+    debugEntryAddr -> DRET -> resume at dpc), fences (FENCE / FENCE.I / WFI). Red: 9 PENDING on
+    a typed-IO BackendTop without vertices. 8 wiring mutants (Rename without wakeup, LSQ
+    without RecoveryEvent, DecodePrivView tied to zero, interrupt lines / debug request /
+    CommitGrant cut, StoreBufferEmpty forced true, RobStatus to the LSQ cut) all red; the
+    StoreBufferEmpty mutant first survived and the interrupt program now checks, with slow
+    drains, that the MMIO store waits for an older committed store to reach memory.
+28. ADR-019F (v0 Erratum 06, owner ruling 2026-09-26; approval of the backend through ac48d53):
+    the two timing facts the backend relied on are now contract. E-1: StoreBuffer forwarding
+    is a same-cycle lookup; the LSQ decides a DCacheLoadResp only with its query accepted and
+    StoreForwardData valid (new LSQ PROPERTY propForwardQueryConsumedOnce, paired assert, L1
+    test lsq.forwardOnce with a 4-cycle forwarding-data delay, query held or accepted early,
+    word and partial-mask loads). A later pipelined forwarding path needs a store version
+    scheme and an ADR, never a bare register. E-2/E-3: StoreDrainResp is the committed-store
+    visibility point (new DataCache PROPERTY propDrainResponseMakesStoreVisible, allowlisted
+    until the DataCache block writes the directed load-miss / store-drain race with partial
+    masks); same-cycle drain response and load answer need no stronger ordering. E-4: the WFI
+    rule is unchanged. E-5: ECALL/MRET/SRET in Debug Mode decode to illegal instruction
+    (cause 2, tval = insn); ECALL cause no longer looks at debugMode. Red first:
+    decode.sysPrivLegality (mret/sret/ecall in dm) and decode.exceptions failed before the
+    SystemOpDecode change.
+29. ADR-019G (v0 Erratum 07, owner ruling 2026-09-26; ADR-019F approved at cd2b74b): the
+    requested fetch PC (possibly mid-block) is carried by PredictReq/Prediction/FtqEntry/
+    FetchRequest; blockBase = alignDown(fetchPc, FetchBytes) and startSlot = fetchPc[3:2] are
+    derived (FetchPc helper), never stored. BTB/TAGE index and tag with blockBase, a BTB entry is
+    eligible only at slot >= startSlot, fall-through = blockBase + 16, cfiPc = blockBase +
+    4 * slot (RAS push, HistoryRestore.pc), PredictorTrain.fetchPc = blockBase, FetchUnit
+    I-cache lookup at blockBase with valid slots startSlot..lastSlot and the fault on startSlot.
+    Frontend Chisel bundles and typed IO shells for BranchPredictor/FTQ/FetchUnit landed with
+    the E-8 directed tests: bp.midBlock* (6), ftq.midBlockRequest/RestorePc/Train (3),
+    fu.midBlockSlots/Fault (2), all PENDING first. FrontendParams carries the BackendParams
+    whose RecoveryEvent/FtqCommit it consumes (mirror equality required).
+30. RTL block 17 - BranchPredictor (ADR-019 D-19.2/D-19.11, ADR-019G): combinational
+    prediction from the request PC (request, Prediction, and NextPc transfer in one cycle,
+    atomic fork); BTB 64x2 full tag with per-set LRU ranks, lowest eligible slot wins; TAGE =
+    bimodal 1024 x 2b + 4 tagged tables (256 x {8b tag, 3b ctr, 2b useful}, histories
+    8/16/32/64, folded-history index/tag), weak-and-not-useful provider defers to the alternate;
+    speculative GHR shifts only for a tracked Branch, RAS circular with full snapshot;
+    RecoveryEvent counts an outstanding restore and holds PredictReq until each HistoryRestore;
+    restore = checkpoint then the resolved outcome (Branch shift, Call push pc+4, Ret pop);
+    training only at PredictorTrain (BTB allocate/update for a committed taken exit, TAGE
+    provider/useful update, allocation on a misprediction, useful decay otherwise); TAGE
+    training recomputes the lookup on current tables rather than trusting the stored meta.
+    Asserts PredictFromPcOnly, OneTakenCfiPerBlock, HistoryRestoreExact, restore-counter
+    overflow. 13 L1 tests (bp.*; red: 12 PENDING, plus bp.tageUseAlt added for a survivor);
+    22 mutants all red after strengthening (event-cycle hold, LRU victim, useAlt first
+    survived). ADR-019G mutants (fall-through and RAS push from the raw fetch PC) are red; the
+    HistoryRestore.pc mutant belongs to the FTQ block. spec-test-allow 46 -> 36,
+    spec-check-allow 39 -> 36.
 
-6. `ADR-018 Spec-TDD` (this session) - every FUNCTION/PROPERTY spec val now carries a
- test obligation, mechanically enforced:
- - Test ladder L0-L3 (elaboration assert / vertex SpecTest / .scn scenario / config
-   equivalence); red-before-green with PENDING as the sanctioned shell-era color;
-   named adversarial test-review step; XFAIL/XPASS known-bug mechanism.
- - Infrastructure: `verif.spectest` L1 framework (+ reset-applying sim()), `.scn`
-   `@verifies` directive (carried into run JSON), spec-check check 6
-   `spec-test-coverage` + `tools/spec-test-allow.txt` (seeded 125, shrink-to-zero),
-   runner `verif/bin/run.sh verif.spectest.RunSpecTests`.
- - First conforming tests are green: alu.compute, multiplier.csa16/csa32,
-   divider.nrclz/restoring, csr.library.
+## Validation status (run this session)
 
-7. `24dbb9b7`/`9a8b9d3e`/`20fc9fcb` - verified functional-unit IP port + multiplier
- correction (owner directive: origin/main's Multiplier/Divider are the VERIFIED RTL):
- - Divider: main's verified restoring + non-restoring cores replace the rebuild's
-   refactored copies, fixing a real REGRESSION (F-10/F-11 remainder-width bug the rebuild
-   reintroduced). `divider.nrclz` and `divider.restoring` PASS.
- - Multiplier: the actually-fixed core lives in main's `klase32_rvv_coprocessor/` subtree
-   (not `functionalunit/`). Ported it - abstract `MulCore` control skeleton +
-   `IterativeAdderCore` accumulator + `SliceMultiplier` - replacing the functionalunit
-   port and a hand-patched `&&`. Root causes fixed: (a) `SliceMultiplier` exposes the FULL
-   untruncated signed product `pFull` (was truncated to 2*width, losing the sign of a large
-   unsigned slice product), and `alignedPartialProducts()` sign-extends it before a plain
-   carry-propagate fold (no `MulTables`, now deleted); (b) `earlyOutBothHalfZero` requires
-   BOTH upper halves zero, gated to segmentCount <= 2 (was `||`). Both configs pass -
-   `multiplier.csa32` (production 32,1) and `multiplier.csa16` (16,1). **UDA-M1 resolved.**
- - Process correction carried: earlier over-claims (UDA-F1/F2 as owner-gated findings)
-   violated the Gate discipline; both were rebuild regressions, fixed by the verified port.
+- `bash verif/bin/build.sh`: 0 errors at each of the three commits.
+- Review rounds 1-3 re-ran all gates below after each fix; the numbers are from round 3.
+- `python3 tools/spec-check.py`: 0 errors, 4 warnings (localspec-coverage on Decoder,
+  DebugUnit, TriggerUnit, and Util - pre-existing; the CSR.scala warnings left with the file).
+- Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
+  edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
+  consumer *In interface; no orphan child interfaces.
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 150 PASS + 5 PENDING (the FTQ/FetchUnit ADR-019G tests) after
+  RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
+  serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
+  9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
+  3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
+  10 BranchUnit/PublishMux) after RTL block 9.
+- `scn.sh run ooo_div_survives_mispredict.scn`: harness-not-ready (exit 3), as designed.
+- Nothing SIMULATED against CoreTop (all ADR-019 vertices are shells).
 
-## Verified-IP port + corrected findings (this session)
+## Remaining allowlist debt
 
-The owner directed that the two functional-unit IPs (Multiplier, Divider) in origin/main
-are the VERIFIED RTL and must be brought into this branch. Done: main's verified Divider
-(both cores) and Multiplier core replace the rebuild's refactored copies
-(`external/{divider,multiplier}/design`), keeping the rebuild's top IO / params /
-@LocalSpec surface. This CORRECTS my earlier over-claims (UDA-F1/F2), which violated my
-own Gate discipline (a plausible failure is a QUESTION, not a finding):
+- spec-test-allow: 36 names after the BranchPredictor (its functions and three PROPERTYs bound;
+  propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
+  DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
+  ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
+  propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
+  bound) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
+  assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
+  predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
+  doctrine/machine-check props; pre-ADR-019 carried names.
+- spec-check-allow: 36 PROPERTYs after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+  propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
+  propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
+  propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
+  propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
+  propRetireNonBlocking, propPrfPortsFixed, propRsIssueOnlyReady, propRsRecoveryKeepsOlder,
+  propRsIssueStable, propRecoveryOnlyOnMispredict, propBranchCompletesOnce, propSingleDrain,
+  and the ADR-019C propBranchControlOnce; 51 after block 9; ADR-019D removed
+  propNoSpeculativeCsrWrite and propTrapSingleWriter: now 49) (propNoSpeculativeStoreVisible renamed propNoWrongPathStoreVisible), each pairs with its vertex's design assert when RTL lands.
 
-- **UDA-F2 was a real rebuild REGRESSION, now FIXED**: the rebuild's refactored restoring
-  divider reintroduced the exact remainder-width bug main's code documents fixing (F-10/F-11:
-  the packed-P compare in dataWidth bits broke for divisors >= 2^(dataWidth-1)). With main's
-  verified divider, `verif.spectest divider.nrclz` AND `divider.restoring` both PASS.
-- **The multiplier was also a rebuild regression** (refactored to an UNSIGNED SliceMultiplier
-  `io.p := io.a*io.b`, so MULH/MULHSU high words were wrong). The corrected core comes from
-  main's `klase32_rvv_coprocessor` (below), and both configs now PASS.
+## Open questions needing the OWNER
 
-## UDA-M1 (multiplier) - RESOLVED (rvv_coprocessor core)
+- OQ-C: the ADR-008 N=1 PPA bar is superseded by ADR-019; confirm what (if any) PPA bar
+  the v0 reference point should meet.
+- OQ-H (new): assembler protection blocks SFENCE.VMA / raw `.word` in `.scn`; allow adding
+  mnemonics (or a `.word` directive) to `src/main/scala/assembler`?
+- OQ-I (new): confirm the ADR-015 D-15.4/15.5 reinterpretation (ISA-model equivalence,
+  one-axis configs without N) recorded in ADR-000 - or write a small ADR amendment.
+- RV64 decode scheduling (carried; v0 is RV32 only).
+- Decided 2026-09-25: OQ-E waived (CSR.scala protection lifted; the file is deleted by
+  ADR-019D). OQ-D decided: v0 single-hart, non-coherent, no DMA.
+  OQ-G closed: uncacheable accesses execute at the ROB head under HeadMemGrant (precise
+  faults); cacheable regions are fill/writeback-fault-free by PMA contract (re-confirm when
+  the SoC memory map is chosen).
 
-The owner identified that the actually-fixed multiplier lives in the
-`klase32_rvv_coprocessor/` subtree, not `functionalunit/`. That corrected core is now
-ported into `external/multiplier/design/Multiplier.scala` (abstract `MulCore` control
-skeleton + `IterativeAdderCore` accumulator + `SliceMultiplier`), replacing the
-functionalunit-based port and the hand-patched `&&` early-out. Two root causes, both fixed
-by the rvv lineage:
- - **Truncated slice product**: `SliceMultiplier` now exposes the FULL untruncated signed
-   product `pFull` (`SInt((2*width+2).W)`). The old copy truncated to `2*width`, losing the
-   true sign of a large unsigned slice product (0xFFFF*0xFFFF reads negative), so the
-   accumulator sign-extended wrongly. `alignedPartialProducts()` sign-extends `pFull` into
-   the `2*dataWidth` accumulator before a plain carry-propagate fold - no `MulTables`.
- - **Upper-half fast-out**: `earlyOutBothHalfZero` requires BOTH operand upper halves zero
-   (`aHiZero && bHiZero`) and is gated to `segmentCount <= 2`; the old `||` was wrong at
-   multi-slice configs.
-`MulTableGen.scala` (the old hardcoded table lineage) is deleted - the rvv core does not
-use it. Both configs are verified: `verif.spectest multiplier.csa32` (production single
-cycle, 32,1) AND `multiplier.csa16` (multi-cycle, 16,1) pass the full MUL/MULH/MULHSU/MULHU
-sweep. MultiplierUnit still selects (32,1) as the lowest-latency production point; choosing
-a smaller multi-cycle multiplier is now a pure PPA choice (OQ-C, owner-gated), not a
-correctness one.
+## Open contradictions reported to the OWNER
 
-## Process note
+- None open (C-4 resolved by ADR-019E; its record kept below).
 
-An earlier version of these tests over-claimed UDA-F1/F2 as owner-gated RTL findings without
-the Gate rigor, and even briefly used a no-reset testbench that made the failure set
-nondeterministic. Corrected: `spectest.sim()` always applies reset, the mul/div sampling loop
-is copied verbatim from main's VERIFIED DividerEngineTest, and a failure is only surfaced as a
-finding after confirming the RTL provenance (verified vs refactored) - the discipline the
-verif skill mandates, now applied at L1.
+## C-4 record (resolved by ADR-019E E-1)
 
-## Validation status (this session)
+- C-4 CsrMapContribution vs ADR-019D E-2/E-4:
+  funcCsrMapContribution says the CSR map is "merged into the one CsrAccess.readFromCsr call
+  this vertex owns", but CsrAccess infers write intent from the runtime operand
+  (`isReadOnly = !isImm && in === 0 && (RS || RC)`) and applies the write in the access cycle
+  (`csr.commit(sharedWrite, writeEnable && sel)`). Counterexample: CSRRS x0-free form
+  `csrrs a0, mvendorid, t0` with t0 = 0 at run time - E-2 makes it a write attempt
+  (sysOp CsrWrite, illegal on a read-only CSR), CsrAccess makes it a legal read; and any
+  legal write through readFromCsr mutates state before its CommitGrant, violating E-4 and
+  propNoSpeculativeCsrWrite. The CsrController implements the map natively (CsrMapEntry
+  list, base + extension contributions, v0 has none) and funcCsrMapContribution stays in
+  spec-test-allow. Needed ruling: amend funcCsrMapContribution to name the native map (and
+  keep the common/system/csr library for extension CSR legalization only), or rework the
+  library's access protocol to E-2/E-4.
 
-- `bash verif/bin/build.sh`: whole tree compiles, 0 errors (pre-existing assembler
- warnings only).
-- `python3 tools/spec-check.py`: 0 errors, 7 pre-existing warnings (localspec-coverage on
- protected CSR/Decoder files + one reg-queue-epoch note; none touch the multiplier).
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: **6/6 PASS** - alu.compute,
- multiplier.csa32, multiplier.csa16, divider.nrclz, divider.restoring, csr.library.
- No XFAIL/PENDING remaining on the implemented units.
-- Synthesis emit re-checked on the ported core: `EmitUnit mul_csa16` (120 lines) and
- `mul_csa32` (73 lines) both elaborate + emit SystemVerilog cleanly (SegVec packed-array
- path OK under the relaxed lowering).
-- `scn.sh describe` reflects the resolved multiplier state (empty known_findings);
- run/gate/trace/batch still answer harness-not-ready (exit 3) as designed.
-- Nothing SIMULATED against CoreTop (still a spec shell by design).
+## Contradictions resolved by owner ruling
 
-## Decision on further main-branch ports (owner asked "what else from main")
+- C-1 (RS select vs FU availability) and C-2 (BranchUnit/RC/PublishMux loop) are closed by
+  ADR-019C.
+- C-3 (legacy CSR request/result without robTag/prd) is closed by ADR-019D, which also
+  fixes serialize-head interrupt sampling in the CommitUnit (E-5).
+- C-4 (CsrMapContribution vs the staged-write protocol) and the two ADR-019D debug gaps are
+  closed by ADR-019E.
 
-Judgment recorded: nothing else pulls its weight right now. Main's TileLink is a bespoke
-flattened TL-UL bundle (EtlIntf) - superseded by the standard TL spec written here; its
-KlasQueue/klastools/utils are stubs or trivia; CSR indirection templates already exist in
-this tree; CLIC/FPU/debug/trigger are company-core RTL that this line will respec against
-its own ADRs. The valuable port (verif + synthesis instruments) is done. Revisit when the
-CommitUnit RTL lands (then main's suite corpus becomes progressively portable, OQ-F).
+## Unresolved architecture questions (engineering, not owner-gated)
 
-## Open questions needing the OWNER (carried)
-
-- **OQ-E (ADR-004)**: sign-off to edit `backend/design/modules/csr/CSR.scala`
- (`AGENT: DO NOT TOUCH`) so TrapController is the single trap-CSR writer.
-- **OQ-C (ADR-008)**: N=1 PPA bar - +10% area envelope vs parity.
-- RV64: parameter plumbing accepts xLen=64 but decode tables/assembler are RV32-only -
- scheduling the RV64 decode work is an owner call (tracked in ADR-016 D-16.2 /
- rawParametricISA note).
+- Resolved by ADR-019A: RS allocation set, sysOp, RobStatus timing, robOlder domain,
+  commit/ArchRedirect ordering. Still implementation choices (not contradictions):
+  a CheckpointRelease whose owner the same-cycle RecoveryEvent kills is ignored;
+  LsqAllocation size/signed come from insn[14:12]; enum and UopOp encodings live in
+  BackendBundles.scala; the AllocateAtomic fork needs ROB/RS/LSQ ready independent of valid.
+- RecoveryEvent is combinational from BranchUnit/TrapController to every holder (the spec
+  requires publication in the request cycle); a registered stage would need an ADR and a
+  BranchUnit hold/kill rule. FTQ derives HistoryRestore.pc as block base + 4 * slot.
+- fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
+- DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
+- One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
+- Predictor training at retirement only; no decode-time redirect for direct JAL.
+- v0 serializes every CSR op (rename into empty ROB) and refetches after CSR writes.
+- Full RAS snapshot per FTQ entry costs FtqDepth x RasDepth x 32 bits (4 Kbit at v0).
+- Uncacheable access latency: each one waits for the ROB head, a StoreBuffer drain, and a
+  bus ack, and blocks interrupt sampling while in flight.
 
 ## Next steps (in order)
 
-1. **New personal repo + spec-framework session** (carried): push this lineage to its own
- repo, swap the stub `framework/specs` + macros for the real spec-core/spec-macros/plugin,
- wire the ADR-015 machine checks (now including the ADR-016 additions: adapter
- channel-priority assert, TL-C permission legality, no-hardcoded-32 grep), retire
- `tools/spec-check.py`.
-2. **Fill shell RTL against the hardened specs**: CommitUnit + RenameUnit + alloc FIFO
- (ADR-001/002) together with the CoreHarness DUT binding (TileLink A/D service per the
- CoreHarness doc contract) and the ADR-010 retire stream -> RS/Dispatch/PublishMux/PRF ->
- StoreBuffer + memory subsystem (ADR-003) -> **InstBusAdapter/DataBusAdapter** (first
- ADR-016 RTL; brings EmitCore/sta.sh core to life) -> frontend (SlotSlicer INV-S1..S5) ->
- TrapController/CsrController (after OQ-E; now carries the privilege-mode seam).
-3. **Accommodation RTL when needed by experiments**: ICache/DCache vertices (TL-UH burst /
- TL-C), ITLB/DTLB + shared PTW, U/S modes in TrapController. Each is an ADR-016 splice,
- not a boundary change.
-4. **N-sweep experiments** once CoreTop elaborates (unchanged; cache/coherence axes must
- stay separate from the N axis in config names, ADR-015 D-15.5).
+0. After ADR-019F/G (owner order): BranchPredictor (done), FetchTargetQueue, FetchPcGen, FetchBuffer,
+   InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
+   DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
+   CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
+   rerun every .scn until each gives an architectural PASS/FAIL instead of harness-not-ready.
+1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
+   RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
+   The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.
+   ADR-019D order: CommitUnit serialize-head sampling fix, CsrController, TrapController,
+   CSR/Trap integration, ADR-019E, LSQ, StoreBuffer, DecodeUnit, BackendTop wiring - all
+   done; the whole backend runs RV32IM_Zicsr programs end to end in L1. Next: the frontend
+   (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer), the MMU (ITLB/DTLB/PTW), the VIPT
+   caches and bus adapters, then CoreTop wiring and the CoreHarness binding so the ADR-019
+   .scn tests leave harness-not-ready. Spec ambiguities found during implementation are
+   reported to the owner, not fixed in the frozen spec.
+2. RTL fill-in, each vertex starting from its red test: RenameUnit + ReorderBuffer +
+   RecoveryController + CommitUnit (with the ADR-010 retire stream and CoreHarness
+   binding) -> RS/Dispatch/PublishMux/PRF/FU wrappers -> LSQ/StoreBuffer -> DataCache +
+   DataBusAdapter -> frontend (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer) +
+   InstructionCache/InstBusAdapter -> MMU (TLBs/PTW) -> Trap/Csr (CSR.scala rewrite, OQ-E waived).
+3. Replace each allowlisted PROPERTY with its design assert; add L1 SpecTests for the
+   predictor history restore (ADR-019 obligation) and cache/bus monitors.
+4. Harness: uncacheable PMA region, bus-stall knob, debugReq input, then SFENCE.VMA scn.
 
 ## Gotchas
 
-- No sbt in the remote env; `verif/bin/build.sh` is the compile gate (chisel 6.2.0 jars).
- The sbt default is chisel *3* (`chiselVer` defaults "3"); chisel-3-only constructs can
- lurk in code the 6.2 gate has not elaborated (Multiplier's Vec:=0.U was one).
-- This proxy 403s github tarballs but relays `git clone` and raw.githubusercontent.com;
- setup-sta.sh encodes this (plus the CUDD autotools timestamp fix).
-- Repo name stays `jmg2027/klase32` (hosting detail); the project is UDACore. The planned
- personal-repo split (next step 1) is the natural moment to rename the repository.
-- rebuild-lineage rules: commit messages Korean, specs/docs English ASCII, no emoji, no
- TODO comments, spec-first per AGENTS.md; `src/test/cluster` and `assembler/` are
- protected infra (assembler kept - it has RVC support main's lacks; coverage delta in
- verif/README.md).
-- `BootSequencer` default `bootCycles=2` still ignores `CorePrivateParams.bootCycles=8`
- (belongs with CoreTop integration).
-- src/test cluster tests reference pre-rebuild APIs (KLASE32 top) and do not compile
- under sbt test; they were renamed textually with the tree but remain stale protected
- infra awaiting the owner's call.
+- Coursier download is blocked (GitHub 403 via proxy), so setup.sh cannot resolve jars.
+  Workaround used: a Maven pom resolving chisel_2.13:6.2.0 + scala 2.13.12 into
+  ~/.m2, copied to /tmp/chisel_cp.txt, /tmp/chisel_plugin.txt, /tmp/scalac/*.jar, and
+  written into the gitignored verif/.toolchain.env.
+- The spec-check hook checks the working tree, not the index: validate a partial commit
+  yourself before committing it.
+- genshell (session scratch) generated the design shells from `.has(...)`; regenerate the
+  same way when a CONTRACT's interface list changes, or edit by hand.
+- In `.scn`, the assembler accepts `jalr x0, xN, 0` (not `0(xN)`) and decimal load/store
+  offsets; unwritten memory reads 0x13, so PTE tables must write explicit zeros.
+- Chisel 3 vs 6 duality (sbt default chisel 3, verif gate 6.2.0) is unchanged.
+- Protected: src/main/scala/assembler/*, src/test/scala/{cluster,assembler}. csr/CSR.scala is
+  no longer protected (OQ-E waived) and is rewritten with the Trap/Csr RTL.

@@ -10,7 +10,7 @@ import udacore.external.divider.spec.DividerSpecs._
 // The rebuild's refactored divider reintroduced the F-10/F-11 remainder-width bug
 // (restoring compare in dataWidth bits broke for divisors >= 2^(dataWidth-1)); this
 // is main's fixed, verified implementation, brought in verbatim (ADR-018 owner
-// directive). Sub-core CONTRACTs are RAW subcore per the RvcExpander ruling.
+// directive). Sub-core CONTRACTs are RAW subcore per the one-CONTRACT-per-vertex ruling.
 
 // Internal core interface, pre-decoded signals
 @LocalSpec(intfDividerCoreIO)

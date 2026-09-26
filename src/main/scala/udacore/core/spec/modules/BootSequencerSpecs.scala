@@ -13,7 +13,7 @@ object BootSequencerSpecs {
       .has(
         intfHartEnIn,
         intfBootAddrIn,
-        intfBootOut,
+        intfBootAddrOut,
         funcBootDelay,
         funcSingleBootPulse,
         funcResetOnDisable,
@@ -51,8 +51,8 @@ object BootSequencerSpecs {
       .build()
   }
 
-  val intfBootOut = spec {
-    INTERFACE("BootOut")
+  val intfBootAddrOut = spec {
+    INTERFACE("BootAddrOut")
       .desc("Boot address output to frontend")
       .is(rawReadyValidIntf)
       .markdownTable(
@@ -63,7 +63,7 @@ object BootSequencerSpecs {
       )
       .note("Valid asserts for single cycle when boot sequence completes")
       .note(
-        "ADR-009 D1: the sink of this boot pulse is the frontend NextPcGen (NOT FetchUnit); a single Decoupled boot pulse seeds PC generation. Settles P03 Q1.2."
+        "The sink of this boot pulse is the frontend FetchPcGen; a single Decoupled boot pulse seeds the speculative fetch PC."
       )
       .build()
   }

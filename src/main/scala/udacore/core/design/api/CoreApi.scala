@@ -2,8 +2,7 @@ package udacore.core.design.api
 
 import udacore.core.design.shared.{
   CoreParams,
-  CoreContractParams,
-  CoreTuningParams
+  CoreContractParams
 }
 
 /** Core domain API exports for parent integrators.
@@ -21,8 +20,7 @@ case class CoreApiParams(
     vAddrWidth: Int,
     pAddrWidth: Int,
     hartId: Int,
-    epochWidth: Int,
-    commitWidth: Int
+    debugEntryAddr: Long // Debug Module integration (ADR-019E E-2)
 )
 
 object CoreApiParams {
@@ -36,8 +34,7 @@ object CoreApiParams {
       vAddrWidth = params.vAddrWidth,
       pAddrWidth = params.pAddrWidth,
       hartId = params.hartId,
-      epochWidth = params.epochWidth,
-      commitWidth = params.commitWidth
+      debugEntryAddr = params.debugEntryAddr
     )
   }
 }
@@ -49,13 +46,11 @@ trait CoreDomainApi {
   def params: CoreApiParams
 
   // Interface width calculations
-  def epochWidth: Int = params.epochWidth
   def addrWidth: Int  = params.vAddrWidth
   def dataWidth: Int  = params.dataWidth
   def hartId: Int = params.hartId
 
   // Derived parameters for interface sizing
-  def epochMask: Long    = (1L << epochWidth) - 1
   def maxAddrValue: Long = (1L << addrWidth) - 1
 }
 

@@ -3,185 +3,148 @@ package udacore.core.spec.modules
 import framework.macros.SpecEmit.spec
 import framework.specs.Spec._
 import udacore.common.spec.DesignRuleSpecs._
-import udacore.common.tilelink.TileLinkSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
+import udacore.core.spec.shared.MemoryBundlesSpecs._
 
-/** Instruction cache vertex specifications (ADR-016, capCacheHierarchy).
-  *
-  * Spec-only for now: the vertex elaborates when CoreContractParams.icache is
-  * Some(CacheParams). It splices into the ProgMemReq/ProgMemResp edges between
-  * FrontendTop and the InstBusAdapter at CoreTop level - both neighbours keep
-  * their bundles and handshakes, which is what makes the cache a pure
-  * performance element in the UDA sense (function is unchanged with or
-  * without it).
-  */
+/** InstructionCache: VIPT L1 I-cache (ADR-019 D-19.4; amends ADR-016 PIPT base). */
 object InstructionCacheSpecs {
-
   val contInstructionCache = spec {
     CONTRACT("InstructionCache")
-      .desc("""Instruction cache vertex.
-              | An optional read-only cache on the instruction fetch path.
-              | Consumes fetch requests from FrontendTop's ProgMemReq edge,
-              | answers hits from its array, and fills misses through the
-              | InstBusAdapter as TileLink burst reads (TL-UH). Never owns
-              | lines coherently - the instruction link stays hasBCE=false.
-              """)
+      .desc(
+        "A read-only, virtually indexed, physically tagged L1 instruction cache (16 KiB, 4 " +
+        "ways, 64-byte lines, 64 sets, v0). The set is read from the untranslated index bits " +
+        "of the fetch address while the InstructionTlb translates it; the physical tag compare " +
+        "uses the ITLB answer. A hit returns the aligned 16-byte fetch block; a miss fills the " +
+        "whole line through the InstBusAdapter using one miss context."
+      )
       .has(
-        intfICacheFetchReqIn,
-        intfICacheFetchRespOut,
-        intfICacheFillReqOut,
-        intfICacheFillRespIn,
+        intfICacheReqIn,
+        intfICacheTranslationIn,
+        intfICacheRespOut,
         intfICacheInvalidateIn,
-        funcICacheLookup,
-        funcICacheFill,
+        intfInstMemReqOut,
+        intfInstMemRespIn,
+        funcICacheViptLookup,
+        funcICacheMissFill,
+        funcICacheUncachedFetch,
         funcICacheInvalidate,
         propICacheReadOnly,
-        propICacheEpochBlind,
+        propICacheResponseOrder,
         propICacheFunctionTransparent
       )
-      .uses(paramCacheGeometry, contTileLink)
-      .draw(
-        "mermaid",
-        """
-      | graph LR
-      |     fetchreq@{shape: text, label: ICacheFetchReqIn}
-      |     fetchresp@{shape: text, label: ICacheFetchRespOut}
-      |     fillreq@{shape: text, label: ICacheFillReqOut}
-      |     fillresp@{shape: text, label: ICacheFillRespIn}
-      |     inval@{shape: text, label: ICacheInvalidateIn}
-      |
-      |     subgraph InstructionCache
-      |         direction LR
-      |         lookup[TagDataLookup]
-      |         mshr[FillEngine]
-      |         lookup -- MissFill --> mshr
-      |         mshr -- Refill --> lookup
-      |     end
-      |
-      |     fetchreq --> lookup
-      |     lookup --> fetchresp
-      |     mshr --> fillreq
-      |     fillresp --> mshr
-      |     inval --> lookup
-      """
-      )
+      .uses(paramICacheGeometry, propViptGeometryLegal)
       .note(
-        "Placement: a CoreTop-level vertex between FrontendTop and InstBusAdapter " +
-        "(funcExternalMemoryBridge). With an ITLB configured, the TLB vertex sits " +
-        "upstream of the cache, so the cache indexes/tags physical addresses at the base " +
-        "point (PIPT); a VIPT option is a later parameter, constrained to " +
-        "sets*blockBytes <= pageBytes."
+        "State classes: lines and replacement state are microarchitectural; a wrong-path fetch " +
+        "may fill and the line stays (ADR-019 D-19.12). Requests are never canceled here; stale " +
+        "answers are dropped by the FetchUnit generation. Addresses: the request is virtual " +
+        "(index only), tags and fills are physical. Faults: translation faults pass through; a " +
+        "denied fill is an instruction access fault and installs nothing."
       )
       .build()
   }
 
-  val intfICacheFetchReqIn = spec {
-    INTERFACE("ICacheFetchReqIn")
-      .desc("Fetch request edge in (the same ExternalProgramMemoryReq bundle FrontendTop emits).")
-      .is(rawReadyValidIntf)
-      .note("Backpressure on this edge is the only stall mechanism: no side-band stall wires.")
-      .build()
-  }
-
-  val intfICacheFetchRespOut = spec {
-    INTERFACE("ICacheFetchRespOut")
-      .desc("Fetch response edge out (the same ExternalProgramMemoryResp bundle FrontendTop consumes).")
+  val intfICacheReqIn = spec {
+    INTERFACE("ICacheReqIn")
+      .desc("Virtually indexed lookups from the FetchUnit, paired in order with ICacheTranslationIn.")
+      .uses(bndICacheReq)
       .is(rawReadyValidIntf)
       .build()
   }
 
-  val intfICacheFillReqOut = spec {
-    INTERFACE("ICacheFillReqOut")
-      .desc(
-        "Block fill request edge toward the InstBusAdapter; the adapter forms a TileLink " +
-        "channel-A Get of blockBytes (TL-UH burst)."
-      )
+  val intfICacheTranslationIn = spec {
+    INTERFACE("ICacheTranslationIn")
+      .desc("Per-request translation from the InstructionTlb.")
+      .uses(bndTranslation)
       .is(rawReadyValidIntf)
-      .uses(contTileLink)
       .build()
   }
 
-  val intfICacheFillRespIn = spec {
-    INTERFACE("ICacheFillRespIn")
-      .desc("Fill beats back from the adapter (channel-D AccessAckData payload, one edge token per beat).")
+  val intfICacheRespOut = spec {
+    INTERFACE("ICacheRespOut")
+      .desc("Fetch blocks or fetch faults to the FetchUnit, in request order.")
+      .uses(bndICacheResp)
       .is(rawReadyValidIntf)
-      .uses(contTileLink)
       .build()
   }
 
   val intfICacheInvalidateIn = spec {
     INTERFACE("ICacheInvalidateIn")
-      .desc(
-        "Whole-array invalidate command edge (fence.i). Producer is the commit-side " +
-        "system-op path; the token completes (ready/valid) when the invalidate is durable."
-      )
+      .desc("FENCE.I invalidate-all tokens from the backend CommitUnit; the transfer completes when every line is invalid.")
+      .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
-      .note(
-        "Carried as a dataflow token, not a broadcast wire: fence.i is a serializing " +
-        "instruction (ADR-004), so a single in-flight token is exact."
-      )
       .build()
   }
 
-  val funcICacheLookup = spec {
-    FUNCTION("ICacheLookup")
-      .desc(
-        "Tag/data lookup: a fetch request hits if its line is valid; the hit response " +
-        "flows to ICacheFetchRespOut. A miss allocates the fill engine and the request " +
-        "waits by backpressure (base point: blocking, one outstanding miss)."
-      )
+  val intfInstMemReqOut = spec {
+    INTERFACE("InstMemReqOut")
+      .desc("Line fills and uncached fetches to the InstBusAdapter (physical).")
+      .uses(bndInstMemReq)
+      .is(rawReadyValidIntf)
       .build()
   }
 
-  val funcICacheFill = spec {
-    FUNCTION("ICacheFill")
+  val intfInstMemRespIn = spec {
+    INTERFACE("InstMemRespIn")
+      .desc("Fill beats from the InstBusAdapter.")
+      .uses(bndInstMemResp)
+      .is(rawReadyValidIntf)
+      .build()
+  }
+
+  val funcICacheViptLookup = spec {
+    FUNCTION("ICacheViptLookup")
       .desc(
-        "Miss fill: read the whole block via ICacheFillReqOut (TL-UH burst Get through the " +
-        "adapter), collect beats, install the line, replay the missing request. Replacement " +
-        "is per-set (way selection policy is a private parameter)."
+        "Read all ways of set va[11:6]; when the paired translation is Hit, compare each valid " +
+        "way's tag with pa[33:12]. A hit answers the 16-byte block at va[5:4]. A translation " +
+        "fault answers that fault without a memory access."
       )
+      .uses(intfICacheReqIn, intfICacheTranslationIn, intfICacheRespOut, propViptGeometryLegal)
+      .build()
+  }
+
+  val funcICacheMissFill = spec {
+    FUNCTION("ICacheMissFill")
+      .desc(
+        "On a cacheable miss, hold the request (one miss context in v0), request the " +
+        "line-aligned physical line, collect its beats, install it in the pseudo-LRU victim " +
+        "way, and answer the held request. A fill that completes after its request was " +
+        "canceled still installs."
+      )
+      .uses(intfInstMemReqOut, intfInstMemRespIn)
+      .build()
+  }
+
+  val funcICacheUncachedFetch = spec {
+    FUNCTION("ICacheUncachedFetch")
+      .desc("A Hit translation with cacheable = false fetches only the 16-byte block uncached and installs nothing.")
+      .uses(intfInstMemReqOut)
       .build()
   }
 
   val funcICacheInvalidate = spec {
     FUNCTION("ICacheInvalidate")
-      .desc(
-        "fence.i service: clear all valid bits. No writeback exists (read-only array), so " +
-        "invalidation is single-cycle over the valid array; the command token then completes."
-      )
+      .desc("On an accepted invalidate token clear every valid bit; a fill in progress completes but does not install.")
+      .uses(intfICacheInvalidateIn)
       .build()
   }
 
   val propICacheReadOnly = spec {
     PROPERTY("ICacheReadOnly")
-      .desc(
-        "The instruction cache never holds modified data and never issues Put/Release: its " +
-        "TileLink footprint is Get/AccessAckData only, so the instruction link never " +
-        "elaborates B/C/E (hasBCE=false is an invariant, not a default)."
-      )
+      .desc("The instruction cache never holds modified data and never issues a Put: its TileLink footprint is Get/AccessAckData only.")
       .build()
   }
 
-  val propICacheEpochBlind = spec {
-    PROPERTY("ICacheEpochBlind")
-      .desc(
-        "The cache carries no epoch state and never filters tokens: a fill in flight when a " +
-        "redirect fires completes and installs (it is architectural data, address-keyed, " +
-        "never wrong-path-poisoned). Wrong-path fetch responses are discarded upstream by " +
-        "FrontendTop's epoch filtering, exactly as with the TCM-direct attachment."
-      )
-      .note("Same epoch stance as the bus adapters (ADR-016 D-16.5).")
+  val propICacheResponseOrder = spec {
+    PROPERTY("ICacheResponseOrder")
+      .desc("Answers leave in the order requests were accepted, one answer per request.")
+      .uses(intfICacheRespOut)
       .build()
   }
 
   val propICacheFunctionTransparent = spec {
     PROPERTY("ICacheFunctionTransparent")
-      .desc(
-        "With icache=None and icache=Some the core is function-equivalent (same retire " +
-        "stream for the same program); the cache may only change timing. This is the UDA " +
-        "separation of function and performance applied to the vertex, and the acceptance " +
-        "test is retire-stream equivalence across the two configs (ADR-015 D-15.4 style)."
-      )
+      .desc("For any legal I-cache geometry the retire stream of any program is identical; the cache changes only timing.")
+      .uses(propIsaRetireEquivalence)
       .build()
   }
 }

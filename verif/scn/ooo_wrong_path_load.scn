@@ -1,0 +1,14 @@
+# ADR-019 D-19.12: a wrong-path load may fill the D-cache but must leave no
+# architectural result. The wrong-path load misses a never-touched line; a later
+# correct-path load of the same line must see the memory value.
+@name ooo-wrong-path-load-no-result
+@verifies propWrongPathLoadNoResult funcLoadComplete funcLoadIssue funcDCacheMshr propDCacheLoadAnswerExactlyOnce
+@verifies funcDCacheViptLookup funcDCachePortArbitrate
+@maxcycles 4000
+li x9, 0x55
+li x11, 0x90000
+beq x0, x0, skip
+lw x9, 0(x11)
+skip: check x9 == 0x55
+lw x12, 0(x11)
+check x12 == 0x13

@@ -5,9 +5,14 @@ import framework.macros.LocalSpec
 import udacore.core.design.shared._
 import udacore.core.spec.top.CoreTopSpecs._
 
+/** CoreTop vertex shell (spec: CoreTopSpecs).
+  *
+  * ADR-019 spec phase: every member is a documented placeholder whose contract is
+  * the named spec val. Elaboration raises NotImplementedError, which the ADR-018
+  * runners report as PENDING (red by construction) until the RTL lands.
+  */
 @LocalSpec(contCoreTop)
 class CoreTop(val params: CoreParams) extends CoreModule {
-
   val io = IO(new Bundle {
     @LocalSpec(intfBootAddrIn)
     val bootAddrIn = ???
@@ -21,31 +26,13 @@ class CoreTop(val params: CoreParams) extends CoreModule {
     @LocalSpec(intfDebugReqIn)
     val debugReqIn = ???
 
-    // ADR-016: the external memory boundary is two standard TileLink links
-    // (master view; new TLBundle(params.instBusParams) / (params.dataBusParams)
-    // once the bus adapter vertices land).
     @LocalSpec(intfInstBus)
     val instBus = ???
 
     @LocalSpec(intfDataBus)
     val dataBus = ???
+
+    @LocalSpec(intfRetireStreamOut)
+    val retireStreamOut = ???
   })
-
-  @LocalSpec(funcBootSequencing)
-  val bootSequencing = ???
-
-  @LocalSpec(funcGlobalEpochManagement)
-  val globalEpochManagement = ???
-
-  @LocalSpec(funcFrontendBackendDataflow)
-  val frontendBackendDataflow = ???
-
-  @LocalSpec(funcMemorySubsystemIntegration)
-  val memorySubsystemIntegration = ???
-
-  @LocalSpec(funcExternalMemoryBridge)
-  val externalMemoryBridge = ???
-
-  @LocalSpec(funcInterruptDebugIntegration)
-  val interruptDebugIntegration = ???
 }

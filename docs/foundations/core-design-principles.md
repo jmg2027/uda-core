@@ -13,7 +13,7 @@ as a checklist during reviews; deeper background sits in the linked references.
 - **Rule:** Redirects, traps, and resource grants live on token fields. Do not add
   side-band "flush" wiring.
 - **Why:** Epoch comparisons give a simple, local proof of correctness.
-- **See also:** [`dataflow-execution-model.md`](dataflow-execution-model.md).
+- **See also:** [ADR-019](../../document/adr/ADR-019-conventional-ooo-root-architecture.md) for the selective-recovery model that replaced the epoch token model.
 
 ## 3. Latency-insensitive links
 - **Rule:** Default to `DecoupledIO` edges. Document any exception before you wire

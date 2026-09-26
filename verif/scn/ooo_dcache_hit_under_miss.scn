@@ -1,0 +1,19 @@
+# ADR-019 D-19.5 verification obligation: two independent D-cache misses outstanding
+# (two MSHRs) with a hit served under them and completions returning out of order;
+# plus physical-address store-to-load forwarding. Never-written memory reads 0x13.
+@name ooo-dcache-hit-under-miss
+@verifies funcDCacheMshr funcDCacheViptLookup funcLoadIssue funcConservativeDisambig propNoPassUnresolvedStore
+@verifies propPhysicalOrderingAuthority funcStoreToLoadForward funcDataBusTransaction
+@maxcycles 6000
+li x10, 0x90000
+li x11, 0x91000
+li x5, 0x1234
+sw x5, 268(x31)
+lw x6, 268(x31)
+lw x7, 0(x10)
+lw x8, 0(x11)
+lw x12, 268(x31)
+add x13, x7, x8
+check x6 == 0x1234
+check x12 == 0x1234
+check x13 == 0x26

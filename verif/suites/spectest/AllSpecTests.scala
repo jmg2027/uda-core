@@ -9,7 +9,13 @@ package verif.spectest
   */
 object RunSpecTests {
   val registry: Seq[SpecTest] =
-    UnitSpecTests.all ++ CsrSpecTests.all
+    UnitSpecTests.all ++ CsrSpecTests.all ++ ParamSpecTests.all ++ RenameUnitSpecTests.all ++ ReorderBufferSpecTests.all ++
+      SystemOpDecodeSpecTests.all ++ RecoveryControllerSpecTests.all ++ CommitUnitSpecTests.all ++
+      ReservationStationSpecTests.all ++ DispatchUnitSpecTests.all ++ ExecUnitSpecTests.all ++
+      BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++ TrapControllerSpecTests.all ++ LoadStoreQueueSpecTests.all ++
+      StoreBufferSpecTests.all ++ DecodeUnitSpecTests.all ++ BackendTopSpecTests.all ++
+      CsrTrapSeamSpecTests.all ++
+      PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchUnitSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

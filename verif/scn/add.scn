@@ -1,5 +1,5 @@
 @name add-and-sub
-@verifies funcComputeAlu
+@verifies funcComputeAlu funcIntegrateExternalAlu
 li x1 0x12345678
 li x2 12
 add x3, x1, x2

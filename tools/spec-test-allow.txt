@@ -4,129 +4,65 @@
 # the door: no NEW unbound FUNCTION/PROPERTY may appear without either a
 # test binding or an explicit line here. One val name per line; remove a
 # name when its test lands (the red test comes BEFORE the implementation,
-# ADR-018 D-18.3).
-funcArchMapMaintain
-funcBootDelay
-funcBootSequencing
-funcClzOptimization
-funcCommitDrain
-funcCompletionScoreboard
-funcConservativeDisambig
-funcCsrMapContribution
-funcDCacheLookup
-funcDCacheMissAcquire
-funcDCacheProbeService
-funcDCacheWritebackRelease
-funcDebugCommitBoundary
-funcDecodeOperation
-funcEpochDrain
-funcEpochIncrement
-funcEpochKill
-funcEpochStamp
-funcEpochTagging
-funcExecuteBitAlu
-funcExtensionDecodeContribution
-funcExternalMemoryBridge
-funcFirstTakenPrune
-funcFrontendBackendDataflow
-funcGlobalEpochManagement
-funcICacheFill
-funcICacheInvalidate
-funcICacheLookup
-funcIntegrateExternalAlu
+# ADR-018 D-18.3). Maintained by hand per work package; never regenerate it
+# wholesale with --update-test-allow (ADR-019 Work Order 07 section 7).
+
+# WP-4 backend vertices: need L1 SpecTests against the RTL (arbitration timing, port structure), or an enabled bit-manipulation config (BitAluUnit is absent in v0)
 funcIntegrateExternalBitAlu
-funcIntegrateExternalDivider
-funcIntegrateExternalMultiplier
-funcInterruptDebugIntegration
-funcInterruptSampling
-funcIssueDispatch
-funcLoadForward
-funcMemoryBridge
-funcMemorySubsystemIntegration
-funcMisalignTag
-funcOnlyValidSlots
-funcOutstandingTracking
-funcPcSelect
-funcPredictionDiscipline
-funcPredictionFeedback
-funcReadAtSelect
-funcRedirectPriority
-funcRenameRecovery
-funcRequestArbiter
-funcResetOnDisable
-funcResponseReassoc
-funcRvcDecode
-funcSameCycleEpochExposure
-funcSelectOldestReady
-funcSeqOlder
-funcSerializingClass
-funcSerializingDispatchGate
-funcSerializingOps
-funcSerializingTag
-funcSingleBootPulse
-funcSlotConstruction
-funcSlotScan
-funcSlotValidation
-funcStoreCommitCrossEdge
-funcStoreForward
-funcStoreShaping
-funcStraddleCarry
-funcTrapSingleOwner
-funcTxnIdTagging
-propCommitInOrder
-propCommittedEntryEpochExempt
-propCommittedSurvivesKill
-propCounterBound
-propDCacheCommittedOnly
-propDCacheFunctionTransparent
-propDCachePermissionSound
-propDCacheProbeLiveness
-propDisabledExtensionTraps
-propEpochDistribution
-propEpochToggle
-propEpochVertexEnumeration
-propEpochWrapBound
-propFreeListConservation
+
+
+
+# WP-1 recurrence budgets and tag uniqueness: need the ipcCriticalEdge helper (L0) or a composed backend to observe (funcRobOlder is bound by rob.order)
+propBranchRecoveryBudget
+propLoadUseBudget
+propPredictNextPcBudget
+propRobTagUniqueness
+propWakeupSelectBudget
+
+# WP-0 doctrine / ADR-015 machine checks: enforced by tools/spec-check.py and the L3 ISA-model comparison, which need the real spec plugin and a retiring core
+propGenerationTagScope
 propGraphConsistency
-propICacheEpochBlind
+propIsaRetireEquivalence
+propLocalSpecCoverage
+propPropertyToAssertion
+propRawTopWiringOnly
+propRegQueueTagged
+
+# pre-ADR-019 gap carried unchanged (implemented or protected IP, owner-held tests)
+funcBootDelay
+funcClzOptimization
+funcDecodeOperation
+funcExecuteBitAlu
+funcResetOnDisable
+funcSingleBootPulse
+propCounterBound
+propKillBehavior
+propSingleCycleValid
+
+# WP-7 bus adapters: L1 TileLink monitor SpecTest
+propDataBusCoherenceSeparate
+propInstBusGetOnly
+
+# WP-7 D-cache: needs an uncacheable PMA region in the harness or the L3 geometry sweep
+funcDCacheUncached
+propDCacheFunctionTransparent
+
+# ADR-019F E-2: the directed store-drain / load-miss race (with partial-byte masks) lands with the DataCache L1 SpecTest
+propDrainResponseMakesStoreVisible
+
+# WP-6 SFENCE.VMA: not encodable by the protected assembler
+funcDtlbFlush
+funcItlbFlush
+funcPtwFlush
+
+# WP-7 I-cache: needs an uncacheable/executable PMA region in the harness, an L1 SpecTest, or the L3 geometry sweep
+funcICacheUncachedFetch
 propICacheFunctionTransparent
 propICacheReadOnly
-propInOrderDrain
-propIssueQueueLiveness
-propKillBehavior
-propLoadForwardExact
-propLoadNoOrderingGate
-propLoadUseBudget
-propLocalSpecCoverage
-propN1FoldsOoO
-propN1ForbiddenStructures
-propN1MapDegenerate
-propN1PpaBar
-propNEquivalence
-propNextPcEpoch
-propNoOrphanResponse
-propNoSpeculativeCsrWrite
-propNoSpeculativeWrite
-propOutstandingBound
-propPreciseCommit
-propPredictToFetchBudget
-propPrfPortsVsN
-propPrfReadToExecBudget
-propPropertyToAssertion
-propPublishToWakeupBudget
-propRawTopWiringOnly
-propRedirectAtCommit
-propRedirectToFetchBudget
-propRegQueueTagged
-propRetireNonBlocking
-propRsEagerFilter
-propSingleCycleValid
-propSingleDrain
-propSingleIncrementPerRedirect
-propSingleRedirectPerEpoch
-propSplitExclusive
-propStoreBufferLiveness
-propTagUniqueness
-propTrapSingleWriter
-propWakeupEpochQualified
-propWakeupSelectBudget
+propICacheResponseOrder
+
+# WP-6 SFENCE.VMA: the owner-protected assembler has no SFENCE.VMA mnemonic, so no .scn can issue it yet
+propSfenceFlushesAll
+
+# WP-2/3 predictor/FTQ internals: microarchitectural state is only observable by an L1 BranchPredictor/FTQ SpecTest once the RTL exposes it (ADR-019 obligation: history restored from the FTQ checkpoint)
+propPredictorStateMicroarchitectural

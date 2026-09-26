@@ -33,9 +33,9 @@ object ParamsSpecs {
         |  }
         |  
         |  // Tuning Tier - Performance optimization
-        |  val paramEpochWidth = spec {
-        |    PARAMETER("EpochWidth") 
-        |      .desc("Width of epoch counter")
+        |  val paramRobDepth = spec {
+        |    PARAMETER("RobDepth")
+        |      .desc("Reorder buffer entries")
         |      .note("Tuning tier - affects performance")
         |      .build()
         |  }
@@ -55,7 +55,7 @@ object ParamsSpecs {
   val rawDomainBoundaries = spec {
     RAW("DomainBoundaries", prefix = "DomainArch")
       .desc("""
-        |Each domain (frontend, backend, memorysubsystem) maintains an independent parameter namespace.
+        |Each domain (core, frontend, backend) maintains an independent parameter namespace.
         |Local parameter bundles are defined in design/shared/, and only necessary contract fields are
         |exposed to parent domains through design/api/. Cross-domain access is permitted only through api/ packages.
         """.stripMargin)
@@ -63,8 +63,8 @@ object ParamsSpecs {
       .code("""
         |// Domain parameter isolation example:
         |// frontend/spec/shared/FrontendParamsSpecs.scala
-        |// backend/spec/shared/BackendParamsSpecs.scala  
-        |// memorysubsystem/spec/shared/MemorySubsystemParamsSpecs.scala
+        |// backend/spec/shared/BackendParamsSpecs.scala
+        |// core/spec/shared/CoreParamsSpecs.scala
         |
         |// Cross-domain access only through api/:
         |// frontend/design/api/FrontendApi.scala exports needed contract params

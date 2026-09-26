@@ -1,0 +1,12 @@
+# CSR writes are serializing and commit-gated (ADR-004 as re-based by ADR-019): a CSR
+# write on the wrong path of an unpredicted taken branch must never change the CSR.
+@name ooo-wrong-path-csr-write-invisible
+@verifies propNoSpeculativeCsrWrite funcSerializeGate funcSerializingTag
+@maxcycles 4000
+li x5, 0x11
+li x6, 0x22
+csrrw x0, mscratch, x5
+beq x0, x0, skip
+csrrw x0, mscratch, x6
+skip: csrrs x7, mscratch, x0
+check x7 == 0x11

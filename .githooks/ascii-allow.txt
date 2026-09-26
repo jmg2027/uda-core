@@ -1,9 +1,6 @@
 # Known pre-existing non-ASCII debt, grandfathered so unrelated commits are not
 # blocked. Touching one of these files means cleaning it and removing its line.
-docs/foundations/dataflow-execution-model.md
 docs/practices/naming-conventions.md
 docs/process/divide-and-conquer-work-instruction.md
-docs/process/spec-usage-guideline.md
-response/microarchitecture-review.md
 src/main/scala/udacore/external/multiplier/algorithm/MulTableGen.scala
 src/main/scala/udacore/external/multiplier/design/Multiplier.scala

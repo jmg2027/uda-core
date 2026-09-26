@@ -248,7 +248,7 @@ object DividerSpecs {
       .note(
         "External-IP capability only, NOT a core control mechanism: in UDACore no vertex " +
         "drives kill (the DividerUnit wrapper ties it inactive). Wrong-path results are " +
-        "dropped by epoch qualification at the wrapper/PublishMux (funcIntegrateExternalDivider), " +
+        "discarded by the DividerUnit wrapper when a RecoveryEvent kills it (funcIntegrateExternalDivider), " +
         "per the no-flush doctrine. The port exists so the IP stays reusable outside UDA."
       )
       .build()

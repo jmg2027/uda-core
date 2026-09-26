@@ -27,6 +27,64 @@ VIPT L1 caches, and Sv32 ITLB/DTLB/PTW.
 ADR-011 remains historical rationale for why the old single-global-epoch machine
 required commit-head redirect. Do not apply that constraint to ADR-019 work.
 
+ADR-019 is amended by **ADR-019A (v0 Erratum 01)**: RS allocation only for uops that need
+execution, an explicit `sysOp` in the decoded uop, RobStatus timing, the domain of
+`funcRobOlder`, and same-cycle commit/ArchRedirect ordering. The `242feaf` freeze is the
+baseline; ADR-019A is applied on top of it. **ADR-019B (v0 Erratum 02)** follows it:
+RecoveryCause.Debug, WFI as a serializing NOP, the usingRvvi commit PRF read path, the
+executing-privilege meaning of RetireToken.priv, trap-entry observation tokens, and atomic
+retiring redirects. **ADR-019C (v0 Erratum 03)** adds the FuAvailability view
+(rawNoDecoupled class 7) for oldest-ready-among-available RS selection and separates the
+BranchUnit's control-resolution and result-publication channels. **ADR-019D (v0 Erratum
+04)** replaces the legacy epoch-based CSR boundary with the native IssuedUop/FuResult CSR
+edge, makes the CsrController the sole committed CSR-state owner with a commit-gated
+staged write, replaces the trap/CSR seam bundles, and fixes serialize-head interrupt
+sampling in the CommitUnit. **ADR-019E (v0 Erratum 05)** makes the CsrController's native
+staged-write CSR map authoritative (amending ADR-017 D-17.3), moves the debug entry address to
+the core integration contract, adds DRET, and adds the committed DecodePrivView.
+**ADR-019F (v0 Erratum 06)** makes same-cycle StoreBuffer forwarding and StoreDrainResp as the
+committed-store visibility point contractual, rules on WFI, and makes ECALL/MRET/SRET illegal in
+Debug Mode. **ADR-019G (v0 Erratum 07)** separates the requested (possibly mid-block) fetch PC
+from the aligned block base: predictions carry the requested PC, tables and fall-through use
+the block base, and CFI PCs are rebuilt as blockBase + 4 * slot. **ADR-019H (v0 Erratum 08)**
+trains TAGE with the prediction-time provider identity, adds the CallRet coroutine CFI type
+(pop-then-push), derives the restore-counter bound, and fixes one HistoryRestore per event.
+
+### ADR-019 spec migration record (Work Order 07)
+
+- The position papers and critiques these ADRs were synthesized from
+  (`document/architecture-team/01..06-*.md`, `critique-*.md`, `work-orders.md`) described
+  the superseded machine and were deleted in the clean-break migration; recover them from
+  git history when reading an older ADR's rationale.
+- ADR-015 D-15.4/D-15.5 are applied without the N axis, which ADR-019 removed with ADR-008:
+  the retire-stream soundness rule now governs ISA-model equivalence
+  (`DesignRuleSpecs.propIsaRetireEquivalence`), and the ConfigRegistry names one-axis
+  variants of the v0 reference point instead of n1/n8/n32.
+- ADR-015 D-15.2 machine check 5 is re-based on ADR-019 D-19.10: a Reg/Queue site must
+  state its recovery stance (RecoveryEvent, transaction generation, or recovery-exempt);
+  `tools/spec-check.py` check `reg-queue-recovery` replaces `reg-queue-epoch`.
+- ADR-004 serialization is re-based on the ROB: a serializing uop is renamed only into an
+  empty ROB and blocks younger rename until it retires; TrapController remains the single
+  trap-CSR writer and is now the only commit-head ArchRedirect producer.
+- Review round 1 (spec-level refinements, no new ADR ruling needed):
+  - Trap hand-off protocol: an exception/interrupt hand-off locks the ROB head and
+    CommitUnit holds until the ArchRedirect naming that robTag (propTrapHoldUntilRedirect).
+  - RAS recovery is a full-contents snapshot per FTQ entry so propHistoryRestoreExact holds
+    under wrong-path wrap; a write log is a later area optimization.
+  - The ISA identity is RV32IM_Zicsr_Zifencei + Svade (A/D faults, no hardware A/D update),
+    M/S/U, Sv32. ADR-019's "RV32IM" is read as this precise string.
+  - Uncacheable loads and stores are executed at the ROB head under a HeadMemGrant, before
+    and separate from commit: the LSQ performs the single bus access (stores through a
+    dedicated uncached D-cache port, never the StoreBuffer; loads through the matching
+    physical UncachedLoadReq port) and completes the uop, which then
+    retires through the ordinary atomic commit or traps precisely. Cacheable PMA regions are
+    fill/writeback-fault-free by platform contract (resolves the former OQ-G).
+  - Debug requests are sampled by the CommitUnit at a precise retire boundary, like
+    interrupts, and handed to the TrapController as Exception{Debug}.
+  - Rename checkpoints are freed at branch resolution (CheckpointRelease) or right after
+    the recovering restore, not at commit; FTQ history checkpoints still live to commit.
+  - PTW refills are global when any PTE on the walk has G = 1.
+
 ## Index
 
 | ADR | Title | Status | Settles (paper / critique) |
@@ -50,6 +108,14 @@ required commit-head redirect. Do not apply that constraint to ADR-019 work.
 | [017](ADR-017-extension-contribution.md) | Extension contribution convention (Feature pattern re-based on UDA) | accepted | owner directive 2026-07-06; imports main xxxFeature lessons |
 | [018](ADR-018-spec-tdd.md) | Spec-TDD: every spec object bound to a test, red before green | accepted | owner directive 2026-07-06; extends ADR-015 enforcement |
 | [019](ADR-019-conventional-ooo-root-architecture.md) | Conventional OoO root architecture | **accepted (current root)** | owner directive 2026-09-25; supersedes epoch/predecode/ROB-less base where stated |
+| [019A](ADR-019A-v0-erratum-01.md) | ADR-019 v0 erratum 01 (RS allocation set, sysOp, recovery ordering) | **accepted** | owner ruling 2026-09-25; amends 019 on top of the 242feaf freeze |
+| [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
+| [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
+| [019D](ADR-019D-v0-erratum-04.md) | ADR-019 v0 erratum 04 (native CSR execution and trap-state seam) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B + 019C |
+| [019H](ADR-019H-v0-erratum-08.md) | ADR-019 v0 erratum 08 (TAGE training identity, CallRet RAS action) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..G |
+| [019G](ADR-019G-v0-erratum-07.md) | ADR-019 v0 erratum 07 (mid-block fetch-PC semantics) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..F |
+| [019F](ADR-019F-v0-erratum-06.md) | ADR-019 v0 erratum 06 (committed-store visibility, backend memory seam) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..E |
+| [019E](ADR-019E-v0-erratum-05.md) | ADR-019 v0 erratum 05 (native CSR map contribution, debug entry/return, DecodePrivView) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A..D; amends ADR-017 D-17.3 |
 
 ## Status of pre-ADR-019 proposed experiments
 
@@ -79,10 +145,13 @@ Still relevant as later performance work:
   (P01 O2) and enters the area-vs-N sweep.
 - OQ-C (ADR-008): +10% area envelope vs a harder "within parity" bar - an
   owner/project-identity call, not an engineering one.
-- OQ-D (ADR-003): the exact single-hart memory-consistency statement (assumed
+- OQ-D (ADR-003) - DECIDED by the owner 2026-09-25: v0 is single-hart, non-coherent, with no
+  DMA or coherent agent; no load-load ordering check and no memory-order replay.
+  Original text: the exact single-hart memory-consistency statement (assumed
   RVWMO, sequentially-consistent-observable) - confirm no coherent second agent
   is ever in scope, because forwarding-only is insufficient if it is.
-- OQ-E (ADR-004): waive `AGENT: DO NOT TOUCH` on `CSRCore` to delete the
+- OQ-E (ADR-004) - WAIVED by the owner 2026-09-25 under the ADR-019 clean-break
+  authority; CSR.scala is rewritten with the RTL. Original text: waive `AGENT: DO NOT TOUCH` on `CSRCore` to delete the
   internal exception/mret writers (`csr/CSR.scala:405-408, 494-524`). Owner
   sign-off is the load-bearing approval; the rest is spec.
 - OQ-F (ADR-015): Spike vs Sail as primary ISS golden (recommend Spike now,

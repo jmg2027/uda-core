@@ -1,0 +1,18 @@
+# ADR-019 D-19.3: there is no C extension. A word whose low bits are a compressed
+# encoding (two c.nop halfwords) is an illegal instruction: mcause = 2 and mtval = the
+# 32-bit instruction word. FENCE.I makes the stored word visible to fetch.
+@name no-rvc-compressed-word-is-illegal
+@verifies propNoCompressedDecode funcDecodeRv32im funcSystemOpSequencing funcICacheInvalidate funcDCacheCleanAll funcDrainFence
+@maxcycles 6000
+jal x28, setvec
+handler: csrrs x20, mcause, x0
+csrrs x21, 0x343, x0
+jal x0, mcont
+setvec: csrrw x0, mtvec, x28
+li x6, 0x00010001
+sw x6, 256(x31)
+fence.i
+addi x8, x31, 256
+jalr x0, x8, 0
+mcont: check x20 == 2
+check x21 == 0x10001

@@ -1,0 +1,49 @@
+package udacore.frontend.design.modules
+
+import chisel3._
+import chisel3.util._
+import udacore.backend.design.shared.{FtqCommit, RecoveryEvent}
+import framework.macros.LocalSpec
+import udacore.frontend.design.shared._
+import udacore.frontend.spec.modules.FetchTargetQueueSpecs._
+
+/** FetchTargetQueue vertex shell (spec: FetchTargetQueueSpecs).
+  *
+  * ADR-019 spec phase: every member is a documented placeholder whose contract is
+  * the named spec val. Elaboration raises NotImplementedError, which the ADR-018
+  * runners report as PENDING (red by construction) until the RTL lands.
+  */
+@LocalSpec(contFetchTargetQueue)
+class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
+  val io = IO(new Bundle {
+    @LocalSpec(intfPredictionIn)
+    val predictionIn = Flipped(Decoupled(new Prediction(params)))
+
+    @LocalSpec(intfFetchRequestOut)
+    val fetchRequestOut = Decoupled(new FetchRequest(params))
+
+    @LocalSpec(intfFtqCommitIn)
+    val ftqCommitIn = Flipped(Decoupled(new FtqCommit(params.backend)))
+
+    @LocalSpec(intfHistoryRestoreOut)
+    val historyRestoreOut = Decoupled(new HistoryRestore(params))
+
+    @LocalSpec(intfPredictorTrainOut)
+    val predictorTrainOut = Decoupled(new PredictorTrain(params))
+
+    @LocalSpec(intfRecoveryEventIn)
+    val recoveryEventIn = Input(new RecoveryEvent(params.backend))
+  })
+
+  @LocalSpec(funcFtqAllocate)
+  val ftqAllocate = ???
+
+  @LocalSpec(funcFtqFetchIssue)
+  val ftqFetchIssue = ???
+
+  @LocalSpec(funcFtqRecovery)
+  val ftqRecovery = ???
+
+  @LocalSpec(funcFtqCommitTrain)
+  val ftqCommitTrain = ???
+}

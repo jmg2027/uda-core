@@ -1,6 +1,6 @@
 # CSR read-modify-write (csrrs) on mscratch; the readback must see the modified value.
 @name csr-rmw-setbits
-@verifies funcCsrExecuteAtCommit funcCsrWriteProtocol
+@verifies funcCsrExecuteAtCommit funcCsrWriteProtocol funcSerializeGate funcSerializingTag
 @maxcycles 200
 li x1, 0xF0
 csrrw x0, mscratch, x1
