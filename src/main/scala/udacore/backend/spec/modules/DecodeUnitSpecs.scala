@@ -102,11 +102,15 @@ object DecodeUnitSpecs {
         "With p = debugMode ? M : priv from DecodePrivView: MRET is legal iff p = M; SRET iff " +
         "p = M or (p = S and !TSR); SFENCE.VMA iff p = M or (p = S and !TVM); WFI iff p = M or " +
         "(p = S and !TW) (U-mode WFI is illegal: S-mode exists and the v0 WFI time limit is " +
-        "zero); DRET iff debugMode. An illegal case decodes to the illegal-instruction payload " +
+        "zero); DRET iff debugMode. In Debug Mode ECALL, MRET, and SRET are illegal (v0 does " +
+        "not support them there). An illegal case decodes to the illegal-instruction payload " +
         "(cause 2, tval = instruction bits) and enters the ROB carrying it."
       )
       .uses(intfDecodePrivViewIn, intfDecodedPacketOut)
-      .note("ADR-019E E-3/E-4.")
+      .note(
+        "ADR-019E E-3/E-4; ADR-019F E-4 (the WFI rule) and E-5 (Debug Mode ECALL/MRET/SRET " +
+        "illegal; Debug Mode uses M-level access only for the other checks)."
+      )
       .build()
   }
 

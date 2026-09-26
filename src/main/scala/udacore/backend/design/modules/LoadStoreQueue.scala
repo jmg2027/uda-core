@@ -607,6 +607,16 @@ class LoadStoreQueue(val params: BackendParams) extends BackendModule {
     assert(!(dr.fire && drLive && isData) || disambigOk(di),
       "PhysicalOrderingAuthority: a load was forwarded while an older store had no physical address")
 
+  /** ADR-019F E-1: a D-cache Data answer is decided only together with its accepted query and valid
+    * forwarding data, and a query consumed with data always consumes its answer (no second use). */
+  @LocalSpec(propForwardQueryConsumedOnce)
+  val forwardQueryConsumedOnce: Unit = {
+    assert(!(dr.fire && drLive && isData) || (fq.fire && fd.fire),
+      "ForwardQueryConsumedOnce: a D-cache answer was decided without its accepted query and valid forwarding data")
+    assert(!(fq.fire && fd.fire) || dr.fire,
+      "ForwardQueryConsumedOnce: a forwarding query was consumed without consuming its D-cache answer")
+  }
+
   @LocalSpec(propWrongPathLoadNoResult)
   val wrongPathLoadNoResult: Unit =
     assert(!io.memResultOut.valid || !RobOrder.recoveryKills(ev, io.memResultOut.bits.robTag),

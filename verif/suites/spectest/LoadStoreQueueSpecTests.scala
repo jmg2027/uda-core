@@ -61,6 +61,10 @@ object LoadStoreQueueSpecTests {
     var sbPartial = false       // the StoreBuffer reports partial for any overlap
     var ucLoadFault, ucStoreFault = false
     var sbHold = false          // the StoreBuffer does not drain
+    var fwdDelay = 0            // each new forwarding query is not answered for n cycles; meanwhile
+    var fwdMode  = 0            // 0: query held, data invalid; 1: query accepted, data invalid;
+                                // 2: data valid, query not accepted
+    private var fwdTicks = -1
     // Page table and memory (word-addressed by paddr >> 2).
     val pages = mutable.Map[Long, Page](0x10L -> Page(0x10))
     val mem   = mutable.Map[Long, Long]().withDefault(w => ((w * 0x9e3779b1L) ^ 0x5a5a5a5aL) & 0xffffffffL)
@@ -87,6 +91,9 @@ object LoadStoreQueueSpecTests {
     val ucLoads   = ArrayBuffer[(Int, Long)]()
     val ucStores  = ArrayBuffer[(Int, Long, Long, Int)]()
     val fwdQueries = ArrayBuffer[(Int, Long, Int)]()
+    val fwdPresented = ArrayBuffer[(Int, Long, Int)]() // every cycle a query is valid
+    val fwdConsumed  = ArrayBuffer[(Int, Long, Int)]() // query accepted with valid data
+    val dcConsumed   = ArrayBuffer[(Int, Int)]()       // (cyc, lqIdx) D-cache answers dequeued
     var allocFire, aguFire, commitFire, grantFire = false
     private var near = 0
 
@@ -159,17 +166,25 @@ object LoadStoreQueueSpecTests {
       e.checkpointId.id.poke(0.U); e.target.poke(0.U); e.cause.poke(0.U)
       event.foreach { case (k, s) => e.kind.poke(k); pokeTag(e.robTag, s) }
       io.memResultOut.ready.poke(memResReady.B)
-      // StoreBuffer forwarding: answered combinationally in the query cycle.
-      io.storeForwardQueryOut.ready.poke(true.B)
+      // StoreBuffer forwarding: answered combinationally in the query cycle (ADR-019F E-1), unless
+      // fwdDelay withholds the answer (per fwdMode) for the first cycles of each new query.
       val qv = b(io.storeForwardQueryOut.valid)
-      io.storeForwardDataIn.valid.poke(qv.B)
+      if (qv && fwdTicks < 0) fwdTicks = fwdDelay
+      val due     = qv && fwdTicks <= 0
+      val fdValid = due || (qv && fwdMode == 2)
+      val fqReady = due || fwdMode == 1
+      io.storeForwardQueryOut.ready.poke(fqReady.B)
+      io.storeForwardDataIn.valid.poke(fdValid.B)
       if (qv) {
         val qa = l(io.storeForwardQueryOut.bits.paddr); val qm = l(io.storeForwardQueryOut.bits.mask).toInt
-        val (d, h, part) = sbAnswer(qa, qm)
+        // Absent data carries garbage, so a consumer that ignores valid is caught.
+        val (d, h, part) = if (fdValid) sbAnswer(qa, qm) else (0xdeadbeefL, 0xf, false)
         io.storeForwardDataIn.bits.data.poke(d.U); io.storeForwardDataIn.bits.hitMask.poke(h.U)
         io.storeForwardDataIn.bits.partial.poke(part.B)
-        if (b(io.storeForwardDataIn.ready)) fwdQueries += ((cyc, qa, qm))
+        fwdPresented += ((cyc, qa, qm))
+        if (fqReady && fdValid && b(io.storeForwardDataIn.ready)) { fwdQueries += ((cyc, qa, qm)); fwdConsumed += ((cyc, qa, qm)) }
       }
+      if (fqReady && fdValid && b(io.storeForwardDataIn.ready)) fwdTicks = -1 else if (fwdTicks > 0) fwdTicks -= 1
 
       // ---- Observe transfers --------------------------------------------------------------
       allocFire  = alloc.nonEmpty && b(a.ready)
@@ -214,6 +229,7 @@ object LoadStoreQueueSpecTests {
       }
       if (dcDue.nonEmpty && b(dr.ready)) {
         dcq -= dcDue.get
+        dcConsumed += ((cyc, dcDue.get.lqIdx))
         if (dcStatusNow.contains(LoadStatus.Replay) && dcDue.get.status == LoadStatus.Data) replayNext -= 1
       }
       if (ucLdDue.nonEmpty && b(io.uncachedLoadRespIn.ready)) ucLdq -= ucLdDue.get
@@ -487,6 +503,45 @@ object LoadStoreQueueSpecTests {
         chk(d.fwdQueries.nonEmpty && d.fwdQueries.forall(q => (q._2 >>> 12) == 0x10L), "the StoreBuffer is queried by physical address", s"${d.fwdQueries}")
       )
     }
+  }
+
+  // ---- propForwardQueryConsumedOnce (ADR-019F E-1) -------------------------------------------------------------
+
+  val forwardOnce = new SpecTest("lsq.forwardOnce", Seq("propForwardQueryConsumedOnce")) {
+    def run(): Seq[TCheck] = Seq(0, 1, 2).flatMap { mode => withDrv(this) { d =>
+      val tag = Seq("query held, data absent", "query accepted, data absent", "data valid, query not accepted")(mode)
+      d.robHead = Some(0); d.sbHold = true
+      // A committed store (0x5e at byte 1, 0xa1b2 at bytes 2..3 of RAM+0x30) waits in the StoreBuffer.
+      d.allocate(Alloc(0, isLoad = false, size = 0)); d.allocate(Alloc(1, isLoad = false, size = 1))
+      d.address(Agu(0, RAM + 0x31, 0x5e, size = 0)); d.address(Agu(1, RAM + 0x32, 0xa1b2L, size = 1))
+      d.until(10)(d.done(0).nonEmpty && d.done(1).nonEmpty)
+      d.storeCommit(0); d.robHead = Some(1); d.storeCommit(1); d.robHead = Some(2)
+      d.fwdDelay = 4; d.fwdMode = mode
+      val (p0, c0, q0) = (d.fwdPresented.size, d.dcConsumed.size, d.fwdConsumed.size)
+      d.allocate(Alloc(2, isLoad = true, size = 2)); d.address(Agu(2, RAM + 0x30))
+      d.until(30)(d.done(2).nonEmpty); d.run(4)
+      val presented = d.fwdPresented.drop(p0); val consumed = d.fwdConsumed.drop(q0); val dcs = d.dcConsumed.drop(c0)
+      val firstQ = presented.headOption.map(_._1).getOrElse(-1)
+      val expect = merge(d.mem((RAM + 0x30) >>> 2), 0xa1b25e00L, 0xe)
+      val rs = d.resultsFor(2)
+      // A partial-mask load behind the same delay: one byte from the StoreBuffer, one from the cache.
+      val q1 = d.fwdConsumed.size
+      d.allocate(Alloc(3, isLoad = true, size = 1)); d.address(Agu(3, RAM + 0x30))
+      d.until(30)(d.done(3).nonEmpty); d.run(4)
+      val rs3 = d.resultsFor(3)
+      Seq(
+        chk(presented.size >= 5 && presented.map(q => (q._2, q._3)).distinct.size == 1,
+          s"$tag: the same query {paddr, mask} is re-presented every cycle until data is valid", s"$presented"),
+        chk(consumed.size == 1 && consumed.head._1 == firstQ + 4 && dcs.size == 1 && dcs.head._1 == consumed.head._1,
+          s"$tag: the query and the D-cache answer are consumed exactly once, in the first cycle with valid data",
+          s"first $firstQ consumed $consumed dcAnswers $dcs"),
+        chk(rs.size == 1 && rs.head.wen && rs.head.data == expect && rs.head.cyc >= consumed.headOption.map(_._1).getOrElse(Int.MaxValue),
+          s"$tag: the load completes once, after the consumption, with the forwarded bytes ${hx(expect)}", s"$rs"),
+        chk(rs3.size == 1 && rs3.head.data == (merge(d.mem((RAM + 0x30) >>> 2), 0x5e00L, 0x2) & 0xffffL) &&
+          d.fwdConsumed.size == q1 + 1,
+          s"$tag: a partial-mask load merges StoreBuffer and cache bytes once", s"$rs3")
+      )
+    } }
   }
 
   // ---- funcLoadComplete ----------------------------------------------------------------------------------------
@@ -781,6 +836,6 @@ object LoadStoreQueueSpecTests {
     def run(): Seq[TCheck] = Seq(11, 23).flatMap(seed => withDrv(this, seed)(d => try modelRun(d, seed, 300) catch { case e: Throwable => lastTrace.takeRight(60).foreach(println); throw e }))
   }
 
-  val all: Seq[SpecTest] = Seq(allocate, addressCapture, translationWait, refillRace, staleAnswer, disambig, loadIssue, forward, loadComplete,
-    storeComplete, uncached, storeCommit, recovery, model)
+  val all: Seq[SpecTest] = Seq(allocate, addressCapture, translationWait, refillRace, staleAnswer, disambig, loadIssue, forward, forwardOnce,
+    loadComplete, storeComplete, uncached, storeCommit, recovery, model)
 }

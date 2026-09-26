@@ -78,12 +78,13 @@ object SystemOpDecodeSpecTests {
     io.legal := SystemOpDecode.privLegal(io.insn, io.view)
   }
 
-  /** Reference model: p = debugMode ? M : priv. */
+  /** Reference model: p = debugMode ? M : priv; ECALL/MRET/SRET are illegal in Debug Mode (ADR-019F E-5). */
   def legalRef(name: String, priv: Int, dm: Boolean, tvm: Boolean, tw: Boolean, tsr: Boolean): Boolean = {
     val p = if (dm) 3 else priv
     name match {
-      case "mret"       => p == 3
-      case "sret"       => p == 3 || (p == 1 && !tsr)
+      case "ecall"      => !dm
+      case "mret"       => !dm && p == 3
+      case "sret"       => !dm && (p == 3 || (p == 1 && !tsr))
       case "sfence.vma" => p == 3 || (p == 1 && !tvm)
       case "wfi"        => p == 3 || (p == 1 && !tw)
       case "dret"       => dm
@@ -91,7 +92,7 @@ object SystemOpDecodeSpecTests {
     }
   }
   val privInsns = Seq("mret" -> 0x30200073L, "sret" -> 0x10200073L, "sfence.vma" -> 0x12b50073L, "wfi" -> 0x10500073L,
-    "dret" -> 0x7b200073L, "fence" -> 0x0ff0000fL, "csrrw" -> csr(1, 2), "addi" -> 0x00300193L)
+    "dret" -> 0x7b200073L, "ecall" -> 0x00000073L, "ebreak" -> 0x00100073L, "fence" -> 0x0ff0000fL, "csrrw" -> csr(1, 2), "addi" -> 0x00300193L)
 
   val privLegality = new SpecTest("decode.sysPrivLegality", Seq("funcSystemPrivLegality")) {
     def run(): Seq[TCheck] = sim(new LegalWrap) { dut =>

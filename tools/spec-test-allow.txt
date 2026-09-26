@@ -47,6 +47,9 @@ propInstBusGetOnly
 funcDCacheUncached
 propDCacheFunctionTransparent
 
+# ADR-019F E-2: the directed store-drain / load-miss race (with partial-byte masks) lands with the DataCache L1 SpecTest
+propDrainResponseMakesStoreVisible
+
 # WP-6 SFENCE.VMA: not encodable by the protected assembler
 funcDtlbFlush
 funcItlbFlush

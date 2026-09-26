@@ -128,7 +128,12 @@ object StoreBufferSpecs {
         "(e.g. a different aligned word overlapping the access)."
       )
       .uses(intfStoreForwardQueryIn, intfStoreForwardDataOut)
-      .note("Every StoreBuffer entry is older than every live load, so no age compare is needed; only buffer order matters.")
+      .note(
+        "Every StoreBuffer entry is older than every live load, so no age compare is needed; " +
+        "only buffer order matters. ADR-019F E-1: the answer is a same-cycle lookup - " +
+        "StoreForwardData is valid in the cycle the query is presented and reflects the " +
+        "buffer contents of that cycle (a v0 timing choice, not an ISA requirement)."
+      )
       .build()
   }
 

@@ -60,7 +60,8 @@ object LoadStoreQueueSpecs {
         propNoWrongPathStoreVisible,
         propWrongPathLoadNoResult,
         propLsqRecoveryKeepsOlder,
-        propUncachedPerformedOnce
+        propUncachedPerformedOnce,
+        propForwardQueryConsumedOnce
       )
       .uses(paramLoadQueueDepth, paramStoreQueueDepth, funcRobOlder, bndLoadQueueEntry, bndStoreQueueEntry)
       .is(rawSpeculativeHolder)
@@ -314,6 +315,15 @@ object LoadStoreQueueSpecs {
         "(WaitStoreDrain) and re-issues after the overlapping store drains."
       )
       .uses(intfStoreForwardQueryOut, intfStoreForwardDataIn, funcRobOlder)
+      .note(
+        "ADR-019F E-1 (v0 timing/protocol choice, not an ISA requirement): the StoreBuffer " +
+        "answers a query in the query cycle, and the LSQ decides and accepts a DCacheLoadResp " +
+        "only in a cycle in which its StoreForwardQuery is accepted and the matching " +
+        "StoreForwardData is valid (propForwardQueryConsumedOnce). This closes the SQ -> " +
+        "StoreBuffer -> D-cache migration window without a store version protocol. A " +
+        "pipelined forwarding path must not simply insert a register; it needs an explicit " +
+        "store-visibility/version scheme and a later ADR."
+      )
       .build()
   }
 
@@ -434,6 +444,20 @@ object LoadStoreQueueSpecs {
       )
       .uses(funcUncacheableAtHead)
       .note("Simulation assert.")
+      .build()
+  }
+
+  val propForwardQueryConsumedOnce = spec {
+    PROPERTY("ForwardQueryConsumedOnce")
+      .desc(
+        "A DCacheLoadResp is accepted and decided only in a cycle in which its " +
+        "StoreForwardQuery is accepted and the matching StoreForwardData is valid; each query " +
+        "is consumed exactly once, in that cycle. A delayed or absent StoreForwardData holds " +
+        "the D-cache answer (and the query) and never lets the same answer be decided twice or " +
+        "decided without forwarding."
+      )
+      .uses(funcStoreToLoadForward)
+      .note("ADR-019F E-1. Simulation assert plus the delayed-forward-data directed case.")
       .build()
   }
 

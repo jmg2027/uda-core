@@ -659,7 +659,7 @@ object BackendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("priv", "Priv", "Committed privilege."),
-          List("debugMode", "Bool", "The hart is in Debug Mode (decodes as M; DRET is legal only here)."),
+          List("debugMode", "Bool", "The hart is in Debug Mode (privilege checks use M, except ECALL/MRET/SRET are illegal here per ADR-019F E-5; DRET is legal only here)."),
           List("tvm, tw, tsr", "Bool", "mstatus.TVM (SFENCE.VMA / satp from S), mstatus.TW (WFI below M), mstatus.TSR (SRET from S).")
         )
       )

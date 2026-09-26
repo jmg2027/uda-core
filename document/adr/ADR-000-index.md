@@ -42,6 +42,9 @@ staged write, replaces the trap/CSR seam bundles, and fixes serialize-head inter
 sampling in the CommitUnit. **ADR-019E (v0 Erratum 05)** makes the CsrController's native
 staged-write CSR map authoritative (amending ADR-017 D-17.3), moves the debug entry address to
 the core integration contract, adds DRET, and adds the committed DecodePrivView.
+**ADR-019F (v0 Erratum 06)** makes same-cycle StoreBuffer forwarding and StoreDrainResp as the
+committed-store visibility point contractual, rules on WFI, and makes ECALL/MRET/SRET illegal in
+Debug Mode.
 
 ### ADR-019 spec migration record (Work Order 07)
 
@@ -105,6 +108,7 @@ the core integration contract, adds DRET, and adds the committed DecodePrivView.
 | [019B](ADR-019B-v0-erratum-02.md) | ADR-019 v0 erratum 02 (commit, debug, retire semantics) | **accepted** | owner ruling 2026-09-25; amends 019 and ADR-010 on top of 242feaf + 019A |
 | [019C](ADR-019C-v0-erratum-03.md) | ADR-019 v0 erratum 03 (FU availability, branch resolution/publication decoupling) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B |
 | [019D](ADR-019D-v0-erratum-04.md) | ADR-019 v0 erratum 04 (native CSR execution and trap-state seam) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A + 019B + 019C |
+| [019F](ADR-019F-v0-erratum-06.md) | ADR-019 v0 erratum 06 (committed-store visibility, backend memory seam) | **accepted** | owner ruling 2026-09-26; on top of 242feaf + 019A..E |
 | [019E](ADR-019E-v0-erratum-05.md) | ADR-019 v0 erratum 05 (native CSR map contribution, debug entry/return, DecodePrivView) | **accepted** | owner ruling 2026-09-25; on top of 242feaf + 019A..D; amends ADR-017 D-17.3 |
 
 ## Status of pre-ADR-019 proposed experiments

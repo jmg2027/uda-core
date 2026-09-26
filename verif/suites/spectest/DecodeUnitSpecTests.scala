@@ -156,6 +156,10 @@ object DecodeUnitSpecTests {
       val af = exc(FI(0x00000073L, pc = 0x5004, fault = FetchFault.InstAccessFault))
       val pfBranch = exc(FI(B(16, 2, 1, 0), pc = 0x5008, fault = FetchFault.InstPageFault))
       val ecallDbg = exc(FI(0x00000073L), View(priv = 0, dm = true))
+      val mretDbg  = exc(FI(0x30200073L), View(priv = 0, dm = true))
+      val sretDbg  = exc(FI(0x10200073L), View(priv = 1, dm = true))
+      val ebreakDbg = exc(FI(0x00100073L, pc = 0x4448), View(priv = 0, dm = true))
+      val csrDbg   = exc(FI(csr(1, 2, 1, 0x300)), View(priv = 0, dm = true))
       def is(u: Option[Uop], c: Int, t: Long) = u.exists(x => x.exc.contains((c, t)) && x.sysOp == 0 && !x.ser && x.fu == SYS && !x.cfi && !x.ld && !x.st)
       Seq(
         chk(is(ecallM, 11, 0) && is(ecallS, 9, 0) && is(ecallU, 8, 0), "ECALL raises environment call from M / S / U by DecodePrivView.priv", s"$ecallM $ecallS $ecallU"),
@@ -167,7 +171,10 @@ object DecodeUnitSpecTests {
         chk(wfiS.exists(x => x.exc.isEmpty && x.sysOp == code(SysOp.Wfi)), "WFI in S without TW is legal", s"$wfiS"),
         chk(is(pf, 12, 0x5000) && is(af, 1, 0x5004) && is(pfBranch, 12, 0x5008),
           "a fetch fault overrides decoding (instruction page / access fault, tval = pc; a faulting branch is no CFI)", s"$pf $af $pfBranch"),
-        chk(is(ecallDbg, 11, 0), "ECALL in Debug Mode decodes as M (cause 11)", s"$ecallDbg")
+        chk(is(ecallDbg, 2, 0x00000073L) && is(mretDbg, 2, 0x30200073L) && is(sretDbg, 2, 0x10200073L),
+          "ECALL / MRET / SRET in Debug Mode are illegal instructions, tval = insn (ADR-019F E-5)", s"$ecallDbg $mretDbg $sretDbg"),
+        chk(is(ebreakDbg, 3, 0x4448) && csrDbg.exists(_.exc.isEmpty),
+          "Debug Mode keeps EBREAK (breakpoint) and CSR instructions legal at decode", s"$ebreakDbg $csrDbg")
       )
     }
   }

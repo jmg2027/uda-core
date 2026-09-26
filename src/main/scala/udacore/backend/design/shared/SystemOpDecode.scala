@@ -61,8 +61,8 @@ object SystemOpDecode {
   }
 
   /** Privilege legality of the privileged system instructions over the committed
-    * DecodePrivView (ADR-019E E-4); every other instruction is legal here. Debug Mode decodes
-    * as M. */
+    * DecodePrivView (ADR-019E E-4); every other instruction is legal here. Debug Mode checks
+    * as M, except that ECALL, MRET, and SRET are illegal there (ADR-019F E-5). */
   @LocalSpec(funcSystemPrivLegality)
   def privLegal(insn: UInt, view: DecodePrivView): Bool = {
     val p   = Mux(view.debugMode, Priv.M, view.priv)
@@ -70,9 +70,11 @@ object SystemOpDecode {
     val isS = p === Priv.S
     val opcode    = insn(6, 0)
     val sfenceVma = opcode === OpSystem && insn(14, 12) === 0.U && insn(31, 25) === "b0001001".U && insn(11, 7) === 0.U
+    val dm  = view.debugMode
     MuxCase(true.B, Seq(
-      (insn === "h30200073".U) -> isM,                        // MRET
-      (insn === "h10200073".U) -> (isM || (isS && !view.tsr)), // SRET
+      (insn === "h00000073".U) -> !dm,                                // ECALL
+      (insn === "h30200073".U) -> (!dm && isM),                        // MRET
+      (insn === "h10200073".U) -> (!dm && (isM || (isS && !view.tsr))), // SRET
       sfenceVma                -> (isM || (isS && !view.tvm)), // SFENCE.VMA
       (insn === "h10500073".U) -> (isM || (isS && !view.tw)),  // WFI (U-mode WFI is illegal)
       (insn === "h7b200073".U) -> view.debugMode               // DRET

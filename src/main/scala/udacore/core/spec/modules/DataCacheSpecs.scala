@@ -47,7 +47,8 @@ object DataCacheSpecs {
         funcDCachePortArbitrate,
         propDCacheCommittedStoresOnly,
         propDCacheLoadAnswerExactlyOnce,
-        propDCacheFunctionTransparent
+        propDCacheFunctionTransparent,
+        propDrainResponseMakesStoreVisible
       )
       .uses(paramDCacheGeometry, paramDataCoherence, propViptGeometryLegal)
       .note(
@@ -221,6 +222,14 @@ object DataCacheSpecs {
         "then writes and answers. Store drains are served in arrival order."
       )
       .uses(intfStoreDrainReqIn, intfStoreDrainRespOut)
+      .note(
+        "ADR-019F E-2/E-3: StoreDrainResp is the committed-store visibility linearization " +
+        "point (propDrainResponseMakesStoreVisible). When StoreDrainResp and an overlapping " +
+        "load answer occur in the same cycle no stronger ordering is required: either the " +
+        "answer already contains the store, or the store is still in the StoreBuffer and takes " +
+        "part in that cycle's forwarding lookup. After that cycle boundary the D-cache alone " +
+        "owns the store's visibility."
+      )
       .build()
   }
 
@@ -288,6 +297,24 @@ object DataCacheSpecs {
     PROPERTY("DCacheLoadAnswerExactlyOnce")
       .desc("Every accepted load request is answered exactly once with its own lqIdx/lqGen, regardless of hits, misses, or replays in between.")
       .uses(intfDCacheLoadRespOut)
+      .build()
+  }
+
+  val propDrainResponseMakesStoreVisible = spec {
+    PROPERTY("DrainResponseMakesStoreVisible")
+      .desc(
+        "If StoreDrainResp for committed store S fires before load answer L is produced, S " +
+        "overlaps L, and no later committed store overwrote those bytes, then L's cache data " +
+        "includes S's bytes (per byte of S's mask). This holds whether S hit, needed write " +
+        "allocation, waited behind an outstanding miss, or met an MSHR already filling its " +
+        "line (a load target of that MSHR answered after StoreDrainResp observes S)."
+      )
+      .uses(funcDCacheStoreWrite, funcDCacheMshr, intfStoreDrainRespOut, intfDCacheLoadRespOut)
+      .note(
+        "ADR-019F E-2. Directed race: load miss outstanding; an older committed store drains " +
+        "to the same line; StoreDrainResp fires; the fill and load answer return later and " +
+        "observe the store; repeated with partial-byte masks."
+      )
       .build()
   }
 

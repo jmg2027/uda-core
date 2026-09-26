@@ -9,7 +9,7 @@ import udacore.backend.spec.modules.DecodeUnitSpecs._
 import udacore.common.ControlSignal.{BranchControl, DividerControl, IllegalInstruction, LoadControl, MultiplierControl, StoreControl}
 import udacore.common.enums.OperandType
 
-/** DecodeUnit (spec: DecodeUnitSpecs; ADR-019 D-19.1/D-19.3, ADR-019A E-2, ADR-019E E-3/E-4).
+/** DecodeUnit (spec: DecodeUnitSpecs; ADR-019 D-19.1/D-19.3, ADR-019A E-2, ADR-019E E-3/E-4, ADR-019F E-5).
   *
   * Each lane decodes one fixed 32-bit instruction: the integer/branch/memory/M rows come from
   * the assembled decode table of DecodeCore (base rows plus each enabled extension's
@@ -86,7 +86,7 @@ class DecodeUnit(val params: BackendParams) extends BackendModule {
       (fi.fault === FetchFault.InstAccessFault) -> 1.U,
       illegal                                   -> 2.U,
       isEbreak                                  -> 3.U,
-      isEcall                                   -> MuxLookup(Mux(view.debugMode, Priv.M, view.priv), 11.U)(Seq(Priv.U -> 8.U, Priv.S -> 9.U))))
+      isEcall                                   -> MuxLookup(view.priv, 11.U)(Seq(Priv.U -> 8.U, Priv.S -> 9.U))))
     u.exception.tval := MuxCase(0.U, Seq(fetchFault -> fi.pc, illegal -> inst, isEbreak -> fi.pc))
     val exc = u.exception.valid
 
@@ -151,7 +151,8 @@ class DecodeUnit(val params: BackendParams) extends BackendModule {
     u
   }
 
-  /** ADR-019E E-4: privileged-instruction legality over the committed DecodePrivView. */
+  /** ADR-019E E-4 / ADR-019F E-5: privileged-instruction legality over the committed DecodePrivView
+    * (a Debug Mode ECALL is illegal, so the environment-call cause never sees debugMode). */
   @LocalSpec(funcSystemPrivLegality)
   def systemPrivLegality(inst: UInt): Bool = SystemOpDecode.privLegal(inst, view)
 

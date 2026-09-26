@@ -347,7 +347,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     DecodeCore table (RV32I + enabled M contribution; untouched) supplies ALU/branch/memory/M
     rows; SystemOpDecode classifies system/CSR rows and their DecodePrivView legality; fetch
     fault > illegal (unknown, 16-bit, privilege) > EBREAK (tval = pc) > ECALL (cause 8/9/11 by
-    priv; Debug Mode decodes as M); excepting uops are fuType System, sysOp None, no CFI or
+    priv; Debug Mode ECALL was M here, illegal since ADR-019F E-5); excepting uops are fuType System, sysOp None, no CFI or
     memory flags; op layouts AluOp/MulDivOp/BranchOp (Call/Ret/Jal/Jalr hints)/MemOp/CsrOp;
     unread registers reported as x0 (CSR immediate forms carry uimm in insn only); one held
     packet discarded by any RecoveryEvent, nothing accepted in an event cycle. New frontend
@@ -372,6 +372,20 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     CommitGrant cut, StoreBufferEmpty forced true, RobStatus to the LSQ cut) all red; the
     StoreBufferEmpty mutant first survived and the interrupt program now checks, with slow
     drains, that the MMIO store waits for an older committed store to reach memory.
+28. ADR-019F (v0 Erratum 06, owner ruling 2026-09-26; approval of the backend through ac48d53):
+    the two timing facts the backend relied on are now contract. E-1: StoreBuffer forwarding
+    is a same-cycle lookup; the LSQ decides a DCacheLoadResp only with its query accepted and
+    StoreForwardData valid (new LSQ PROPERTY propForwardQueryConsumedOnce, paired assert, L1
+    test lsq.forwardOnce with a 4-cycle forwarding-data delay, query held or accepted early,
+    word and partial-mask loads). A later pipelined forwarding path needs a store version
+    scheme and an ADR, never a bare register. E-2/E-3: StoreDrainResp is the committed-store
+    visibility point (new DataCache PROPERTY propDrainResponseMakesStoreVisible, allowlisted
+    until the DataCache block writes the directed load-miss / store-drain race with partial
+    masks); same-cycle drain response and load answer need no stronger ordering. E-4: the WFI
+    rule is unchanged. E-5: ECALL/MRET/SRET in Debug Mode decode to illegal instruction
+    (cause 2, tval = insn); ECALL cause no longer looks at debugMode. Red first:
+    decode.sysPrivLegality (mret/sret/ecall in dm) and decode.exceptions failed before the
+    SystemOpDecode change.
 
 ## Validation status (run this session)
 
@@ -382,7 +396,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 136/136 PASS after RTL block 16 (101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
@@ -392,14 +406,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 48 names (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
+- spec-test-allow: 46 names (ADR-019F added propDrainResponseMakesStoreVisible, pending the
+  DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
   propRetireNonBlocking, funcHeadMemGrant, propPrfPortsFixed; the ADR-019C additions are all
   bound) (funcHeadMemGrant, propUncachedPerformedOnce, and the other uncacheable paths need an uncacheable harness region). SFENCE.VMA (flush funcs, propSfenceFlushesAll) - protected
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 63 PROPERTYs (removed with their asserts: propPhysRegConservation,
+- spec-check-allow: 39 PROPERTYs after ADR-019F (propDrainResponseMakesStoreVisible added;
+  propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
   propCommitInOrder, propNoCommitPastException, propTrapHoldUntilRedirect,
@@ -473,6 +489,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
+0. After ADR-019F (owner order): BranchPredictor, FetchTargetQueue, FetchPcGen, FetchBuffer,
+   InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
+   DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
+   CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
+   rerun every .scn until each gives an architectural PASS/FAIL instead of harness-not-ready.
 1. Spec frozen at 242feaf + ADR-019A + ADR-019B; RenameUnit, ReorderBuffer,
    RecoveryController, CommitUnit, PhysicalRegisterFile RTL are green. Next (owner order):
    The execution backend (RS, Dispatch, ALU/MUL/DIV/AGU, BranchUnit, PublishMux) is green.

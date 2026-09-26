@@ -61,6 +61,7 @@ propInstBusGetOnly
 propDCacheCommittedStoresOnly
 propDCacheFunctionTransparent
 propDCacheLoadAnswerExactlyOnce
+propDrainResponseMakesStoreVisible
 propICacheFunctionTransparent
 propICacheReadOnly
 propICacheResponseOrder
