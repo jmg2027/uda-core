@@ -96,9 +96,11 @@ class DecodeUnit(val params: BackendParams) extends BackendModule {
     u.fuType := MuxCase(FuType.Alu, Seq(
       exc -> FuType.System, isSys -> FuType.System, isCsr -> FuType.Csr, isBranch -> FuType.Branch,
       (isLoad || isStore) -> FuType.Mem, isMul -> FuType.Mul, isDiv -> FuType.Div))
+    // ADR-019H E-2: the coroutine hint (both link, rd != rs1) is checked before rd-is-link -> Call.
     val cfiType = MuxCase(CfiType.Branch, Seq(
       (isJal && isLink(rdF))                    -> CfiType.Call,
       isJal                                     -> CfiType.Jal,
+      (isJalr && isLink(rdF) && isLink(rs1F) && rdF =/= rs1F) -> CfiType.CallRet,
       (isJalr && isLink(rdF))                   -> CfiType.Call,
       (isJalr && isLink(rs1F))                  -> CfiType.Ret,
       isJalr                                    -> CfiType.Jalr))

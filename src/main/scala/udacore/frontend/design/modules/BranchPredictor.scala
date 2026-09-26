@@ -7,19 +7,21 @@ import framework.macros.LocalSpec
 import udacore.frontend.design.shared._
 import udacore.frontend.spec.modules.BranchPredictorSpecs._
 
-/** BranchPredictor (spec: BranchPredictorSpecs; ADR-019 D-19.2/D-19.11, ADR-019G).
+/** BranchPredictor (spec: BranchPredictorSpecs; ADR-019 D-19.2/D-19.11, ADR-019G, ADR-019H).
   *
   * One prediction per PredictReq, combinational from the request PC and the table/history
   * state: the request, the Prediction to the FTQ, and the NextPc to FetchPcGen transfer in one
   * cycle (atomic fork), so FetchPcGen can offer one block per cycle. BTB and TAGE are indexed
   * and tagged with blockBase = alignDown(fetchPc, FetchBytes) (ADR-019G E-3); only BTB entries
   * at or after startSlot are eligible; the fall-through is blockBase + FetchBytes (E-4); a
-  * Call pushes blockBase + 4 * cfiSlot + 4 (E-5).
+  * Call pushes blockBase + 4 * cfiSlot + 4 (E-5); a CallRet pops then pushes (ADR-019H E-3).
   *
   * Tables (BTB, TAGE, bimodal) are microarchitectural and written only by PredictorTrain at
-  * commit. The speculative GHR and RAS are the only speculative state: updated when a
-  * prediction transfers, overwritten by HistoryRestore after a RecoveryEvent. Between an event
-  * and its restore (counted, one restore per event) PredictReq is held.
+  * commit, TAGE through the prediction-time identity in PredictorTrain.meta (ADR-019H E-1).
+  * The speculative GHR and RAS are the only speculative state: updated when a prediction
+  * transfers, overwritten by HistoryRestore after a RecoveryEvent. PredictReq is held until
+  * every RecoveryEvent seen so far has had its HistoryRestore (counted, bounded by
+  * BranchCheckpointCount + 1; ADR-019H E-4/E-5).
   */
 @LocalSpec(contBranchPredictor)
 class BranchPredictor(val params: FrontendParams) extends FrontendModule {
@@ -80,7 +82,10 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
   val ghr       = RegInit(0.U(ghrLength.W))
   val rasTop    = RegInit(0.U(params.rasTopWidth.W))
   val ras       = RegInit(VecInit(Seq.fill(rasDepth)(0.U(vAddrWidth.W))))
-  val pendingRestores = RegInit(0.U(3.W))
+  /** ADR-019H E-4: at most BranchCheckpointCount + 1 RecoveryEvents (every checkpointed branch plus
+    * one ArchRedirect) can precede their restores. */
+  private val maxPendingRestores = params.backend.checkpointCount + 1
+  val pendingRestores = RegInit(0.U(log2Ceil(maxPendingRestores + 1).W))
 
   private val ev  = io.recoveryEventIn
   private val req = io.predictReqIn
@@ -158,10 +163,13 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
   private val isBranch = hitEntry.cfiType === CfiType.Branch
   private val isCall   = hitEntry.cfiType === CfiType.Call
   private val isRet    = hitEntry.cfiType === CfiType.Ret
+  private val isCallRet = hitEntry.cfiType === CfiType.CallRet
   private val cfiPc    = FetchPc.slotPc(base, hitEntry.slot)
 
+  /** The return address a Call or CallRet pushes (blockBase + 4 * slot + 4); Ret and CallRet take
+    * the current top as their target (ADR-019H E-3). */
   @LocalSpec(funcRasPredict)
-  val rasPredict: UInt = cfiPc + 4.U // the return address a Call pushes (blockBase + 4 * slot + 4)
+  val rasPredict: UInt = cfiPc + 4.U
 
   @LocalSpec(funcBlockExitSelect)
   val blockExitSelect: Prediction = {
@@ -171,7 +179,7 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
     p.cfiSlot  := hitEntry.slot
     p.cfiType  := Mux(btbHit, hitEntry.cfiType, CfiType.None)
     p.taken    := btbHit && Mux(isBranch, tageDirection, true.B)
-    p.target   := Mux(isRet, ras(rasTop), hitEntry.target)
+    p.target   := Mux(isRet || isCallRet, ras(rasTop), hitEntry.target)
     p.nextPc   := Mux(p.taken, p.target, base + params.fetchBytes.U)
     p.meta.btbHit      := btbHit
     p.meta.btbWay      := btbWay
@@ -205,6 +213,10 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
   private def pop(top: UInt, entries: Vec[UInt]): Unit = {
     rasTop := Mux(top === 0.U, (rasDepth - 1).U, top - 1.U); ras := entries
   }
+  /** CallRet: pop then push = the top pointer stays and the top entry is replaced (ADR-019H E-3). */
+  private def popPush(top: UInt, entries: Vec[UInt], v: UInt): Unit = {
+    rasTop := top; ras := entries; ras(top) := v
+  }
 
   @LocalSpec(funcSpeculativeHistoryUpdate)
   val speculativeHistoryUpdate: Unit = when(fire) {
@@ -212,6 +224,7 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
     when(p.cfiValid && isBranch) { ghr := Cat(ghr(ghrLength - 2, 0), p.taken) }
     when(p.cfiValid && isCall) { push(rasTop, ras, rasPredict) }
       .elsewhen(p.cfiValid && isRet) { pop(rasTop, ras) }
+      .elsewhen(p.cfiValid && isCallRet) { popPush(rasTop, ras, rasPredict) }
   }
 
   // ---- funcHistoryRestore -----------------------------------------------------------------------------------
@@ -228,9 +241,11 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
       rasTop := cp.rasTop; ras := cp.rasEntries
       when(ap && o.cfiType === CfiType.Call) { push(cp.rasTop, cp.rasEntries, hr.bits.pc + 4.U) }
         .elsewhen(ap && o.cfiType === CfiType.Ret) { pop(cp.rasTop, cp.rasEntries) }
+        .elsewhen(ap && o.cfiType === CfiType.CallRet) { popPush(cp.rasTop, cp.rasEntries, hr.bits.pc + 4.U) }
     }
     pendingRestores := pendingRestores + ev.valid.asUInt - hr.fire.asUInt
-    assert(!(pendingRestores === 7.U && ev.valid && !hr.fire), "BranchPredictor: outstanding HistoryRestore counter overflow")
+    assert(pendingRestores <= maxPendingRestores.U && !(pendingRestores === maxPendingRestores.U && ev.valid && !hr.fire),
+      "BranchPredictor: outstanding HistoryRestores exceed BranchCheckpointCount + 1")
     assert(!hr.fire || pendingRestores =/= 0.U || ev.valid, "BranchPredictor: HistoryRestore without a RecoveryEvent")
   }
 
@@ -265,33 +280,42 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
     val notTaken = tracked && (c.cfiType === CfiType.None || c.slot > pr.cfiSlot)
     when(takenBr || notTaken) {
       val out  = takenBr
-      val v    = tageLookup(tpc, tr.bits.ghr)
+      // ADR-019H E-1: train the prediction-time identity (meta), never a provider found by a new
+      // lookup. Indexes and expected tags are recomputed from the training (blockBase, ghr).
+      val m    = tr.bits.meta
+      val prov = m.provider
+      val idx  = (0 until nTables).map(i => tageIdx(tpc, tr.bits.ghr, i))
+      val tag  = (0 until nTables).map(i => tageTag(tpc, tr.bits.ghr, i))
+      val provPred  = Mux(prov === 0.U, m.altPred, m.providerCtr >= 0.S)
       val predicted = tracked && pr.taken && (!takenBr || pr.cfiSlot === c.slot)
-      when(v.provider === 0.U) {
-        val b = bimodal(v.bIdx)
-        bimodal(v.bIdx) := Mux(out, Mux(b === 3.U, b, b + 1.U), Mux(b === 0.U, b, b - 1.U))
+      when(prov === 0.U) {
+        val bI = bimIdx(tpc)
+        val b  = bimodal(bI)
+        bimodal(bI) := Mux(out, Mux(b === 3.U, b, b + 1.U), Mux(b === 0.U, b, b - 1.U))
       }
       for (i <- 0 until nTables) {
-        val e = tage(i)(v.idx(i))
-        when(v.provider === (i + 1).U) {
+        val e = tage(i)(idx(i))
+        // The provider entry is trained only while it still holds the prediction-time tag.
+        when(prov === (i + 1).U && tageValid(i)(idx(i)) && e.tag === tag(i)) {
           e.ctr := satInc(e.ctr, out)
-          when(v.provPred =/= v.altPred) {
-            e.useful := Mux(v.provPred === out, Mux(e.useful === 3.U, e.useful, e.useful + 1.U),
+          when(provPred =/= m.altPred) {
+            e.useful := Mux(provPred === out, Mux(e.useful === 3.U, e.useful, e.useful + 1.U),
               Mux(e.useful === 0.U, e.useful, e.useful - 1.U))
           }
         }
       }
-      // Allocation on a misprediction: the shortest longer table with a free (useful 0) entry.
+      // Allocation on a misprediction: the shortest table longer than the prediction-time provider
+      // with a free (useful 0) entry; otherwise decay those tables' useful counters.
       when(predicted =/= out) {
-        val cand = (0 until nTables).map(i => (i + 1).U > v.provider && (!tageValid(i)(v.idx(i)) || tage(i)(v.idx(i)).useful === 0.U))
+        val cand = (0 until nTables).map(i => (i + 1).U > prov && (!tageValid(i)(idx(i)) || tage(i)(idx(i)).useful === 0.U))
         val any  = cand.reduce(_ || _)
         val pick = PriorityEncoderOH(cand)
         for (i <- 0 until nTables) {
-          val e = tage(i)(v.idx(i))
+          val e = tage(i)(idx(i))
           when(any && pick(i)) {
-            tageValid(i)(v.idx(i)) := true.B
-            e.tag := tageTag(tpc, tr.bits.ghr, i); e.ctr := Mux(out, 0.S, -1.S); e.useful := 0.U
-          }.elsewhen(!any && (i + 1).U > v.provider && e.useful =/= 0.U) {
+            tageValid(i)(idx(i)) := true.B
+            e.tag := tag(i); e.ctr := Mux(out, 0.S, -1.S); e.useful := 0.U
+          }.elsewhen(!any && (i + 1).U > prov && e.useful =/= 0.U) {
             e.useful := e.useful - 1.U
           }
         }
@@ -329,10 +353,12 @@ class BranchPredictor(val params: FrontendParams) extends FrontendModule {
     val isB = ap && o.cfiType === CfiType.Branch
     val isC = ap && o.cfiType === CfiType.Call
     val isR = ap && o.cfiType === CfiType.Ret
+    val isCR = ap && o.cfiType === CfiType.CallRet // pop then push: same top, top entry replaced
     val expTop = Mux(isC, Mux(cp.rasTop === (rasDepth - 1).U, 0.U, cp.rasTop + 1.U),
       Mux(isR, Mux(cp.rasTop === 0.U, (rasDepth - 1).U, cp.rasTop - 1.U), cp.rasTop))
     val expGhr = Mux(isB, Cat(cp.ghr(ghrLength - 2, 0), o.taken), cp.ghr)
-    val rasOk = (0 until rasDepth).map(i => ras(i) === Mux(isC && i.U === expTop, rpc + 4.U, cp.rasEntries(i))).reduce(_ && _)
+    val rasOk = (0 until rasDepth).map(i =>
+      ras(i) === Mux((isC || isCR) && i.U === expTop, rpc + 4.U, cp.rasEntries(i))).reduce(_ && _)
     assert(!was || (ghr === expGhr && rasTop === expTop && rasOk),
       "HistoryRestoreExact: GHR/RAS after a restore differ from checkpoint plus the resolved outcome")
   }
