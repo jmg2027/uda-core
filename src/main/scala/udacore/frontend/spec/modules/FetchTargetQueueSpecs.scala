@@ -99,7 +99,7 @@ object FetchTargetQueueSpecs {
 
   val funcFtqAllocate = spec {
     FUNCTION("FtqAllocate")
-      .desc("Enqueue each accepted Prediction at the tail in prediction order and assign it ftqIdx = tail.")
+      .desc("Enqueue each accepted Prediction at the tail in prediction order and assign it ftqIdx = tail; the entry fetchPc is the requested fetch PC (Prediction.fetchPc, ADR-019G E-6).")
       .uses(intfPredictionIn)
       .build()
   }
@@ -108,7 +108,8 @@ object FetchTargetQueueSpecs {
     FUNCTION("FtqFetchIssue")
       .desc(
         "A fetch pointer walks live entries in order and issues one FetchRequest per entry, " +
-        "with lastSlot = the predicted taken exit slot or FetchWidth-1. After a RecoveryEvent " +
+        "with fetchPc = the entry's requested fetch PC and lastSlot = the predicted taken exit " +
+        "slot or FetchWidth-1 (ADR-019G E-6). After a RecoveryEvent " +
         "the fetch pointer restarts at the first entry allocated after the event."
       )
       .uses(intfFetchRequestOut)
@@ -120,7 +121,8 @@ object FetchTargetQueueSpecs {
       .desc(
         "BranchMispredict: discard every entry younger than e.ftqIdx (funcRecoveryKills in " +
         "the fetch-block order domain), record e.cfiOutcome as the resolved exit of entry " +
-        "e.ftqIdx, and send HistoryRestore{checkpoint of e.ftqIdx, applyOutcome, outcome, pc}. " +
+        "e.ftqIdx, and send HistoryRestore{checkpoint of e.ftqIdx, applyOutcome, outcome, pc = " +
+        "alignDown(entry fetchPc, FetchBytes) + 4 * e.cfiOutcome.slot (ADR-019G E-5)}. " +
         "ArchRedirect: send HistoryRestore{checkpoint of e.ftqIdx if that entry is live, else " +
         "the current tail checkpoint, applyOutcome = false} and then discard all entries."
       )
@@ -135,7 +137,8 @@ object FetchTargetQueueSpecs {
   val funcFtqCommitTrain = spec {
     FUNCTION("FtqCommitTrain")
       .desc(
-        "On FtqCommit{ftqIdx, exit}: the named entry is the head; emit PredictorTrain{fetchPc, " +
+        "On FtqCommit{ftqIdx, exit}: the named entry is the head; emit PredictorTrain{fetchPc = " +
+        "alignDown(entry fetchPc, FetchBytes) (ADR-019G E-7), " +
         "checkpoint.ghr, meta, prediction, committed exit} and release the head. The FtqCommit " +
         "transfer completes only together with the PredictorTrain transfer."
       )

@@ -19,7 +19,8 @@ object FrontendParamsSpecs {
     PARAMETER("FetchBytes")
       .desc(
         "Fetch-block size in bytes. A fetch block is the naturally aligned FetchBytes region " +
-        "containing the fetch PC; fetch starting mid-block covers only the slots at or after the PC."
+        "containing the fetch PC; fetch starting mid-block covers only the slots at or after the PC " +
+        "(blockBase and startSlot, ADR-019G E-1)."
       )
       .is(rawContractParams)
       .entry("v0", "16")

@@ -100,7 +100,8 @@ object FetchUnitSpecs {
     FUNCTION("ParallelFetchLookup")
       .desc(
         "For each accepted FetchRequest, offer ITlbReq{vaddr = fetchPc, access = Fetch} and " +
-        "ICacheReq{vaddr = fetchPc aligned to FetchBytes} and fire both in the same cycle " +
+        "ICacheReq{vaddr = blockBase = fetchPc aligned down to FetchBytes} (ADR-019G E-6) and " +
+        "fire both in the same cycle " +
         "(atomic fork); either not ready holds the request. The I-cache set index comes from " +
         "untranslated address bits; the physical tag compare waits for the ITLB answer inside " +
         "the I-cache."
@@ -125,10 +126,11 @@ object FetchUnitSpecs {
   val funcFetchBlockAssembly = spec {
     FUNCTION("FetchBlockAssembly")
       .desc(
-        "Split the 16-byte response into four 32-bit words; mark slots valid from the fetchPc " +
-        "slot through lastSlot. A response with a fetch fault produces a block whose only " +
-        "valid slot is the fetchPc slot, carrying the fault (instruction page fault or " +
-        "instruction access fault) to be raised precisely at commit."
+        "Split the 16-byte response into four 32-bit words; basePc = blockBase; mark slots " +
+        "valid from startSlot = fetchPc[log2(FetchBytes)-1:2] through lastSlot. A response " +
+        "with a fetch fault produces a block whose only valid slot is startSlot (not " +
+        "necessarily slot 0), carrying the fault (instruction page fault or instruction access " +
+        "fault) to be raised precisely at commit (ADR-019G E-6)."
       )
       .uses(intfFetchBlockOut)
       .build()

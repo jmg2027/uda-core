@@ -1,6 +1,7 @@
 package udacore.frontend.design.shared
 
 import framework.macros.LocalSpec
+import udacore.backend.design.shared.{BackendFrontendView, BackendParams}
 import udacore.frontend.spec.shared.FrontendParamsSpecs._
 
 /** Frontend domain parameters (ADR-019 v0 reference values as defaults).
@@ -44,15 +45,32 @@ case class FrontendTuningParams(
   require(fetchBufferEntries >= 1, "fetch buffer must hold at least one instruction")
 }
 
-/** Complete frontend parameter set. */
+/** Complete frontend parameter set. `backend` is the backend parameter set whose RecoveryEvent
+  * and FtqCommit payloads the frontend consumes (passed down by CoreTop); its frontend mirror
+  * must equal this set. */
 case class FrontendParams(
     contract: FrontendContractParams = FrontendContractParams(),
-    tuning: FrontendTuningParams = FrontendTuningParams()
+    tuning: FrontendTuningParams = FrontendTuningParams(),
+    backend: BackendParams = BackendParams()
 ) {
+  require(backend.frontend == BackendFrontendView(contract.decodeWidth, contract.fetchBytes / 4, tuning.ftqDepth,
+    contract.vAddrWidth), "the backend's frontend mirror must equal the frontend parameters")
   def fetchBytes: Int  = contract.fetchBytes
   def fetchWidth: Int  = contract.fetchBytes / 4
   def decodeWidth: Int = contract.decodeWidth
   def vAddrWidth: Int  = contract.vAddrWidth
   def ghrLength: Int   = tuning.tageHistoryLengths.max
   def ftqDepth: Int    = tuning.ftqDepth
+
+  def slotWidth: Int     = log2Ceil(fetchWidth)
+  def offsetBits: Int    = log2Ceil(fetchBytes) // blockBase = fetchPc with these low bits cleared
+  def ftqIdxWidth: Int   = log2Ceil(ftqDepth) + 1
+  def tageTables: Int    = tuning.tageHistoryLengths.size
+  def providerWidth: Int = log2Ceil(tageTables + 1)
+  def btbWayWidth: Int   = log2Ceil(tuning.btbWays)
+  def rasTopWidth: Int   = log2Ceil(tuning.rasDepth)
+  /** FetchUnit fetch generation (transaction tag, propGenerationTagScope class 1). */
+  def fetchGenWidth: Int = 4
+
+  private def log2Ceil(x: Int): Int = if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)
 }

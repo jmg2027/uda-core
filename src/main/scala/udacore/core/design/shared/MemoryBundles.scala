@@ -174,3 +174,19 @@ class StoreDrainReq(pAddrWidth: Int, dataWidth: Int) extends Bundle {
 /** bndStoreDrainResp carries no fields: the handshake itself is the completion. */
 @LocalSpec(bndStoreDrainResp)
 class StoreDrainResp extends Bundle
+
+// ---- Instruction side (MemoryBundlesSpecs) ---------------------------------------------------------
+
+@LocalSpec(bndICacheReq)
+class ICacheReq(reqIdWidth: Int, vAddrWidth: Int) extends Bundle {
+  val vaddr = UInt(vAddrWidth.W)
+  val reqId = UInt(reqIdWidth.W)
+}
+
+/** fault uses the FetchFault codes (None 0, InstPageFault 1, InstAccessFault 2). */
+@LocalSpec(bndICacheResp)
+class ICacheResp(reqIdWidth: Int, fetchWidth: Int) extends Bundle {
+  val reqId = UInt(reqIdWidth.W)
+  val data  = Vec(fetchWidth, UInt(32.W))
+  val fault = UInt(2.W)
+}

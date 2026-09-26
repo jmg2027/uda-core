@@ -1,6 +1,8 @@
 package udacore.frontend.design.modules
 
 import chisel3._
+import chisel3.util._
+import udacore.backend.design.shared.{FtqCommit, RecoveryEvent}
 import framework.macros.LocalSpec
 import udacore.frontend.design.shared._
 import udacore.frontend.spec.modules.FetchTargetQueueSpecs._
@@ -15,22 +17,22 @@ import udacore.frontend.spec.modules.FetchTargetQueueSpecs._
 class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
   val io = IO(new Bundle {
     @LocalSpec(intfPredictionIn)
-    val predictionIn = ???
+    val predictionIn = Flipped(Decoupled(new Prediction(params)))
 
     @LocalSpec(intfFetchRequestOut)
-    val fetchRequestOut = ???
+    val fetchRequestOut = Decoupled(new FetchRequest(params))
 
     @LocalSpec(intfFtqCommitIn)
-    val ftqCommitIn = ???
+    val ftqCommitIn = Flipped(Decoupled(new FtqCommit(params.backend)))
 
     @LocalSpec(intfHistoryRestoreOut)
-    val historyRestoreOut = ???
+    val historyRestoreOut = Decoupled(new HistoryRestore(params))
 
     @LocalSpec(intfPredictorTrainOut)
-    val predictorTrainOut = ???
+    val predictorTrainOut = Decoupled(new PredictorTrain(params))
 
     @LocalSpec(intfRecoveryEventIn)
-    val recoveryEventIn = ???
+    val recoveryEventIn = Input(new RecoveryEvent(params.backend))
   })
 
   @LocalSpec(funcFtqAllocate)

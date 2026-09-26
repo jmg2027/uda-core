@@ -20,7 +20,7 @@ object FrontendBundlesSpecs {
       .desc("Fetch PC offered by FetchPcGen to the BranchPredictor.")
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("fetchPc", "UInt(vAddrWidth)", "4-byte aligned fetch PC; its block is fetchPc aligned down to FetchBytes."))
+        List(List("fetchPc", "UInt(vAddrWidth)", "The exact architectural fetch start PC: 4-byte aligned, possibly any slot of its block. blockBase = alignDown(fetchPc, FetchBytes), startSlot = (fetchPc - blockBase) / 4 (ADR-019G E-1)."))
       )
       .uses(paramVAddrWidth, paramFetchBytes)
       .build()
@@ -35,13 +35,13 @@ object FrontendBundlesSpecs {
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("fetchPc", "UInt(vAddrWidth)", "Block start PC."),
-          List("cfiValid", "Bool", "A tracked control-flow instruction exists at or after fetchPc in this block (BTB hit)."),
-          List("cfiSlot", "UInt(log2(FetchWidth))", "Its slot."),
+          List("fetchPc", "UInt(vAddrWidth)", "The requested PredictReq.fetchPc, not the block base (ADR-019G E-2); blockBase is derived by alignment."),
+          List("cfiValid", "Bool", "A tracked control-flow instruction exists at or after startSlot in this block (eligible BTB hit)."),
+          List("cfiSlot", "UInt(log2(FetchWidth))", "Its absolute slot within the block (>= startSlot); its PC is blockBase + 4 * cfiSlot."),
           List("cfiType", "CfiType", "Branch | Jal | Jalr | Call | Ret."),
           List("taken", "Bool", "Predicted taken (jumps always; branches per TAGE)."),
           List("target", "UInt(vAddrWidth)", "RAS top for Ret, BTB target otherwise."),
-          List("nextPc", "UInt(vAddrWidth)", "taken ? target : next aligned block start."),
+          List("nextPc", "UInt(vAddrWidth)", "taken ? target : blockBase + FetchBytes (ADR-019G E-4)."),
           List("meta", "PredictorMeta", "Training metadata."),
           List("checkpoint", "HistoryCheckpoint", "GHR/RAS state BEFORE this block's speculative update.")
         )
@@ -90,7 +90,7 @@ object FrontendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("valid", "Bool", "Live."),
-          List("fetchPc", "UInt(vAddrWidth)", "Block start PC."),
+          List("fetchPc", "UInt(vAddrWidth)", "The original requested fetch PC of the block (ADR-019G E-6)."),
           List("prediction", "Prediction", "Predicted exit (slot/type/taken/target/nextPc)."),
           List("meta", "PredictorMeta", "Training metadata."),
           List("checkpoint", "HistoryCheckpoint", "History before this block."),
@@ -109,7 +109,7 @@ object FrontendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("ftqIdx", "FtqIdx", "Owning FTQ entry."),
-          List("fetchPc", "UInt(vAddrWidth)", "Start PC."),
+          List("fetchPc", "UInt(vAddrWidth)", "The original requested fetch PC (the FTQ entry fetchPc); its slot is the first valid slot (ADR-019G E-6)."),
           List("lastSlot", "UInt(log2(FetchWidth))", "Predicted exit slot (taken CFI) or the last slot of the block."),
           List("exitTaken, exitTarget", "Bool, UInt(vAddrWidth)", "Whether lastSlot is a predicted-taken exit, and its predicted target.")
         )
@@ -125,11 +125,11 @@ object FrontendBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("ftqIdx", "FtqIdx", "Owning FTQ entry."),
-          List("basePc", "UInt(vAddrWidth)", "Aligned block address."),
+          List("basePc", "UInt(vAddrWidth)", "Aligned block address blockBase = alignDown(fetchPc, FetchBytes)."),
           List("insts", "Vec(FetchWidth, UInt(32))", "Instruction words."),
-          List("slotValid", "Vec(FetchWidth, Bool)", "Slots from fetchPc through the predicted exit slot."),
+          List("slotValid", "Vec(FetchWidth, Bool)", "Slots startSlot through lastSlot (ADR-019G E-6)."),
           List("exitTaken, exitTarget", "Bool, UInt(vAddrWidth)", "Echo of the FetchRequest prediction for the last valid slot."),
-          List("fault", "FetchFault", "None | InstPageFault | InstAccessFault; a faulting block delivers one valid slot (the first) carrying the fault.")
+          List("fault", "FetchFault", "None | InstPageFault | InstAccessFault; a faulting block delivers exactly one valid slot, startSlot, carrying the fault (ADR-019G E-6).")
         )
       )
       .uses(paramFetchWidth, paramFtqIdxWidth)
@@ -187,7 +187,7 @@ object FrontendBundlesSpecs {
           List("checkpoint", "HistoryCheckpoint", "State before the recovering block."),
           List("applyOutcome", "Bool", "BranchMispredict: apply cfiOutcome after restore; ArchRedirect: restore only."),
           List("outcome", "CfiOutcome", "Resolved exit of the recovering block."),
-          List("pc", "UInt(vAddrWidth)", "PC of the recovering instruction (return address = pc + 4 for a call).")
+          List("pc", "UInt(vAddrWidth)", "PC of the recovering instruction: blockBase of the entry + 4 * outcome.slot (ADR-019G E-5); return address = pc + 4 for a call.")
         )
       )
       .uses(bndHistoryCheckpoint, bndCfiOutcome)
@@ -200,8 +200,8 @@ object FrontendBundlesSpecs {
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("fetchPc", "UInt(vAddrWidth)", "Block start PC (BTB/TAGE index)."),
-          List("ghr", "UInt(GhrLength)", "History the block was predicted with (checkpoint.ghr)."),
+          List("fetchPc", "UInt(vAddrWidth)", "blockBase = alignDown(FTQ entry fetchPc, FetchBytes): the BTB/TAGE training block address (ADR-019G E-7)."),
+          List("ghr", "UInt(GhrLength)", "History the block was predicted with (checkpoint.ghr, captured before the prediction issued from the requested fetch PC)."),
           List("meta", "PredictorMeta", "Prediction-time metadata."),
           List("predicted", "Prediction", "Predicted exit."),
           List("committed", "CfiOutcome", "Committed exit.")

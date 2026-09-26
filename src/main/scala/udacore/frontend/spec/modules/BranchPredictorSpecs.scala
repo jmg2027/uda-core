@@ -109,8 +109,10 @@ object BranchPredictorSpecs {
   val funcBtbLookup = spec {
     FUNCTION("BtbLookup")
       .desc(
-        "Index and tag the BTB with the fetch-block address. Among hitting ways, consider only " +
-        "entries whose slot is at or after the fetch PC's slot; the lowest such slot is the " +
+        "Index and tag the BTB with blockBase = alignDown(fetchPc, FetchBytes). Each entry " +
+        "keeps an absolute block slot; among hitting ways, consider only entries whose slot is " +
+        ">= startSlot = (fetchPc - blockBase) / 4 (an entry for an earlier slot is ignored, " +
+        "ADR-019G E-3); the lowest such slot is the " +
         "block's tracked control-flow instruction, with its type (Branch/Jal/Jalr/Call/Ret) " +
         "and last-seen target. A JALR that is not a return is predicted to its BTB target; " +
         "v0 has no indirect-target predictor (ITTAGE is a later extension)."
@@ -122,8 +124,8 @@ object BranchPredictorSpecs {
   val funcTageDirection = spec {
     FUNCTION("TageDirection")
       .desc(
-        "For a tracked Branch, compute each tagged table's index and tag from the fetch-block " +
-        "address and a folded prefix of the speculative GHR of that table's history length. " +
+        "For a tracked Branch, compute each tagged table's index and tag from blockBase " +
+        "(ADR-019G E-3) and a folded prefix of the speculative GHR of that table's history length. " +
         "The provider is the longest-history matching table; the alternate is the next-longest " +
         "matching table or the bimodal base. The direction is the provider's counter sign, " +
         "except that a weak provider whose useful counter is zero uses the alternate. TAGE " +
@@ -136,7 +138,8 @@ object BranchPredictorSpecs {
   val funcRasPredict = spec {
     FUNCTION("RasPredict")
       .desc(
-        "A predicted-taken Call pushes fetchPc-of-slot + 4 onto the speculative RAS; a " +
+        "A predicted-taken Call pushes cfiPc + 4 onto the speculative RAS, where cfiPc = " +
+        "blockBase + 4 * cfiSlot (ADR-019G E-5, never requestedFetchPc + 4 * slot); a " +
         "predicted Ret pops and uses the popped value as the target; a Ret that is also a " +
         "Call (coroutine hint) pops then pushes. Call/Ret classification follows the RISC-V " +
         "link-register hints (rd or rs1 in {x1, x5})."
@@ -149,8 +152,9 @@ object BranchPredictorSpecs {
     FUNCTION("BlockExitSelect")
       .desc(
         "The block exit is the tracked CFI if it is predicted taken (Jal/Jalr/Call/Ret always, " +
-        "Branch per TAGE); nextPc = its target. Otherwise nextPc = the next aligned block " +
-        "address and the block is predicted to fall through all remaining slots."
+        "Branch per TAGE); nextPc = its target. Otherwise nextPc = blockBase + FetchBytes " +
+        "(the next block boundary, not fetchPc + FetchBytes; ADR-019G E-4) and the block is " +
+        "predicted to fall through all remaining slots."
       )
       .uses(intfPredictionOut, intfNextPcOut)
       .build()
@@ -174,7 +178,8 @@ object BranchPredictorSpecs {
         "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until a " +
         "HistoryRestore arrives. Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
         "outcome with the same rules as the speculative update: shift in the resolved " +
-        "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret."
+        "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret. pc is " +
+        "HistoryRestore.pc = blockBase + 4 * outcome.slot (ADR-019G E-5)."
       )
       .uses(intfHistoryRestoreIn, intfRecoveryEventIn)
       .build()
@@ -184,7 +189,8 @@ object BranchPredictorSpecs {
     FUNCTION("PredictorTraining")
       .desc(
         "The single deterministic training point is block commit (a PredictorTrain token, in " +
-        "program order). BTB: allocate or update the entry for the committed taken exit " +
+        "program order), indexed and tagged by PredictorTrain.fetchPc = blockBase (ADR-019G " +
+        "E-7). BTB: allocate or update the entry for the committed taken exit " +
         "(slot, type, target); a committed fall-through leaves the BTB unchanged. TAGE " +
         "(a committed taken Branch exit, or a tracked Branch that committed not-taken): " +
         "update the provider counter toward the outcome, " +

@@ -65,11 +65,6 @@ propICacheResponseOrder
 propSfenceFlushesAll
 
 # WP-2/3 predictor/FTQ internals: microarchitectural state is only observable by an L1 BranchPredictor/FTQ SpecTest once the RTL exposes it (ADR-019 obligation: history restored from the FTQ checkpoint)
-funcBlockExitSelect
-funcBtbLookup
-funcHistoryRestore
-funcPredictorTraining
-funcRasPredict
 funcSpeculativeHistoryUpdate
 funcTageDirection
 propHistoryRestoreExact
