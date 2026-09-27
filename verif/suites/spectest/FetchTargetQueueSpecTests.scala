@@ -31,6 +31,8 @@ object FetchTargetQueueSpecTests {
     val trains   = ArrayBuffer[(Int, Trn)]()
     val allocIdx = ArrayBuffer[Int]()
     var predFire, commitFire = false
+    /** HistoryRestoreOut.valid as sampled in the last cycle (independent of ready). */
+    var restoreValid = false
     private var nextIdx = 0
 
     def cycle(): Unit = {
@@ -47,7 +49,8 @@ object FetchTargetQueueSpecTests {
       if (b(f.valid) && reqReady) reqs += ((cyc, Req(l(f.bits.ftqIdx).toInt, l(f.bits.fetchPc), l(f.bits.lastSlot).toInt,
         b(f.bits.exitTaken), l(f.bits.exitTarget))))
       val r = io.historyRestoreOut
-      if (b(r.valid) && restoreReady) restores += ((cyc, Rst(peekCheckpoint(r.bits.checkpoint), b(r.bits.applyOutcome),
+      restoreValid = b(r.valid)
+      if (restoreValid && restoreReady) restores += ((cyc, Rst(peekCheckpoint(r.bits.checkpoint), b(r.bits.applyOutcome),
         peekOutcome(r.bits.outcome), l(r.bits.pc))))
       val t = io.predictorTrainOut
       if (b(t.valid) && trainReady) trains += ((cyc, Trn(l(t.bits.fetchPc), t.bits.ghr.peek().litValue, peekPred(t.bits.predicted),
@@ -350,7 +353,183 @@ object FetchTargetQueueSpecTests {
     }
   }
 
+
+  // ---- Boundary fixes (restore FIFO index carry, full-queue fetchPtr rewind, reset fallback) --------
+
+  val rqDepth = fp.backend.checkpointCount + 1
+  /** The restore a BranchMispredict on the entry at window position `pos` of block `n` yields. */
+  def misRst(n: Int, o: Outcome): Rst = Rst(cpN(n), apply = true, o, 0x10000L + 16 * n + 4 * o.slot)
+
+  /** The restore FIFO read position ends at 4 (v0), then a legal full burst of BranchCheckpointCount
+    * progressively older BranchMispredicts plus one ArchRedirect is queued behind a low ready. */
+  val restoreFifoWrap = new SpecTest("ftq.restoreFifoWrap", Seq("funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      (0 until rqDepth - 1).foreach { k => d.enqueue(blk(40 + k)); fire(d, archRedirect(0)); d.run(2) }
+      val warm = d.restores.size
+      d.restores.clear()
+      (0 until rqDepth + 1).foreach(n => d.enqueue(blk(n)))
+      d.run(rqDepth + 3)
+      d.restoreReady = false
+      val older = (1 until rqDepth).reverse // 4, 3, 2, 1 at v0
+      val os = older.map(i => Outcome(BRANCH, i % 4, taken = true, 0x4000L + 0x100 * i))
+      older.zip(os).foreach { case (i, o) => fire(d, mispredict(i, o)) }
+      fire(d, archRedirect(0))
+      d.run(2); val held = d.restores.isEmpty
+      d.restoreReady = true; d.run(rqDepth + 3)
+      val rs = d.restores.map(_._2).toSeq
+      Seq(
+        chk(warm == rqDepth - 1, s"${rqDepth - 1} warm-up restores move the FIFO read position to ${rqDepth - 1}", s"$warm"),
+        chk(held, "nothing leaves while HistoryRestoreOut.ready is low", s"$rs"),
+        chk(rs.size == rqDepth && rs.take(rqDepth - 1) == older.zip(os).map { case (i, o) => misRst(i, o) } &&
+            rs.lift(rqDepth - 1).exists(r => r.cp == cpN(0) && !r.apply),
+          s"the $rqDepth restores of the burst leave in event order with their own payloads across the FIFO wrap", s"$rs"))
+    }
+  }
+
+  /** The restore FIFO against an independent software FIFO: every read position, occupancy
+    * 0..rqDepth, enqueue and dequeue together at full, and several wraps. */
+  val restoreFifoModel = new SpecTest("ftq.restoreFifoModel", Seq("funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.enqueue(blk(0)); d.run(2)
+      val model = scala.collection.mutable.Queue[Rst]()
+      var seed = 12345L
+      def rnd(n: Int): Int = { seed = (seed * 6364136223846793005L + 1442695040888963407L); ((seed >>> 33) % n).toInt }
+      var deqs = 0; var enqs = 0; var fullBoth = 0
+      val cover = scala.collection.mutable.Set[(Int, Int)]() // (read position, occupancy) at an enqueue
+      var mismatch = List.empty[String]
+      for (c <- 0 until 900) {
+        val phase = (c / 45) % 3 // fill, mixed, drain
+        val ready = phase match { case 0 => rnd(8) == 0; case 1 => rnd(2) == 0; case _ => rnd(8) != 0 }
+        val want  = phase match { case 0 => rnd(4) != 0; case 1 => rnd(2) == 0; case _ => rnd(8) == 0 }
+        val ev    = want && (model.size < rqDepth || ready)
+        val o     = Outcome(BRANCH, enqs % 4, taken = enqs % 2 == 0, 0x100000L + 4L * enqs)
+        d.restoreReady = ready
+        d.event = if (ev) Some(mispredict(0, o)) else None
+        val before = d.restores.size
+        d.cycle(); d.event = None
+        if (d.restoreValid != model.nonEmpty) mismatch ::= s"cycle $c valid ${d.restoreValid} model ${model.size}"
+        if (d.restores.size > before) {
+          val got = d.restores.last._2
+          if (model.isEmpty) mismatch ::= s"cycle $c unexpected $got"
+          else { val exp = model.dequeue(); deqs += 1; if (got != exp) mismatch ::= s"cycle $c got $got exp $exp" }
+        }
+        if (ev) {
+          if (model.size == rqDepth - (if (ready && d.restores.size > before) 1 else 0) && ready) fullBoth += 1
+          cover += (((deqs % rqDepth), model.size)); model.enqueue(misRst(0, o)); enqs += 1
+        }
+      }
+      val missing = for (h <- 0 until rqDepth; o <- 0 until rqDepth if !cover((h, o))) yield (h, o)
+      Seq(
+        chk(mismatch.isEmpty, "HistoryRestoreOut matches the software FIFO (valid every cycle, payload and order at every transfer)",
+          mismatch.reverse.take(4).mkString("; ")),
+        chk(missing.isEmpty, s"coverage: every read position x occupancy 0..${rqDepth - 1} at an enqueue", s"missing $missing"),
+        chk(fullBoth >= 3, "coverage: enqueue and dequeue in the same cycle at full occupancy", s"$fullBoth"),
+        chk(enqs / rqDepth >= 3, "coverage: several FIFO wraps", s"$enqs enqueues"))
+    }
+  }
+
+  /** Counterexample: a full queue with every block fetched (fetchPtr = tail sentinel), then a
+    * BranchMispredict on the head entry. The next FetchRequest must be the new block at ftqIdx 1. */
+  val fullRewind = new SpecTest("ftq.fullRewind", Seq("funcFtqFetchIssue", "funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      (0 until depth).foreach(n => d.enqueue(blk(n)))
+      d.run(4)
+      val allFetched = d.reqs.size == depth
+      fire(d, mispredict(0, Outcome(BRANCH, 1, taken = true, 0x4000)))
+      d.run(1)
+      d.enqueue(Pred(0x4000, nextPc = 0x4010, cp = cpN(9)))
+      d.run(4)
+      val after = d.reqs.drop(depth).map(r => (r._2.ftqIdx, r._2.fetchPc)).toSeq
+      Seq(
+        chk(allFetched, s"all $depth blocks were requested before the event (fetchPtr = tail)", s"${d.reqs.size}"),
+        chk(after == Seq((1, 0x4000L)), "after the recovery the target block is allocated at ftqIdx 1 and requested", s"$after"))
+    }
+  }
+
+  /** fetchPtr rewind over the whole window: every head position, occupancy 1..FtqDepth, the recovering
+    * entry at the head, the middle and tail - 1, fetchPtr at an unissued entry or at the tail, and a
+    * same-cycle surviving FetchRequest or older FtqCommit. One simulation; each scenario starts from an
+    * ArchRedirect-emptied queue. */
+  val rewindSweep = new SpecTest("ftq.rewindSweep", Seq("funcFtqFetchIssue", "funcFtqRecovery", "propFtqRecoveryKeepsOlder")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      val idMod = 2 * depth
+      var headId = 0
+      var bad = List.empty[String]; var runs = 0
+      val heads = scala.collection.mutable.Set[Int](); val occs = scala.collection.mutable.Set[Int]()
+      def clear(): Unit = { d.reqReady = true; fire(d, archRedirect(headId)); d.run(2); d.reqs.clear(); d.restores.clear(); d.trains.clear() }
+      def step(): Unit = { // one committed block moves the head by one
+        d.reqReady = true; d.enqueue(blk(0)); d.run(2); d.commitOne(headId, Outcome()); headId = (headId + 1) % idMod
+        d.run(1); clear()
+      }
+      def pc(k: Int): Long = 0x20000L + 16 * k
+      def scenario(n: Int, rpos: Int, f: Int, mode: Int): Unit = { // mode 0 plain, 1 surviving fire, 2 older commit
+        heads += headId % depth; occs += n; runs += 1
+        clear()
+        val base = headId
+        d.reqReady = false
+        (0 until n).foreach(k => d.enqueue(Pred(pc(k), nextPc = pc(k + 1), cp = cpN(k))))
+        d.reqReady = true; (0 until f).foreach(_ => d.cycle()); d.reqReady = false
+        val issued = d.reqs.size
+        if (mode == 1) d.reqReady = true
+        if (mode == 2) d.commit = Some((headId, Outcome()))
+        val r = (headId + rpos) % idMod
+        val before = d.reqs.size
+        fire(d, mispredict(r, Outcome(BRANCH, 0, taken = true, 0x9000)))
+        val fired = d.reqs.size - before
+        d.reqReady = false; d.commit = None
+        if (mode == 2) headId = (headId + 1) % idMod
+        // A recovery on the youngest entry of a full queue leaves it full: free the head first.
+        val stillFull = rpos == depth - 1 && mode != 2
+        val newFBefore = math.min(f + fired, rpos + 1)
+        if (stillFull) {
+          d.reqReady = true; d.run(rpos + 2 - newFBefore); d.reqReady = false
+          d.commitOne(headId, Outcome()); headId = (headId + 1) % idMod
+        }
+        d.enqueue(Pred(0x9000, nextPc = 0x9010, cp = cpN(15)))
+        d.reqReady = true; d.run(n + 4)
+        val newF = newFBefore
+        val exp = (newF to rpos).map(k => (((base + k) % idMod + idMod) % idMod, pc(k))) :+ (((base + rpos + 1) % idMod + idMod) % idMod, 0x9000L)
+        val got = d.reqs.drop(before + fired).map(x => (x._2.ftqIdx, x._2.fetchPc)).toSeq
+        if (issued != f || got != exp || (mode == 1 && fired != 1))
+          bad ::= s"head ${base % depth} n $n rpos $rpos f $f mode $mode: issued $issued fired $fired got $got exp $exp"
+      }
+      for (n <- 1 to depth; _ <- 0 until depth) {
+        for (rpos <- Seq(0, n / 2, n - 1).distinct) {
+          scenario(n, rpos, n, 0)                              // fetchPtr at the tail sentinel
+          if (rpos + 1 < n) scenario(n, rpos, rpos + 1, 0)     // fetchPtr at an unissued surviving-window boundary
+          scenario(n, rpos, rpos, 1)                           // the pending (surviving) request fires in the event cycle
+        }
+        if (n > 1) scenario(n, n - 1, n, 2)                    // an older FtqCommit in the event cycle (moves the head)
+        else step()
+      }
+      Seq(
+        chk(bad.isEmpty, s"after each BranchMispredict the requests resume at min(fetch position, e.ftqIdx + 1) ($runs scenarios)",
+          s"${bad.size} failing, e.g. ${bad.reverse.take(3).mkString(" | ")}"),
+        chk(heads.size == depth && occs == (1 to depth).toSet, "coverage: every head position and occupancy 1..FtqDepth",
+          s"heads $heads occs $occs"))
+    }
+  }
+
+  /** ArchRedirect naming a non-live entry whose tail slot was never written restores the reset
+    * checkpoint. Regression guard only: svsim runs the whole test inside the testbench initial block,
+    * so the DUT's RANDOMIZE_REG_INIT initializer never runs first and Verilator starts unreset
+    * registers at 0 - a never-written slot and the (zero) reset checkpoint are indistinguishable here. */
+  val fallbackReset = new SpecTest("ftq.fallbackReset", Seq("funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      fire(d, archRedirect(5)); d.run(2)
+      d.enqueue(blk(3)); d.run(2); d.commitOne(0, Outcome()); d.run(1)
+      fire(d, archRedirect(7)); d.run(2)
+      val rs = d.restores.map(_._2).toSeq
+      Seq(
+        chk(rs.headOption.exists(r => r.cp == Checkpoint() && !r.apply),
+          "an empty queue whose tail slot was never written restores the reset checkpoint", s"$rs"),
+        chk(rs.lift(1).exists(r => r.cp == Checkpoint() && !r.apply),
+          "after one block committed, the never-written tail slot 1 still yields the reset checkpoint", s"$rs"))
+    }
+  }
+
   val all: Seq[SpecTest] = Seq(midBlockRequest, midBlockRestorePc, midBlockTrain, allocateFull, fetchIssueOrder,
     mispredictRestore, recoveryWrap, archRedirectAll, backToBack, commitTrainHandshake, inOrderRelease, resolvedExit,
-    killedRequest, allocateDuringRestore, recoveringStaysLive)
+    killedRequest, allocateDuringRestore, recoveringStaysLive,
+    restoreFifoWrap, restoreFifoModel, fullRewind, rewindSweep, fallbackReset)
 }

@@ -57,9 +57,14 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
     Mux(wrapOf(a) === wrapOf(b), idxOf(a) < idxOf(b), idxOf(a) > idxOf(b))
   /** The identity allocated after a: idx wraps at FtqDepth (a power of two) and toggles wrap. */
   private def next(a: UInt): UInt = (a + 1.U)(iw - 1, 0)
+  /** Window distance from base to a (a - base modulo 2 * FtqDepth): 0 = base, FtqDepth = one full
+    * window. Unlike ftqOlder it is defined for the tail sentinel, so window bounds use it. */
+  private def dist(a: UInt, base: UInt): UInt = (a - base)(iw - 1, 0)
 
   // ---- State ----------------------------------------------------------------------------------------------
   val valid         = RegInit(VecInit(Seq.fill(ftqDepth)(false.B)))
+  /** The slot has been allocated at least once (its Prediction register holds a real block). */
+  val written       = RegInit(VecInit(Seq.fill(ftqDepth)(false.B)))
   val fetched       = RegInit(VecInit(Seq.fill(ftqDepth)(false.B)))
   val resolvedValid = RegInit(VecInit(Seq.fill(ftqDepth)(false.B)))
   val resolved      = Reg(Vec(ftqDepth, new CfiOutcome(params.backend)))
@@ -89,7 +94,7 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
   @LocalSpec(funcFtqAllocate)
   val ftqAllocate: Unit = when(io.predictionIn.fire) {
     val t = idxOf(tail)
-    valid(t) := true.B; fetched(t) := false.B; resolvedValid(t) := false.B
+    valid(t) := true.B; written(t) := true.B; fetched(t) := false.B; resolvedValid(t) := false.B
     pred(t)  := io.predictionIn.bits
   }
 
@@ -135,17 +140,21 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
   val rq      = Reg(Vec(rqDepth, new HistoryRestore(params)))
   val rqHead  = RegInit(0.U(log2Ceil(rqDepth).W))
   val rqCount = RegInit(0.U(log2Ceil(rqDepth + 1).W))
+  /** p modulo rqDepth for p < 2 * rqDepth; callers widen sums (+&) so the carry reaches the compare. */
   private def rqWrap(p: UInt): UInt = Mux(p >= rqDepth.U, p - rqDepth.U, p)
 
-  /** The descriptor captured in the event cycle (checkpoint, outcome, pc of the chosen entry). */
+  /** The descriptor captured in the event cycle (checkpoint, outcome, pc of the chosen entry).
+    * ArchRedirect: e.ftqIdx if live, else the tail slot's stored checkpoint, or the reset
+    * checkpoint (the BranchPredictor's reset history, all zero) if that slot was never written. */
   private val restoreNow: HistoryRestore = {
     val rIdx  = idxOf(r)
-    val src   = Mux(isMis || live(r), rIdx, idxOf(tail)) // ArchRedirect: e.ftqIdx if live, else the tail slot
+    val src   = Mux(isMis || live(r), rIdx, idxOf(tail))
+    val init  = written(src)
     val d     = Wire(new HistoryRestore(params))
-    d.checkpoint   := pred(src).checkpoint
+    d.checkpoint   := Mux(init, pred(src).checkpoint, 0.U.asTypeOf(new HistoryCheckpoint(params)))
     d.applyOutcome := isMis
     d.outcome      := ev.cfiOutcome
-    d.pc           := FetchPc.slotPc(FetchPc.blockBase(pred(src).fetchPc, ob), ev.cfiOutcome.slot)
+    d.pc           := FetchPc.slotPc(FetchPc.blockBase(Mux(init, pred(src).fetchPc, 0.U), ob), ev.cfiOutcome.slot)
     d
   }
 
@@ -155,8 +164,8 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
     val o = io.historyRestoreOut
     o.valid := rqCount =/= 0.U
     o.bits  := rq(rqHead)
-    when(ev.valid) { rq(rqWrap(rqHead + rqCount)) := restoreNow }
-    when(o.fire) { rqHead := rqWrap(rqHead + 1.U) }
+    when(ev.valid) { rq(rqWrap(rqHead +& rqCount)) := restoreNow }
+    when(o.fire) { rqHead := rqWrap(rqHead +& 1.U) }
     rqCount := rqCount + ev.valid.asUInt - o.fire.asUInt
     assert(!(ev.valid && rqCount === rqDepth.U && !o.fire),
       "FetchTargetQueue: HistoryRestore FIFO overflow (more than BranchCheckpointCount + 1 pending restores)")
@@ -175,10 +184,15 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
   when(isArch) {
     tail := headNext; fetchPtr := headNext
   }.elsewhen(isMis) {
-    // A surviving pending request may still transfer in the event cycle; then rewind past e.ftqIdx.
-    val fpAfter = Mux(io.fetchRequestOut.fire, next(fetchPtr), fetchPtr)
+    // Window arithmetic from the pre-event head: keep e.ftqIdx and older (keepCount entries); the
+    // fetch position (possibly the tail sentinel, after a surviving request's same-cycle transfer)
+    // is clamped to that bound.
+    val fpAfter   = Mux(io.fetchRequestOut.fire, next(fetchPtr), fetchPtr)
+    val keepCount = dist(r, head) +& 1.U
+    val fetchDist = dist(fpAfter, head)
+    val newDist   = Mux(fetchDist < keepCount, fetchDist, keepCount)
     tail := next(r)
-    fetchPtr := Mux(ftqOlder(r, fpAfter), next(r), fpAfter)
+    fetchPtr := (head + newDist)(iw - 1, 0)
   }.otherwise {
     when(io.predictionIn.fire) { tail := next(tail) }
     when(io.fetchRequestOut.fire) { fetchPtr := next(fetchPtr) }

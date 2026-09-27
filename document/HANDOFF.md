@@ -447,7 +447,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     are ftqIdx {wrap, idx}, ordered only by ftqOlder (the funcRobOlder rule on the wrap and idx
     fields; next() = +1 mod 2 * FtqDepth). PredictionIn.ready = !full && !RecoveryEvent (a
     pending restore does not hold it). FetchRequest from fetchPtr (lastSlot = cfiSlot if taken,
-    else FetchWidth - 1), never valid for an entry the same-cycle event discards. BranchMispredict
+    else FetchWidth - 1); in an event cycle that discards the fetchPtr entry the request's valid
+    is lowered (q.valid = pending && !killed - the normal behavior, not a fired-then-cancelled
+    transfer). BranchMispredict
     keeps e.ftqIdx and older, invalidates younger, records the resolved exit, tail = e.ftqIdx + 1,
     fetchPtr rewound to at most e.ftqIdx + 1; ArchRedirect discards all, tail = fetchPtr = head
     (after a same-cycle commit). Restore descriptors are captured in the event cycle into an
@@ -466,15 +468,57 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     rewind, restore pc from the requested fetchPc, ArchRedirect applyOutcome, training fetchPc
     = requested fetchPc, committed always FtqCommit.exit, release without train ready, non-head
     commit allowed (assert removed), a dropped back-to-back restore, reversed restore order,
-    pending restore holding PredictionIn, a killed request firing in the event cycle, allocation
+    pending restore holding PredictionIn, the killed request's valid left high in the event
+    cycle, allocation
     in an event cycle, ArchRedirect always from the tail slot, one-entry restore storage). The
     six caught first by design asserts were rerun with every assert disabled: all red on test
     checks (the recovering-entry kill first survived; ftq.recoveringStaysLive was added for it).
     spec-check-allow 36 -> 34 (propFtqInOrderRelease, propFtqRecoveryKeepsOlder).
     Contract readings (no new ambiguity requiring an ADR): the ArchRedirect "current tail
     checkpoint" for a non-live e.ftqIdx is the checkpoint stored in the physical slot at
-    tail.idx (deterministic, possibly stale; microarchitectural per D-19.11); an FtqCommit
-    in the same cycle as a RecoveryEvent is accepted and applied first.
+    tail.idx (deterministic, possibly stale; microarchitectural per D-19.11) - corrected in
+    item 34 for a never-written slot; an FtqCommit in the same cycle as a RecoveryEvent is
+    accepted and applied first. Two boundary defects of this block are fixed in item 34.
+
+34. FetchTargetQueue boundary fixes (no ADR or spec change):
+    - Restore FIFO enqueue index: `rq(rqWrap(rqHead + rqCount))` truncated the 3-bit sum at v0
+      (rqDepth 5): rqHead 4 + rqCount 4 wrote slot 0 instead of 3. Now `rqHead +& rqCount`
+      (and `rqHead +& 1.U` on dequeue) before modulo rqDepth; rqDepth stays 5 (not rounded to a
+      power of two). Red on the pre-fix RTL: ftq.restoreFifoWrap (four warm-up restores move the
+      read position to 4; then 4 progressively older BranchMispredicts + 1 ArchRedirect behind a
+      low ready came out misordered with a lost payload) and ftq.restoreFifoModel (independent
+      software FIFO; mismatch at cycle 39). The model test covers every read position x
+      occupancy 0..4 at an enqueue, simultaneous enqueue/dequeue at full, and several wraps.
+    - Full-queue fetchPtr rewind: `Mux(ftqOlder(r, fpAfter), next(r), fpAfter)` compared the tail
+      sentinel with a live tag. Counterexample head 0, tail 16, fetchPtr 16, BranchMispredict
+      ftqIdx 0: tail became 1, fetchPtr stayed 16, and the target block allocated at ftqIdx 1
+      was never requested (ftq.fullRewind: no request). Now, from the pre-event head:
+      keepCount = dist(r, head) + 1, fetchDist = dist(fpAfter, head), fetchPtr = head +
+      min(fetchDist, keepCount), dist(a, b) = (a - b) mod 2 * FtqDepth; ftqOlder stays for live
+      entries only. ftq.rewindSweep (one simulation, 2144 scenarios): every head position,
+      occupancy 1..16, recovering entry at head / middle / tail - 1, fetchPtr at an unissued
+      entry or the tail, a same-cycle surviving FetchRequest, a same-cycle older FtqCommit;
+      48 scenarios failed on the pre-fix RTL (all full-queue; the test then had a wrong
+      expectation for a recovery on the youngest entry of a full queue, which stays full until a
+      commit - fixed in the test, after which the pre-fix clamp fails 16 scenarios).
+    - ArchRedirect fallback: a never-written tail slot no longer supplies its (unreset)
+      Prediction register; `written` bits (set at allocation) select the reset checkpoint (all
+      zero, the BranchPredictor's reset history) instead; a written slot's stale checkpoint is
+      still used. ftq.fallbackReset is a regression guard only: svsim runs the whole test inside
+      the testbench initial block, so the DUT's RANDOMIZE_REG_INIT initializer runs after the
+      test and Verilator starts unreset registers at 0 - a never-written slot is
+      indistinguishable from the zero reset checkpoint in this simulator (an opt-in random-init
+      knob was tried in CachedSimulator and reverted for that reason).
+    - Mutants (FTQ suite, 20 tests): truncating enqueue index RED (restoreFifoWrap,
+      restoreFifoModel), also with every assert disabled; pre-fix ftqOlder clamp RED (fullRewind,
+      rewindSweep 16 scenarios), also with asserts disabled; keepCount without + 1 RED; fetchPtr
+      rewind removed RED; fallback without the written check SURVIVED (the simulator limitation
+      above); distances from the post-commit head SURVIVED - equivalent under legal inputs (both
+      distances move by the same base, and they differ only if an unfetched head commits).
+      The asserts-off control fails only ftq.inOrderRelease (it requires the assertion).
+    - Validation on the restored source after deleting verif/out/classes and with a fresh
+      simulation cache directory: build 0 errors, spec-check 0 errors (4 pre-existing warnings),
+      RunSpecTests 174 PASS + 2 PENDING (FetchUnit shells).
 
 ## Validation status (run this session)
 
@@ -485,7 +529,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 169 PASS + 2 PENDING (FetchUnit shells) after RTL
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 174 PASS + 2 PENDING after the FTQ boundary
+  fixes (clean rebuild, fresh simulation cache); 169 PASS + 2 PENDING (FetchUnit shells) after RTL
   block 18 (FetchTargetQueue); 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
   ADR-019H verification and the FTQ red-first tests; 150 PASS + 5 PENDING after RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
