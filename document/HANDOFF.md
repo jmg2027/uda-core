@@ -407,13 +407,39 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     restore = checkpoint then the resolved outcome (Branch shift, Call push pc+4, Ret pop);
     training only at PredictorTrain (BTB allocate/update for a committed taken exit, TAGE
     provider/useful update, allocation on a misprediction, useful decay otherwise); TAGE
-    training recomputes the lookup on current tables rather than trusting the stored meta.
+    training recomputed the lookup on current tables (superseded by ADR-019H E-1, item 31).
     Asserts PredictFromPcOnly, OneTakenCfiPerBlock, HistoryRestoreExact, restore-counter
     overflow. 13 L1 tests (bp.*; red: 12 PENDING, plus bp.tageUseAlt added for a survivor);
     22 mutants all red after strengthening (event-cycle hold, LRU victim, useAlt first
     survived). ADR-019G mutants (fall-through and RAS push from the raw fetch PC) are red; the
     HistoryRestore.pc mutant belongs to the FTQ block. spec-test-allow 46 -> 36,
     spec-check-allow 39 -> 36.
+
+31. ADR-019H (Erratum 08, owner ruling 2026-09-26) - pushed unverified as five WIP commits
+    (0dc1aa7..16b3925, the shell was unavailable), verified on branch
+    `claude/spectest-validation-mutant-c7rz4l`: TAGE training uses the prediction-time identity
+    in PredictorTrain.meta (provider from meta, index/tag recomputed from fetchPc/ghr, update
+    skipped when the provider entry was replaced, allocation above meta.provider); CfiType.CallRet
+    = 6 (JALR, rd and rs1 both link, rd != rs1) classified before rd-link -> Call; CallRet
+    predicts from the RAS top and pops then pushes cfiPc + 4 (prediction and restore); the
+    restore counter is sized from BranchCheckpointCount + 1 with a bound assert. Gates: build 0
+    errors, spec-check 0 errors. Red-first by reverting 9b5ead4's RTL (CfiType constant kept):
+    bp.trainIdentity, bp.callRet, bp.restoreBound, decode.rv32im red; bp.backToBack stayed green
+    (the pre-019H counter already held PredictReq per event; E-5 names that behavior), so it is
+    covered by mutants instead. 15 mutants all red: commit-time lookup (whole pre-019H training
+    block; provider choice only; no tag guard), CallRet (BTB target, speculative push / pop /
+    ignored, restore ignored, restore as push with a consistent assert, top + 1 write, decode as
+    Call, decode also for rd == rs1), restore release on any restore, events saturating at one,
+    the pre-019H `=== 7` overflow assert.
+32. RTL block 18 red-first - FetchTargetQueue: 8 new L1 tests (ftq.allocateFull,
+    fetchIssueOrder, mispredictRestore, recoveryWrap, archRedirect, backToBack (ADR-019H E-5:
+    three events with restores held, one event landing on a restore accept),
+    commitTrainHandshake, inOrderRelease (negative: the design assertion text must contain
+    `FtqInOrderRelease`)); with the 3 ADR-019G tests, 11 PENDING against the shell. They bind
+    propFtqInOrderRelease and propFtqRecoveryKeepsOlder at L1 (still in spec-check-allow until
+    their asserts land). Test assumptions the RTL must meet or the test must be revisited:
+    PredictionIn may be accepted while restores are pending; after a BranchMispredict the tail
+    rewinds to e.ftqIdx + 1 and after an ArchRedirect to the head. No RTL yet.
 
 ## Validation status (run this session)
 
@@ -424,8 +450,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 150 PASS + 5 PENDING (the FTQ/FetchUnit ADR-019G tests) after
-  RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
+  ADR-019H verification and the FTQ red-first tests; 150 PASS + 5 PENDING after RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
@@ -519,7 +545,10 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-0. After ADR-019F/G (owner order): BranchPredictor (done), FetchTargetQueue, FetchPcGen, FetchBuffer,
+0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
+   (red tests in place, item 32: implement the RTL with the FtqInOrderRelease and
+   FtqRecoveryKeepsOlder asserts, a restore FIFO of BranchCheckpointCount + 1 entries that
+   captures checkpoint/outcome/pc at event time, then mutants), FetchPcGen, FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
