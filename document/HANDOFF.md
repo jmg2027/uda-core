@@ -520,6 +520,44 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       simulation cache directory: build 0 errors, spec-check 0 errors (4 pre-existing warnings),
       RunSpecTests 174 PASS + 2 PENDING (FetchUnit shells).
 
+35. RTL block 19 - FetchPcGen (FetchPcGenSpecs, ADR-019G E-1): typed IO first (BootAddrIn =
+    Decoupled UInt as BootSequencer.bootOut, RecoveryEventIn, NextPcIn/PredictReqOut =
+    Decoupled PredictReq); 7 L1 tests observed PENDING on the typed shell, then RTL. State: pc,
+    pcValid, waiting (a request transferred, its NextPc not yet in), booted. Nothing is offered
+    before boot; the boot token is accepted once (ready = !booted && !event). A RecoveryEvent
+    wins in its cycle: PredictReq.valid, NextPc.ready and Boot.ready are low, pc = e.target,
+    waiting cleared, booted set. The requested PC is offered exactly (never rounded to the block
+    base) and held under backpressure. NextPcIn.ready = !event && (waiting || PredictReqOut.valid)
+    - local state only, so the BranchPredictor's atomic fork (its request ready waits for NextPc
+    ready) has no combinational cycle and the first request is accepted; a NextPc is applied only
+    if awaited or with the same-cycle request transfer, any other token (a pre-recovery answer)
+    is consumed and dropped. Assert FetchPcAligned. Tests (8): fpg.bootOnce, noBubble,
+    backpressure, recoveryPriority, staleNextPc (delayed predictor), backToBack, aligned
+    (negative), bootVsRecovery (added while designing the mutants). Mutants 13 all red plus the
+    typed shell PENDING: NextPcIn.ready from the outstanding state only (deadlock, also in the
+    loop), boot accepted twice, transfers in the event cycle, boot winning over a same-cycle
+    event, PC rounded to the block base, PC dropped under backpressure, same-cycle NextPc not
+    applied, any NextPc applied (stale overwrite), consecutive events keeping the first target,
+    no wait for NextPc, offering before boot, assertion removed, NextPcIn.ready from
+    PredictReqOut.fire (firtool: "detected combinational cycle ... fpg.io_nextPcIn_ready <-
+    fpg.io_predictReqOut_ready <- bp.io_predictReqIn_ready <- bp.io_nextPcOut_ready"; run.sh
+    shows only FirtoolNonZeroExitCode). spec-check-allow 34 -> 33 (propFetchPcAligned).
+36. Prediction-loop integration (verif/suites/spectest/PredictLoopSpecTests.scala): a test-only
+    PredictLoopHarness wires the real FetchPcGen, BranchPredictor and FetchTargetQueue as in
+    FrontendTop (NextPc back to FetchPcGen, HistoryRestore/PredictorTrain FTQ -> BP, one
+    RecoveryEvent), with FetchRequest/FtqCommit as ports and observation taps. loop.bootFlow
+    (no prediction before boot, mid-block boot 0x1008, one prediction per cycle), loop.ftqFull
+    (16 blocks then hold with the next PC offered, exactly one more after one commit),
+    loop.recovery and loop.backToBack (no prediction through the cycle of the last
+    HistoryRestore; resume exactly once at the last redirect target). firtool over the closed
+    loop exits 0 (standalone CHIRRTL emit + firtool as well as the simulation build).
+    Also: the FTQ restore-FIFO index is sliced to its width (removes a W004 dynamic-index
+    width warning; values were already 0..rqDepth-1). The three W004 warnings left are in the
+    BranchPredictor (provider - 1 on a 4-entry Vec), pre-existing from block 17.
+    Validation (clean rebuild after deleting verif/out/classes, fresh simulation cache): build 0
+    errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 186 PASS + 2 PENDING
+    (FetchUnit shells).
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -529,7 +567,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 174 PASS + 2 PENDING after the FTQ boundary
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 186 PASS + 2 PENDING after FetchPcGen and the
+  prediction-loop integration (clean rebuild, fresh simulation cache); 174 PASS + 2 PENDING after the FTQ boundary
   fixes (clean rebuild, fresh simulation cache); 169 PASS + 2 PENDING (FetchUnit shells) after RTL
   block 18 (FetchTargetQueue); 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
   ADR-019H verification and the FTQ red-first tests; 150 PASS + 5 PENDING after RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
@@ -551,7 +590,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 34 PROPERTYs after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 33 PROPERTYs after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -627,7 +666,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 ## Next steps (in order)
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
-   (done, item 33), FetchPcGen (next, red-first), FetchBuffer,
+   (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (next,
+   red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
@@ -652,6 +692,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 4. Harness: uncacheable PMA region, bus-stall knob, debugReq input, then SFENCE.VMA scn.
 
 ## Gotchas
+
+- svsim runs the whole test inside the testbench initial block: the DUT's RANDOMIZE_REG_INIT
+  initializer runs only after the test, so unreset registers read 0 in every L1 test.
+- A firtool failure in a simulation build surfaces in run.sh only as FirtoolNonZeroExitCode; to
+  read the message, emit the CHIRRTL (circt.stage.ChiselStage.emitCHIRRTL) and run firtool
+  directly. Rebuild verif/out/classes after restoring a mutant before trusting any result.
 
 - Coursier download is blocked (GitHub 403 via proxy), so setup.sh cannot resolve jars.
   Workaround used: a Maven pom resolving chisel_2.13:6.2.0 + scala 2.13.12 into

@@ -141,7 +141,7 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
   val rqHead  = RegInit(0.U(log2Ceil(rqDepth).W))
   val rqCount = RegInit(0.U(log2Ceil(rqDepth + 1).W))
   /** p modulo rqDepth for p < 2 * rqDepth; callers widen sums (+&) so the carry reaches the compare. */
-  private def rqWrap(p: UInt): UInt = Mux(p >= rqDepth.U, p - rqDepth.U, p)
+  private def rqWrap(p: UInt): UInt = Mux(p >= rqDepth.U, p - rqDepth.U, p)(log2Ceil(rqDepth) - 1, 0)
 
   /** The descriptor captured in the event cycle (checkpoint, outcome, pc of the chosen entry).
     * ArchRedirect: e.ftqIdx if live, else the tail slot's stored checkpoint, or the reset
