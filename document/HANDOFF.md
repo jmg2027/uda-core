@@ -441,6 +441,41 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     PredictionIn may be accepted while restores are pending; after a BranchMispredict the tail
     rewinds to e.ftqIdx + 1 and after an ArchRedirect to the head. No RTL yet.
 
+33. RTL block 18 - FetchTargetQueue (ADR-019 D-19.2/D-19.11, ADR-019G, ADR-019H E-5): FtqDepth
+    circular queue; per entry valid, fetched, resolvedValid, resolved CfiOutcome and the whole
+    Prediction (requested fetchPc, meta, full HistoryCheckpoint). Pointers head / tail / fetchPtr
+    are ftqIdx {wrap, idx}, ordered only by ftqOlder (the funcRobOlder rule on the wrap and idx
+    fields; next() = +1 mod 2 * FtqDepth). PredictionIn.ready = !full && !RecoveryEvent (a
+    pending restore does not hold it). FetchRequest from fetchPtr (lastSlot = cfiSlot if taken,
+    else FetchWidth - 1), never valid for an entry the same-cycle event discards. BranchMispredict
+    keeps e.ftqIdx and older, invalidates younger, records the resolved exit, tail = e.ftqIdx + 1,
+    fetchPtr rewound to at most e.ftqIdx + 1; ArchRedirect discards all, tail = fetchPtr = head
+    (after a same-cycle commit). Restore descriptors are captured in the event cycle into an
+    ordered FIFO of BranchCheckpointCount + 1 entries (overflow assert), one per event.
+    FtqCommit.ready = PredictorTrain.ready and PredictorTrain.valid = FtqCommit.valid (atomic);
+    committed = resolved exit if recorded, else FtqCommit.exit; training fetchPc = blockBase.
+    Asserts: FtqInOrderRelease (commit names the live head; release only with the train
+    transfer; head moves only by one commit; live slots are exactly [head, tail)),
+    FtqRecoveryKeepsOlder (next-cycle check against an event-cycle snapshot: kept entries valid
+    with unchanged Prediction and monotonic fetched, resolved exit changed only on e.ftqIdx,
+    younger entries gone, tail = e.ftqIdx + 1; no allocation in an event cycle), plus
+    "BranchMispredict names a live entry". IO unchanged from the shell. Tests: the 11 red tests
+    of item 32 went green unchanged; 4 added (ftq.resolvedExit, killedRequest (mispredict and
+    ArchRedirect), allocateDuringRestore, recoveringStaysLive), all PENDING against the shell.
+    Mutants: 17 all red (recovering entry killed, tail = e.ftqIdx, no tail rewind, no fetchPtr
+    rewind, restore pc from the requested fetchPc, ArchRedirect applyOutcome, training fetchPc
+    = requested fetchPc, committed always FtqCommit.exit, release without train ready, non-head
+    commit allowed (assert removed), a dropped back-to-back restore, reversed restore order,
+    pending restore holding PredictionIn, a killed request firing in the event cycle, allocation
+    in an event cycle, ArchRedirect always from the tail slot, one-entry restore storage). The
+    six caught first by design asserts were rerun with every assert disabled: all red on test
+    checks (the recovering-entry kill first survived; ftq.recoveringStaysLive was added for it).
+    spec-check-allow 36 -> 34 (propFtqInOrderRelease, propFtqRecoveryKeepsOlder).
+    Contract readings (no new ambiguity requiring an ADR): the ArchRedirect "current tail
+    checkpoint" for a non-live e.ftqIdx is the checkpoint stored in the physical slot at
+    tail.idx (deterministic, possibly stale; microarchitectural per D-19.11); an FtqCommit
+    in the same cycle as a RecoveryEvent is accepted and applied first.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -450,7 +485,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 169 PASS + 2 PENDING (FetchUnit shells) after RTL
+  block 18 (FetchTargetQueue); 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
   ADR-019H verification and the FTQ red-first tests; 150 PASS + 5 PENDING after RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
@@ -470,7 +506,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 36 PROPERTYs after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 34 PROPERTYs after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -546,9 +582,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 ## Next steps (in order)
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
-   (red tests in place, item 32: implement the RTL with the FtqInOrderRelease and
-   FtqRecoveryKeepsOlder asserts, a restore FIFO of BranchCheckpointCount + 1 entries that
-   captures checkpoint/outcome/pc at event time, then mutants), FetchPcGen, FetchBuffer,
+   (done, item 33), FetchPcGen (next, red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
