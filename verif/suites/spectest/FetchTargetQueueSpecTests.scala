@@ -281,6 +281,76 @@ object FetchTargetQueueSpecTests {
     }
   }
 
+  // ---- RTL block 18: mutant-driven additions ------------------------------------------------------
+
+  /** funcFtqCommitTrain: the committed exit is the recorded resolved exit when one exists. */
+  val resolvedExit = new SpecTest("ftq.resolvedExit", Seq("funcFtqCommitTrain", "funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      (0 until 3).foreach(n => d.enqueue(blk(n)))
+      d.run(4)
+      val x = Outcome(BRANCH, 1, taken = true, 0x4444)
+      fire(d, mispredict(1, x)); d.run(2)
+      val e0 = Outcome(JAL, 3, taken = true, 0x1234)
+      d.commitOne(0, e0); d.commitOne(1, Outcome()); d.run(2)
+      val c = d.trains.map(_._2.committed).toSeq
+      Seq(
+        chk(c.headOption.contains(e0), "an entry without a recorded resolution trains with the FtqCommit exit", s"$c"),
+        chk(c.lift(1).contains(x), "the recovering entry trains with the resolved exit recorded by its BranchMispredict", s"$c"))
+    }
+  }
+
+  /** funcFtqFetchIssue: a pending request whose entry the event discards never transfers in the event cycle. */
+  val killedRequest = new SpecTest("ftq.killedRequest", Seq("funcFtqFetchIssue", "funcFtqRecovery")) {
+    def run(): Seq[TCheck] = {
+      def scenario(e: Int => Event, survivor: Int): Seq[TCheck] = withDrv(this) { d =>
+        d.enqueue(blk(0)); d.enqueue(blk(1)); d.run(3)
+        d.reqReady = false
+        d.enqueue(blk(2)); d.enqueue(blk(3)); d.run(2)
+        d.reqReady = true; fire(d, e(1)); d.run(2)
+        d.enqueue(Pred(0x4000, nextPc = 0x4010, cp = cpN(9))); d.run(3)
+        val rq = d.reqs.map(r => (r._2.ftqIdx, r._2.fetchPc)).toSeq
+        Seq(chk(rq == Seq((0, 0x10000L), (1, 0x10010L), (survivor, 0x4000L)),
+          s"the discarded pending request (block 2) is not issued in the event cycle; the next request is the new block", s"$rq"))
+      }
+      scenario(i => mispredict(i, Outcome(BRANCH, 0, taken = true, 0x4000)), 2) ++ scenario(i => archRedirect(i), 0)
+    }
+  }
+
+  /** funcFtqAllocate: no allocation in a RecoveryEvent cycle, but a pending HistoryRestore does not hold PredictionIn. */
+  val allocateDuringRestore = new SpecTest("ftq.allocateDuringRestore", Seq("funcFtqAllocate", "funcFtqRecovery")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      (0 until 3).foreach(n => d.enqueue(blk(n)))
+      d.run(4)
+      d.restoreReady = false
+      d.pred = Some(Pred(0x4000, nextPc = 0x4010, cp = cpN(9)))
+      d.event = Some(mispredict(1, Outcome(BRANCH, 0, taken = true, 0x4000))); d.cycle(); d.event = None
+      val refusedInEvent = !d.predFire
+      d.cycle(); val acceptedWhilePending = d.predFire; d.pred = None
+      d.run(3); val stillPending = d.restores.isEmpty
+      d.restoreReady = true; d.run(3)
+      Seq(
+        chk(refusedInEvent, "PredictionIn is not accepted in the RecoveryEvent cycle", ""),
+        chk(acceptedWhilePending && stillPending, "a prediction is accepted while the HistoryRestore is still pending", s"${d.restores}"),
+        chk(d.reqs.map(_._2).lastOption.exists(r => r.ftqIdx == 2 && r.fetchPc == 0x4000), "and is fetched as ftqIdx 2", s"${d.reqs}"),
+        chk(d.restores.size == 1, "the pending restore is delivered once when ready", s"${d.restores}"))
+    }
+  }
+
+  /** propFtqRecoveryKeepsOlder at the ports: the recovering entry stays live, so a later ArchRedirect naming it
+    * (an older instruction of the same block traps at the head) restores that entry's checkpoint. */
+  val recoveringStaysLive = new SpecTest("ftq.recoveringStaysLive", Seq("funcFtqRecovery", "propFtqRecoveryKeepsOlder")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      (0 until 3).foreach(n => d.enqueue(blk(n)))
+      d.run(4)
+      fire(d, mispredict(1, Outcome(BRANCH, 2, taken = true, 0x4000))); d.run(1)
+      fire(d, archRedirect(1)); d.run(3)
+      val rs = d.restores.map(_._2).toSeq
+      Seq(chk(rs.size == 2 && rs(1).cp == cpN(1) && !rs(1).apply,
+        "an ArchRedirect naming the entry that just recovered finds it live and restores its checkpoint", s"$rs"))
+    }
+  }
+
   val all: Seq[SpecTest] = Seq(midBlockRequest, midBlockRestorePc, midBlockTrain, allocateFull, fetchIssueOrder,
-    mispredictRestore, recoveryWrap, archRedirectAll, backToBack, commitTrainHandshake, inOrderRelease)
+    mispredictRestore, recoveryWrap, archRedirectAll, backToBack, commitTrainHandshake, inOrderRelease, resolvedExit,
+    killedRequest, allocateDuringRestore, recoveringStaysLive)
 }
