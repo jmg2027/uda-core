@@ -25,7 +25,6 @@ propRobTagUniqueness
 propWakeupSelectBudget
 
 # WP-2/3 frontend vertices (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer asserts)
-propFetchBufferProgramOrder
 propFetchInOrder
 propNoStaleFetchBlock
 propPredictorStateMicroarchitectural

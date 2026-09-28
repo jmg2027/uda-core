@@ -558,6 +558,41 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 186 PASS + 2 PENDING
     (FetchUnit shells).
 
+37. RTL block 20 - FetchBuffer (FetchBufferSpecs, ADR-019G E-6): typed IO first (FetchBlockIn =
+    Flipped(Decoupled(FetchBlock)), FetchPacketOut = Decoupled(FetchPacket), raw RecoveryEvent);
+    14 L1 tests PENDING on the typed shell, then RTL. An 8-entry FIFO of FetchInsts (circular
+    head/tail + count). Each valid slot s of an accepted block goes to tail + PopCount(valid
+    slots before s) (never the physical slot), with pc = basePc + 4 * s, its real slot,
+    blockEnd and the exit prediction on the last valid slot (predictedTarget 0 elsewhere), and
+    the block fault; a mid-block fault slot keeps its slot and PC. FetchBlockIn.ready = no
+    RecoveryEvent and free >= PopCount(slotValid) (whole block or nothing); capacity is
+    conservative - space a same-cycle packet transfer frees is usable next cycle (documented and
+    tested in fb.simultaneous). FetchPacketOut offers the oldest min(DecodeWidth, occupancy) as a
+    lane prefix, may span two blocks, and leaves whole on transfer. A RecoveryEvent lowers both
+    handshakes in its cycle and resets head/tail/count. Found while designing the mutants and
+    fixed red-first: a held one-lane packet widened to two lanes when a block arrived behind it
+    (fb.backpressureGrow FAILED on that RTL: lane valids 10 -> 11); the presented lane count is
+    now frozen until the transfer (heldValid/heldN). Asserts: FetchBlockSlots (an accepted
+    non-fault block is one contiguous run, by slot index; a fault block has exactly one valid
+    slot) and FetchBufferProgramOrder (from the output stream only: every transferred
+    instruction follows the previous one - same FTQ block with slot + 1 and pc + 4 after a
+    non-blockEnd, or the next wrap-aware ftqIdx after a blockEnd - lanes are a prefix, no
+    transfer in an event cycle; history reset by RecoveryEvent). Tests (15): fb.basic,
+    midBlock, takenExit, fault, crossBlock, backpressure, capacity, wrap (software queue,
+    several wraps), recovery, recoveryInput, simultaneous, random (2500 blocks with random
+    legal masks, 1-in-12 fault blocks, random backpressure, periodic RecoveryEvents; exact
+    per-epoch sequence equality), malformed and orderAssert (negative), backpressureGrow.
+    Mutants 17 all red (also with every assert disabled, except the two assertion-only ones):
+    physical-slot enqueue, pc from the compact index, blockEnd always slot 3, predictedTaken
+    on every slot, partial accept, one-lane dequeue, held packet widening, output or input in
+    the event cycle, occupancy kept on recovery, fault forced to slot 0, cross-block lane
+    suppressed, pointer wrap off by one, enqueue/dequeue count corruption, shape assertion
+    removed, predictedTarget on non-taken slots, ProgramOrder check removed.
+    spec-check-allow 33 -> 32 (propFetchBufferProgramOrder).
+    Validation (restored source, verif/out/classes deleted, fresh simulation cache): build 0
+    errors, spec-check 0 errors (4 pre-existing warnings), frontend suites bp 17, ftq 20,
+    fpg 8, loop 4, fb 15 all PASS; RunSpecTests 201 PASS + 2 PENDING (FetchUnit shells).
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -567,7 +602,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 186 PASS + 2 PENDING after FetchPcGen and the
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 201 PASS + 2 PENDING after FetchBuffer (clean
+  rebuild, fresh simulation cache); 186 PASS + 2 PENDING after FetchPcGen and the
   prediction-loop integration (clean rebuild, fresh simulation cache); 174 PASS + 2 PENDING after the FTQ boundary
   fixes (clean rebuild, fresh simulation cache); 169 PASS + 2 PENDING (FetchUnit shells) after RTL
   block 18 (FetchTargetQueue); 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
@@ -590,7 +626,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 33 PROPERTYs after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 32 PROPERTYs after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -666,8 +702,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 ## Next steps (in order)
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
-   (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (next,
-   red-first), FetchBuffer,
+   (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
+   item 37), InstructionCache + InstBusAdapter (next, red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
