@@ -16,7 +16,9 @@ object RunSpecTests {
       StoreBufferSpecTests.all ++ DecodeUnitSpecTests.all ++ BackendTopSpecTests.all ++
       CsrTrapSeamSpecTests.all ++
       PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchUnitSpecTests.all ++
-      FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all
+      FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++
+      InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
+      ICacheBusSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

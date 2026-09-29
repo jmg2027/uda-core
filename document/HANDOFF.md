@@ -593,6 +593,55 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     errors, spec-check 0 errors (4 pre-existing warnings), frontend suites bp 17, ftq 20,
     fpg 8, loop 4, fb 15 all PASS; RunSpecTests 201 PASS + 2 PENDING (FetchUnit shells).
 
+38. RTL block 21 - InstBusAdapter + InstructionCache (ADR-016/019, D-19.4, D-19.12), no spec change.
+    Design bundles InstMemReq{paddr, size (instBusParams.sizeBits)} and InstMemResp{data, last,
+    denied}; CoreParams gains CoreFetchView(fetchBytes 16, fetchGenWidth 4), a mirror of the
+    frontend widths like BackendFrontendView (whoever composes FrontendParams with CoreParams
+    must require equality). Typed IO shells first: 8 iba.* and 16 ic.* tests PENDING, then RTL.
+    - InstBusAdapter: one transaction, no buffering. InstMemReq -> one held A Get (opcode Get,
+      param 0, source 0, full mask, data 0, corrupt 0; stable under backpressure); each D beat is
+      one InstMemResp (D.ready = resp ready), denied = D.denied || D.corrupt, last derived from
+      the request size and the D-fire count; the next request after the final beat. Asserts:
+      InstBusD (AccessAckData, source 0, size = active Get, no D without an active Get, no extra
+      beat); InstBusGetOnly (A opcode Get + elaboration require hasBCE = false, no B/C/E).
+    - InstructionCache: valid/PLRU in registers, tags/data in Mem (masked per way). One-entry
+      request/translation pairing register (a request is accepted in the cycle the held one's
+      Translation is consumed: one hit per cycle, ic.steadyHits); a lookup needs no miss, no
+      invalidate this cycle, and a free (or draining) answer holder. Index va[11:6], tag
+      pa[33:12], block va[5:4]; PageFault/AccessFault answer at once without bus traffic. One
+      miss context: cacheable miss Gets the 64-byte line (size 6, 16 beats), uncached Gets the
+      16-byte block (size 4) and never installs; denied accumulates over all beats (fault answer,
+      no install); install on the final beat into the invalid-first / tree-PLRU victim unless
+      fillPoison (an invalidate accepted during the fill) or an invalidate in the final-beat cycle.
+      Invalidate-all clears every valid bit in one cycle (ready always high, lookups blocked that
+      cycle). Answers leave through one stable holder. Asserts: ICacheTranslation (reqId equals
+      the paired request, no Miss status on the ITLB edge), ICacheLookup (at most one way hits),
+      ICacheFill (last flag), ICacheInvalidate (op), ICacheReadOnly (only line/block Gets),
+      ICacheResponseOrder (independent sequence numbers carried with each request; answers leave
+      consecutively; at most 3 in flight).
+    - Integration: ICacheBusHarness (real cache + adapter, TileLink memory in the driver):
+      icbus.fillAndHits (one Get of 64 bytes, 16 D beats, four blocks then hit), uncached (16-byte
+      Get each time, no later hit), denied (InstAccessFault, refill), invalidate (refill; an
+      invalidate during an outstanding fill prevents installation); A carries only Get.
+      Standalone CHIRRTL emit + firtool: exit 0 (no combinational cycle).
+    - Tests: 8 iba, 16 ic (incl. a 1500-access random stream against a software cache with
+      pages, cacheability, faults, denied lines, backpressure, translation delays and
+      invalidates; exact answers and exact bus-request sequence), 4 icbus. While bringing up the
+      random test two test bugs were fixed (a held answer released too late by the test; request
+      queueing let the quiesce bound expire so an invalidate hit a fill in flight - the RTL
+      poisoned it correctly and the model did not).
+    - Mutants: 20 required + 1 equivalent probe, each also with every assert disabled: all red
+      except C11a (removing !invFire from the install guard), equivalent because the invalidate's
+      valid clear is connected after the install (last connect wins); the strengthened C11b
+      (install actually wins) is red. With asserts off every mutant stays red on test checks,
+      except C12 (reqId mismatch accepted), which is assertion-only by nature.
+    - Allowlists: spec-check-allow 32 -> 29 (propICacheReadOnly, propICacheResponseOrder,
+      propInstBusGetOnly); spec-test-allow 36 -> 32 (the same three + funcICacheUncachedFetch).
+      propICacheFunctionTransparent stays (L3 retire equivalence, needs CoreTop).
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 229 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -602,7 +651,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 201 PASS + 2 PENDING after FetchBuffer (clean
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 229 PASS + 2 PENDING after InstBusAdapter +
+  InstructionCache (clean rebuild, fresh simulation cache); 201 PASS + 2 PENDING after FetchBuffer (clean
   rebuild, fresh simulation cache); 186 PASS + 2 PENDING after FetchPcGen and the
   prediction-loop integration (clean rebuild, fresh simulation cache); 174 PASS + 2 PENDING after the FTQ boundary
   fixes (clean rebuild, fresh simulation cache); 169 PASS + 2 PENDING (FetchUnit shells) after RTL
@@ -617,7 +667,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 36 names after the BranchPredictor (its functions and three PROPERTYs bound;
+- spec-test-allow: 32 names after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
   propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
@@ -626,7 +676,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 32 PROPERTYs after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 29 PROPERTYs after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -703,7 +753,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
    (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
-   item 37), InstructionCache + InstBusAdapter (next, red-first), FetchBuffer,
+   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (next, red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and

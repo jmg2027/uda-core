@@ -48,7 +48,6 @@ propSfenceFlushesAll
 
 # WP-7 bus adapter asserts
 propDataBusCoherenceSeparate
-propInstBusGetOnly
 
 # WP-7 cache asserts
 propDCacheCommittedStoresOnly
@@ -56,5 +55,3 @@ propDCacheFunctionTransparent
 propDCacheLoadAnswerExactlyOnce
 propDrainResponseMakesStoreVisible
 propICacheFunctionTransparent
-propICacheReadOnly
-propICacheResponseOrder

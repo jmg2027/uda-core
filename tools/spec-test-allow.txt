@@ -41,7 +41,6 @@ propSingleCycleValid
 
 # WP-7 bus adapters: L1 TileLink monitor SpecTest
 propDataBusCoherenceSeparate
-propInstBusGetOnly
 
 # WP-7 D-cache: needs an uncacheable PMA region in the harness or the L3 geometry sweep
 funcDCacheUncached
@@ -56,10 +55,7 @@ funcItlbFlush
 funcPtwFlush
 
 # WP-7 I-cache: needs an uncacheable/executable PMA region in the harness, an L1 SpecTest, or the L3 geometry sweep
-funcICacheUncachedFetch
 propICacheFunctionTransparent
-propICacheReadOnly
-propICacheResponseOrder
 
 # WP-6 SFENCE.VMA: the owner-protected assembler has no SFENCE.VMA mnemonic, so no .scn can issue it yet
 propSfenceFlushesAll
