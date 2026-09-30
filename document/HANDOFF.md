@@ -642,6 +642,63 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 229 PASS + 2 PENDING
       (FetchUnit shells), ASCII clean.
 
+39. PMA + RTL block 22 - InstructionTlb (Sv32Specs, ADR-019 D-19.4/D-19.6), no ADR or spec change.
+    - paramPmaMap implemented: PmaRegion{base, size, cacheable, executable, readable, writable} and
+      PmaMap(regions) in core/design/shared/Pma.scala, owned by CoreContractParams.pma. Elaboration
+      requires size > 0, base >= 0, no overlap, end <= 2^PAddrWidth; no default match (unmapped =
+      access fault). PmaMap.verificationDefault is explicitly a VERIFICATION-PLATFORM default, not
+      architectural: RAM [0, 0xF000_0000) cacheable/executable/RW, device [0xF000_0000,
+      0x1_0000_0000) uncacheable/non-executable/RW, nothing above 4 GiB. One shared hardware helper
+      PmaLookup(map, pa) -> (hit, PmaAttr) (@LocalSpec funcPmaCheck) for ITLB/DTLB/PTW/caches.
+      Tests pma.legality (overlap, zero size, negative base, beyond 2^34 rejected; adjacent and
+      exact-end accepted), pma.lookupDefault / lookupCustom (region first/last addresses, holes,
+      above 4 GiB, against the software reference). Design bundle WalkReq{vpn, context =
+      TranslationContext} added (bundle contract unchanged).
+    - InstructionTlb: typed IO first; 19 tlb.* tests PENDING, then RTL. 16 fully associative entries,
+      one held request + one stable Translation holder (request N+1 accepted in the cycle N resolves:
+      one hit per cycle, tlb.hitStream), reqId echoed opaquely. Bare iff satp Bare or priv M (pa =
+      va). Sv32 match (valid, global or ASID equal, 4 KiB vpn / 4 MiB vpn[19:10]); pa {PPN, va[11:0]}
+      or {PPN[21:10], va[21:0]}; fetch permission X, A (Svade), U-mode needs U, S-mode never a U page
+      (SUM/MXR/D ignored) -> PageFault; then PmaLookup on the actual pa (entry.pma is not trusted;
+      the test walker fills it with all-false) -> AccessFault unless mapped and executable. Faults
+      canonical (paddr 0, cacheable 0); Miss never reaches the I-cache (assert ItlbNoMiss).
+      Miss: capture the committed context, one stable WalkReq, no new request; Leaf installs and the
+      held request re-resolves through the normal lookup (so permission/PMA always apply);
+      PageFault/AccessFault answer, no install; Retry re-walks with the current context. Refill
+      invalidates every conflicting live entry (mapping overlap: 4K vpn equal, or any superpage and
+      vpn[19:10] equal; address space: either global or ASIDs equal), reuses a conflicting slot, else
+      invalid-first, else 16-way tree PLRU (touched on a successful hit and on refill only).
+      Flush (v0 full): always accepted, clears all entries, blocks request acceptance/resolution
+      that cycle; a walk overlapping a flush is stale and its result is neither installed nor
+      answered - the held request re-walks with the post-flush committed context; flush wins over
+      a same-cycle Leaf. Interpretation: a WalkReq still waiting for acceptance when the flush comes
+      stays asserted and stable (ready/valid rule) and its result is discarded, rather than being
+      withdrawn and re-issued. Asserts ItlbMatch (<= 1 match), ItlbWalkResp (VPN pairing),
+      ItlbNoMiss, ItlbNoDuplicate (no two live entries can match one lookup).
+    - Tests: tlb.bare, barePma, fourK, superpage, asid, perms, walkBackpressure (incl. a satp write
+      while the WalkReq waits), walkFaults, retry (context change during the first walk), conflicts
+      (global vs local same page; superpage over a contained 4K; global 4K under another ASID's
+      superpage - an exact same-VPN same-ASID duplicate cannot arise from legal traffic because it
+      would have hit), replacement (invalid-first, then the PLRU victim), flush, flushWalkReq,
+      flushWaitResp, flushSameCycle, outBackpressure, hitStream, wrongVpn (negative), random (2500
+      requests: ASIDs, U/S/M, Bare/Sv32, 4K/superpages, A/X/U/global, PMA RAM/device/unmapped,
+      walk latency, output backpressure, 38 flushes; exact equality with the page-table/PMA
+      reference). Integration ItlbICacheHarness (real ITLB -> real I-cache, FetchUnit-style atomic
+      ITlbReq+ICacheReq, synthetic walker, backing memory): itic.bare, sv32 (miss -> walk ->
+      translation -> fill; second fetch TLB+I-cache hit; page fault and PMA fault make no InstMem
+      request; superpage fetches the right line), sfence (the VA re-walks but the physically tagged
+      I-cache still hits). firtool on the harness: exit 0.
+    - Mutants: 25 required + T22a equivalence probe + 2 PMA, each ITLB mutant also with asserts
+      disabled: all red except T22a (removing !flushF from the install guard; equivalent because the
+      flush clear is connected after the install), the strengthened T22b is red; the asserts-off
+      control fails only tlb.wrongVpn. A first mutant run hung: unbounded wait loops in the tests
+      (a mutant that never walks); all loops are now bounded and runs have a timeout.
+    - Allowlists: spec-test-allow 32 -> 31 (funcItlbFlush bound). propNoFaultCaching,
+      propSfenceFlushesAll, propGenerationTagScope stay in both lists (DTLB/PTW/FetchUnit parts).
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 254 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -651,7 +708,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 229 PASS + 2 PENDING after InstBusAdapter +
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 254 PASS + 2 PENDING after PMA + InstructionTlb
+  (clean rebuild, fresh simulation cache); 229 PASS + 2 PENDING after InstBusAdapter +
   InstructionCache (clean rebuild, fresh simulation cache); 201 PASS + 2 PENDING after FetchBuffer (clean
   rebuild, fresh simulation cache); 186 PASS + 2 PENDING after FetchPcGen and the
   prediction-loop integration (clean rebuild, fresh simulation cache); 174 PASS + 2 PENDING after the FTQ boundary
@@ -667,7 +725,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 32 names after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
+- spec-test-allow: 31 names after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
   propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
@@ -732,6 +790,13 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
+- FetchUnit fetch generation (fetchGenWidth = 4): the generation wraps after 16 recoveries, so a
+  response whose request is exactly 16 recoveries old aliases the current generation and could be
+  accepted as current. The InstructionTlb and InstructionCache treat reqId as opaque and only echo
+  it; the FetchUnit owns the generation and must close this when its RTL lands (for example: bound
+  the in-flight window so no answer can be 16 generations old, widen the tag, or drain before
+  reuse). Not changed in the ITLB block by owner instruction.
+
 - Resolved by ADR-019A: RS allocation set, sysOp, RobStatus timing, robOlder domain,
   commit/ArchRedirect ordering. Still implementation choices (not contradictions):
   a CheckpointRelease whose owner the same-cycle RecoveryEvent kills is ignored;
@@ -753,7 +818,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
    (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
-   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (next, red-first), FetchBuffer,
+   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (next, red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and

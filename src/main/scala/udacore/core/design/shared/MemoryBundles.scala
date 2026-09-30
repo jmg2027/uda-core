@@ -110,6 +110,14 @@ class TlbEntry extends Bundle {
   val pma       = new PmaAttr
 }
 
+/** TLB -> PTW miss handoff: the page to walk and the committed TranslationContext captured at the
+  * miss (satp root and ASID; the PTW walks with this snapshot, not the live CSRs). */
+@LocalSpec(bndWalkReq)
+class WalkReq extends Bundle {
+  val vpn     = UInt(20.W)
+  val context = new udacore.backend.design.shared.TranslationContext
+}
+
 @LocalSpec(bndWalkResp)
 class WalkResp extends Bundle {
   val vpn    = UInt(20.W)

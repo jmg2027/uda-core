@@ -18,7 +18,8 @@ object RunSpecTests {
       PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchUnitSpecTests.all ++
       FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++
       InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
-      ICacheBusSpecTests.all
+      ICacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
+      ItlbICacheSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

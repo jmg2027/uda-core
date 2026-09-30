@@ -85,7 +85,9 @@ case class CoreContractParams(
       * implementation-specific, 0x800 is the verification platform's default. */
     @LocalSpec(paramDebugEntryAddr)
     debugEntryAddr: Long = 0x800L,
-    fetch: CoreFetchView = CoreFetchView()
+    fetch: CoreFetchView = CoreFetchView(),
+    /** Static PMA map (paramPmaMap); the default is the verification platform's, not architectural. */
+    pma: PmaMap = PmaMap.verificationDefault
 ) {
   require(dataWidth == 32, "v0 is RV32IM: dataWidth (XLEN) must be 32")
   require(vAddrWidth == 32 && pAddrWidth == 34, "v0 is Sv32: 32-bit VA, 34-bit PA")
@@ -93,6 +95,7 @@ case class CoreContractParams(
   require(privilege.usingSupervisor, "Sv32 translation requires S-mode (satp)")
   require(!dataCoherence, "TL-C data coherence is not part of v0 (ADR-019 D-19.13)")
   require(fetch.fetchBytes <= icache.blockBytes, "a fetch block must fit in one I-cache line")
+  pma.checkWidth(pAddrWidth)
   require(debugEntryAddr >= 0 && debugEntryAddr < (1L << vAddrWidth) && debugEntryAddr % 4 == 0,
     "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
 }
@@ -124,6 +127,7 @@ case class CoreParams(
   def debugEntryAddr: Long = contract.debugEntryAddr
   def usingRvvi: Boolean = tuning.usingRvvi
   def fetch: CoreFetchView = contract.fetch
+  def pma: PmaMap = contract.pma
 
   def usingUser: Boolean       = contract.privilege.usingUser
   def usingSupervisor: Boolean = contract.privilege.usingSupervisor
