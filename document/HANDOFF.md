@@ -698,6 +698,100 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
       errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 254 PASS + 2 PENDING
       (FetchUnit shells), ASCII clean.
+40. RTL block 23 - DataTlb (DataTlbSpecs, Sv32Specs, ADR-019 D-19.5/D-19.6) + LSQ wake erratum.
+    - CoreLsqView{loadQueueDepth 8, storeQueueDepth 8, generationWidth 2} owned by
+      CoreContractParams.lsq (reqIdWidth = 1 + max(lqIdx, sqIdx) + generation = 6), a core-domain
+      mirror of the BackendParams LSQ geometry; the core domain does not import BackendParams.
+      PENDING: CoreTop must require exact equality with BackendParams (LQ/SQ depth, lsqGenWidth,
+      lsqReqIdWidth) when it is composed; the LsqDtlbHarness previews that require and
+      lsqdtlb.params checks the defaults agree and a mismatch is rejected.
+    - Shared TLB helpers extracted to core/design/shared/TlbLogic.scala: matches (@LocalSpec
+      funcTlbMatch), compose (@LocalSpec funcSv32Decompose), conflicts / mapOverlap / asOverlap,
+      plruVictim / plruTouch. The InstructionTlb now uses them (behavior unchanged; all tlb./itic.
+      tests re-run green). Each TLB keeps its own state and translate/refill/flush functions.
+    - DataTlb: typed IO first; 21 dtlb.* tests PENDING, then RTL. Non-blocking: DtlbReqIn.ready =
+      !flush && (the request's own answer holder is free); it never depends on a walk. Two
+      independent stable answer holders, routed by TranslateReq.access (Load -> DCacheTranslationOut,
+      Store -> DtlbStoreRespOut) for every status incl. Miss and faults; reqId echoed opaquely, with
+      asserts that access is Load/Store and that reqId's LSQ isStore bit agrees (tag "DtlbReq").
+      Bare iff satp Bare or dataPriv M (not ctx.priv). Data permission with dataPriv: Load
+      (R or (MXR and X)) and A; Store W and A and D (Svade); U mode needs U; S mode U = 0 or SUM; MXR
+      has no effect on stores -> PageFault; then PmaLookup on the actual pa (Load: mapped and
+      readable; Store: mapped and writable) -> AccessFault; PageFault has priority; cacheable only
+      from the PMA map; faults canonical (paddr 0, cacheable 0). Miss: answered Miss at once (paddr
+      0, cacheable 0), the request is not retained; a walk starts only if none is active (captured
+      committed context, one stable WalkReq). One-entry walk-fault record {vpn, asid = the walk's
+      captured ASID, status}: written by a non-stale PageFault/AccessFault walk, cleared by a
+      non-stale Leaf/Retry result ("replaced by the next walk result") and by a flush; a later Sv32
+      miss on the same VPN and live ASID answers that fault on its own route without walking.
+      Retry, permission and PMA faults are never recorded. Walk completion: WalkResp is consumed
+      only when the refill-notice holder can take the notice, so every completed walk (Leaf / PF /
+      AF / Retry) yields exactly one stable DtlbRefillOut {walked vpn, status}; Leaf installs with
+      the ITLB conflict rule (conflicting slot, else invalid-first, else 16-way tree PLRU; touched on
+      a successful translated hit and on refill only) and never answers a request directly.
+      SFENCE.VMA (v0 full): always accepted, clears all entries and the fault record, no request
+      accepted that cycle; an overlapping walk is stale (a pending WalkReq stays asserted and
+      stable): its result installs nothing, records nothing, and is announced as Retry so the LSQ
+      re-walks with the post-flush context; flush + Leaf / flush + fault in one cycle behave the same.
+      Asserts: DtlbMissLocal (@LocalSpec propDtlbMissLocal: ready high whenever no flush and the
+      routed holder is free; every accepted request answered next cycle), DtlbReq, DtlbMatch,
+      DtlbWalkResp (VPN pairing), DtlbNoDuplicate.
+    - Erratum found by the integration harness (spec contradiction, fixed minimally): the DataTlb
+      contract (intfDtlbRefillOut "retries every translation-pending entry"; funcDtlbMissNonBlocking
+      "the retry after the next refill notice starts the next walk") and LoadStoreQueueSpecs
+      funcTranslationWait ("a DtlbRefill whose vpn matches") disagreed. With the VPN-matched wake, a
+      miss taken while another page is being walked starts no walk and its entry is never woken
+      (lsqdtlb.parkOne and lsqdtlb.faults hung; the LSQ unit model had walked every page
+      concurrently, so it never showed). funcTranslationWait / intfDtlbRefillIn now say any notice
+      wakes every translation-pending entry (and a notice during an in-flight translation is
+      remembered); the LSQ RTL drops the VPN compare (sawRefill, walkWait, TranslationPending).
+      Red first: new lsq.wakeAny with a DataTlb-faithful single-walk knob in the LSQ unit model
+      failed on the old LSQ, passes now; all lsq.* tests green. Cost: every pending entry retries
+      after each notice (most miss again while the next walk runs) - acceptable for v0, revisit
+      with the PPA work.
+    - Tests: dtlb.bare (dataPriv M is Bare with satp on and priv S; device window cacheable 0),
+      barePma, perms (R/W/D/A/X-only/MXR, MXR not for stores), privilege (U page / S page, SUM,
+      dataPriv vs priv), match (superpage, ASID, global), nonBlocking (A misses and walks, B misses
+      without a walk, C hits during the walk, ready never low, one notice for A, B retry walks),
+      routing (each port backpressured, the other keeps answering; hold stability), faultRecord
+      (load+store reuse without a second walk, other ASID walks, replacement, flush clears),
+      faultRecordAsid (context switched during the walk: keyed by the captured ASID),
+      retryNotCached, notices (all four outcomes, one stable notice each under backpressure),
+      conflicts, replacement (PLRU), flush, flushWalkReq, flushWaitResp, flushSameLeaf,
+      flushSameFault, flushWalkReqFault / flushWaitRespFault (an earlier flush: a stale PageFault
+      records nothing), noticeHold (a walk completing while the previous notice is held waits; both
+      notices arrive in order), walkCtx (the WalkReq keeps the captured ASID/root while the live
+      context changes without a flush), outputs (both ports backpressured), negative (Store with a load reqId, Fetch
+      access, wrong-VPN WalkResp), random (2500 completed requests with LSQ-style retry, in-flight
+      context changes, flushes, Retry results, backpressure on all outputs; exact equality with the
+      reference). Integration LsqDtlbHarness (real LoadStoreQueue -> real DataTlb; driver plays a
+      minimal VIPT DataCache pairing each DCacheLoadReq with the next-cycle DTLB load answer, the
+      PTW, StoreBuffer, uncached port, CommitUnit): lsqdtlb.params, parkOne, storeFirst,
+      storeMiss, genDrop (late D-cache answer of a killed load; store killed in its answer cycle),
+      wakeMany (two loads + a store, one walk, one notice), device (PMA device page -> cacheable 0
+      -> uncached head-execute path), faults (Load/Store PageFault/AccessFault causes, tval, fault
+      record), raceLoad / raceLoadLate / raceStore (the walk result lands in the cycle of the racing
+      DtlbReq: Miss answered, notice next cycle, entry not stranded). Every test checks the atomic
+      load DtlbReq + DCacheLoadReq fork and the answer pairing. firtool on the harness and on
+      DataTlb alone: exit 0. The real DataCache is not implemented yet.
+    - Mutants: 39 (D01-D38 incl. D08a/b), each also with asserts disabled, plus an asserts-off
+      control: all red. The first pass left four survivors, each a test gap now closed: D17 (PMA
+      checked before permission; no directed case failed both - perms now has an A = 0 page mapped
+      above 4 GiB), D26 (a stale fault from an earlier flush writes the record; only the same-cycle
+      flush was tested with a fault - two new fault variants), D28 (WalkResp consumed while the
+      previous notice is held - noticeHold), D34 (live context on the WalkReq - walkCtx); D08b (U/S
+      rule from priv) was caught only by the random test and now also by a directed privilege check.
+      D06/D07 (the reqId/access and Fetch assertions removed) are red only through dtlb.negative,
+      as intended for input-legality assertions; the asserts-off control fails only dtlb.negative.
+      A first background run hit the 1 h limit mid-mutant; the sources were checked against the
+      snapshot and restored before anything else.
+    - Allowlists: spec-check-allow 29 -> 28 (propDtlbMissLocal paired with its @LocalSpec assert);
+      spec-test-allow 31 -> 30 (funcDtlbFlush bound). propNoFaultCaching, propSfenceFlushesAll,
+      propGenerationTagScope stay in both lists (PTW / FetchUnit parts pending).
+
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 291 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean, firtool exit 0 on DataTlb and LsqDtlbHarness.
 
 ## Validation status (run this session)
 
@@ -708,7 +802,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 254 PASS + 2 PENDING after PMA + InstructionTlb
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 291 PASS + 2 PENDING after DataTlb + the LSQ wake
+  erratum (clean rebuild, fresh simulation cache); 254 PASS + 2 PENDING after PMA + InstructionTlb
   (clean rebuild, fresh simulation cache); 229 PASS + 2 PENDING after InstBusAdapter +
   InstructionCache (clean rebuild, fresh simulation cache); 201 PASS + 2 PENDING after FetchBuffer (clean
   rebuild, fresh simulation cache); 186 PASS + 2 PENDING after FetchPcGen and the
@@ -725,7 +820,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 31 names after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
+- spec-test-allow: 30 names after the DataTlb; 31 after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
   propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
@@ -734,7 +829,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 29 PROPERTYs after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 28 PROPERTYs after the DataTlb; 29 after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -806,7 +901,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   requires publication in the request cycle); a registered stage would need an ADR and a
   BranchUnit hold/kill rule. FTQ derives HistoryRestore.pc as block base + 4 * slot.
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
-- DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
+- DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize, and every
+  translation-pending LSQ entry retries after each refill notice (item 40 erratum); the retry
+  traffic is a PPA question, not a correctness one.
+- CoreTop composition must require CoreLsqView == the BackendParams LSQ geometry (item 40;
+  previewed in LsqDtlbHarness, still PENDING until CoreTop exists).
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
 - Predictor training at retirement only; no decode-time redirect for direct JAL.
 - v0 serializes every CSR op (rename into empty ROB) and refetches after CSR writes.
@@ -818,7 +917,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
    (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
-   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (next, red-first), FetchBuffer,
+   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (done, item 40), PageTableWalker (next, red-first), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and

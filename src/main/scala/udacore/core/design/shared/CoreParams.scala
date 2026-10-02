@@ -68,6 +68,25 @@ case class CoreFetchView(
   def fetchWidth: Int = fetchBytes / 4
 }
 
+/** The backend LSQ widths the core-side data path must agree with (a mirror, like CoreFetchView;
+  * the core domain never imports BackendParams). A DataTlb/DataCache request id is the LSQ encoding
+  * {isStore, entry index padded to indexWidth, entry generation}. Whoever composes BackendParams with
+  * CoreParams (CoreTop) must require loadQueueDepth, storeQueueDepth and lsqGenWidth equal. */
+case class CoreLsqView(
+    loadQueueDepth: Int = 8,  // BackendTuningParams.loadQueueDepth
+    storeQueueDepth: Int = 8, // BackendTuningParams.storeQueueDepth
+    generationWidth: Int = 2  // BackendParams.lsqGenWidth
+) {
+  require(loadQueueDepth >= 2 && (loadQueueDepth & (loadQueueDepth - 1)) == 0, "load queue depth must be a power of two >= 2")
+  require(storeQueueDepth >= 2 && (storeQueueDepth & (storeQueueDepth - 1)) == 0, "store queue depth must be a power of two >= 2")
+  require(generationWidth >= 1, "LSQ entry generation must have at least one bit")
+  private def log2(x: Int): Int = 32 - Integer.numberOfLeadingZeros(x - 1)
+  def lqIdxWidth: Int = log2(loadQueueDepth)
+  def sqIdxWidth: Int = log2(storeQueueDepth)
+  def indexWidth: Int = math.max(lqIdxWidth, sqIdxWidth)
+  def reqIdWidth: Int = 1 + indexWidth + generationWidth
+}
+
 /** Contract tier. */
 case class CoreContractParams(
     dataWidth: Int = 32,   // XLEN (v0: 32)
@@ -87,7 +106,8 @@ case class CoreContractParams(
     debugEntryAddr: Long = 0x800L,
     fetch: CoreFetchView = CoreFetchView(),
     /** Static PMA map (paramPmaMap); the default is the verification platform's, not architectural. */
-    pma: PmaMap = PmaMap.verificationDefault
+    pma: PmaMap = PmaMap.verificationDefault,
+    lsq: CoreLsqView = CoreLsqView()
 ) {
   require(dataWidth == 32, "v0 is RV32IM: dataWidth (XLEN) must be 32")
   require(vAddrWidth == 32 && pAddrWidth == 34, "v0 is Sv32: 32-bit VA, 34-bit PA")
@@ -128,6 +148,7 @@ case class CoreParams(
   def usingRvvi: Boolean = tuning.usingRvvi
   def fetch: CoreFetchView = contract.fetch
   def pma: PmaMap = contract.pma
+  def lsq: CoreLsqView = contract.lsq
 
   def usingUser: Boolean       = contract.privilege.usingUser
   def usingSupervisor: Boolean = contract.privilege.usingSupervisor

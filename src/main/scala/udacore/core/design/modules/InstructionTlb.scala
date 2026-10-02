@@ -82,33 +82,18 @@ class InstructionTlb(val params: CoreParams) extends CoreModule {
   private val outFree  = !outValid || io.iCacheTranslationOut.fire
   private val resp     = io.itlbWalkRespIn
 
-  private def plruVictim(b: UInt): UInt = {
-    var node = 1.U(1.W)
-    for (_ <- 0 until levels) node = Cat(node, b((node - 1.U).pad(levels)))
-    node(levels - 1, 0)
-  }
-  private def plruTouch(b: UInt, w: UInt): UInt = {
-    val bits = VecInit(b.asBools)
-    for (lvl <- 0 until levels) {
-      val node = if (lvl == 0) 1.U else Cat(1.U(1.W), w(levels - 1, levels - lvl))
-      bits((node - 1.U).pad(levels)) := !w(levels - 1 - lvl)
-    }
-    bits.asUInt
-  }
-  private def mapOverlap(a: TlbEntry, b: TlbEntry): Bool =
-    Mux(a.superpage || b.superpage, a.vpn(19, 10) === b.vpn(19, 10), a.vpn === b.vpn)
-  private def asOverlap(a: TlbEntry, b: TlbEntry): Bool = a.global || b.global || a.asid === b.asid
+  private def plruVictim(b: UInt): UInt         = TlbLogic.plruVictim(b, levels)
+  private def plruTouch(b: UInt, w: UInt): UInt = TlbLogic.plruTouch(b, w, levels)
 
   // ---- funcItlbTranslate ------------------------------------------------------------------------
   private val va      = held.vaddr
   private val vpn     = va(31, 12)
   private val bare    = !ctx.satpMode || ctx.priv === PrivM
-  private val matches = VecInit(entries.map(e => e.valid && (e.global || e.asid === ctx.asid) &&
-    Mux(e.superpage, e.vpn(19, 10) === vpn(19, 10), e.vpn === vpn)))
+  private val matches = VecInit(entries.map(TlbLogic.matches(_, vpn, ctx.asid)))
   private val hitAny  = matches.asUInt.orR
   private val hitIdx  = OHToUInt(matches)
   private val e       = Mux1H(matches, entries)
-  private val paTrans = Mux(e.superpage, Cat(e.ppn(21, 10), va(21, 0)), Cat(e.ppn, va(11, 0)))
+  private val paTrans = TlbLogic.compose(e, va)
   private val permOk  = e.x && e.a && Mux(ctx.priv === PrivU, e.u, !e.u)
   private val paLook  = Mux(bare, va.pad(params.pAddrWidth), paTrans)
   private val (pmaHit, pmaAttr) = PmaLookup(params.pma, paLook)
@@ -168,7 +153,7 @@ class InstructionTlb(val params: CoreParams) extends CoreModule {
   // ---- funcItlbRefill ---------------------------------------------------------------------------
   private val newE = Wire(new TlbEntry)
   newE := resp.bits.entry; newE.valid := true.B; newE.vpn := resp.bits.vpn
-  private val conflict = VecInit(entries.map(x => x.valid && mapOverlap(x, newE) && asOverlap(x, newE)))
+  private val conflict = VecInit(entries.map(x => x.valid && TlbLogic.conflicts(x, newE)))
   private val invalid  = VecInit(entries.map(!_.valid))
   private val slot = Mux(conflict.asUInt.orR, PriorityEncoder(conflict),
     Mux(invalid.asUInt.orR, PriorityEncoder(invalid), plruVictim(plru)))
@@ -191,6 +176,6 @@ class InstructionTlb(val params: CoreParams) extends CoreModule {
   assert(!io.iCacheTranslationOut.valid || io.iCacheTranslationOut.bits.status =/= TranslationStatus.Miss,
     "ItlbNoMiss: TranslationStatus.Miss offered to the InstructionCache")
   for (i <- 0 until n; j <- i + 1 until n)
-    assert(!(entries(i).valid && entries(j).valid && mapOverlap(entries(i), entries(j)) && asOverlap(entries(i), entries(j))),
+    assert(!(entries(i).valid && entries(j).valid && TlbLogic.conflicts(entries(i), entries(j))),
       "ItlbNoDuplicate: two live entries can match the same lookup")
 }

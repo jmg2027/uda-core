@@ -19,7 +19,8 @@ object RunSpecTests {
       FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++
       InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
       ICacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
-      ItlbICacheSpecTests.all
+      ItlbICacheSpecTests.all ++
+      DataTlbSpecTests.all ++ LsqDtlbSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

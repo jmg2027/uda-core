@@ -40,7 +40,6 @@ propPtwNoRecursiveTranslation
 propWalkFaultTyping
 
 # WP-6 TLB asserts
-propDtlbMissLocal
 
 # WP-6 shared Sv32 asserts (ITLB/DTLB/PTW)
 propNoFaultCaching

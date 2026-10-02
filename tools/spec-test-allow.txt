@@ -50,7 +50,6 @@ propDCacheFunctionTransparent
 propDrainResponseMakesStoreVisible
 
 # WP-6 SFENCE.VMA: not encodable by the protected assembler
-funcDtlbFlush
 funcPtwFlush
 
 # WP-7 I-cache: needs an uncacheable/executable PMA region in the harness, an L1 SpecTest, or the L3 geometry sweep
