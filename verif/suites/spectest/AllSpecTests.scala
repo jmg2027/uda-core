@@ -20,7 +20,8 @@ object RunSpecTests {
       InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
       ICacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
       ItlbICacheSpecTests.all ++
-      DataTlbSpecTests.all ++ LsqDtlbSpecTests.all
+      DataTlbSpecTests.all ++ LsqDtlbSpecTests.all ++
+      PageTableWalkerSpecTests.all ++ MmuSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

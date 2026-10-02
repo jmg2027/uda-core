@@ -3,7 +3,7 @@ package udacore.core.design.shared
 import chisel3._
 import chisel3.util._
 import framework.macros.LocalSpec
-import udacore.core.spec.shared.Sv32Specs.{funcSv32Decompose, funcTlbMatch}
+import udacore.core.spec.shared.Sv32Specs.{funcSv32Decompose, funcTlbMatch, propNoFaultCaching, propSfenceFlushesAll}
 
 /** Combinational TLB logic shared by the InstructionTlb and the DataTlb: the entry match, the leaf
   * address composition, the refill conflict test, and the tree pseudo-LRU. Each TLB owns its own
@@ -25,6 +25,25 @@ object TlbLogic {
   def mapOverlap(a: TlbEntry, b: TlbEntry): Bool =
     Mux(a.superpage || b.superpage, a.vpn(19, 10) === b.vpn(19, 10), a.vpn === b.vpn)
   def asOverlap(a: TlbEntry, b: TlbEntry): Bool = a.global || b.global || a.asid === b.asid
+
+  /** propNoFaultCaching (TLB side): a live entry appears or changes only in the cycle after a
+    * non-stale Leaf walk result was taken (`leafRefill`); faults, Retry and stale results install
+    * nothing. (The PTW asserts that a Leaf result is a legal Sv32 leaf.) */
+  @LocalSpec(propNoFaultCaching)
+  def assertNoFaultCaching(entries: Vec[TlbEntry], leafRefill: Bool, tag: String): Unit = {
+    val prev = RegNext(entries, 0.U.asTypeOf(entries))
+    val ok   = RegNext(leafRefill, false.B)
+    for (i <- entries.indices) {
+      val changed = entries(i).valid && (!prev(i).valid || entries(i).asUInt =/= prev(i).asUInt)
+      assert(!changed || ok, s"$tag: NoFaultCaching: an entry was installed without a non-stale Leaf walk result")
+    }
+  }
+
+  /** propSfenceFlushesAll (TLB side): in the cycle after a flush token, no entry is valid. */
+  @LocalSpec(propSfenceFlushesAll)
+  def assertFlushed(entries: Vec[TlbEntry], flushFire: Bool, tag: String): Unit =
+    assert(!RegNext(flushFire, false.B) || !entries.map(_.valid).reduce(_ || _),
+      s"$tag: SfenceFlushesAll: a TLB entry is valid after the flush")
 
   /** Tree pseudo-LRU over 2^levels ways: heap node k (1..2^levels-1) is bit k-1; a set bit sends the
     * victim search right. */

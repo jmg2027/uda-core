@@ -118,6 +118,28 @@ class WalkReq extends Bundle {
   val context = new udacore.backend.design.shared.TranslationContext
 }
 
+/** Sv32 page-table entry in memory order (field order = bits 31..0, so asUInt is the raw PTE). */
+@LocalSpec(bndSv32Pte)
+class Sv32Pte extends Bundle {
+  val ppn1 = UInt(12.W)
+  val ppn0 = UInt(10.W)
+  val rsw  = UInt(2.W)
+  val d, a, g, u, x, w, r, v = Bool()
+  def ppn: UInt = chisel3.util.Cat(ppn1, ppn0)
+}
+
+/** A physical PTE read from the PageTableWalker to the DataCache: no virtual address, no translation metadata. */
+@LocalSpec(bndPtwMemReq)
+class PtwMemReq(pAddrWidth: Int) extends Bundle {
+  val paddr = UInt(pAddrWidth.W)
+}
+
+@LocalSpec(bndPtwMemResp)
+class PtwMemResp extends Bundle {
+  val pte         = new Sv32Pte
+  val accessFault = Bool()
+}
+
 @LocalSpec(bndWalkResp)
 class WalkResp extends Bundle {
   val vpn    = UInt(20.W)

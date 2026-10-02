@@ -178,4 +178,6 @@ class InstructionTlb(val params: CoreParams) extends CoreModule {
   for (i <- 0 until n; j <- i + 1 until n)
     assert(!(entries(i).valid && entries(j).valid && TlbLogic.conflicts(entries(i), entries(j))),
       "ItlbNoDuplicate: two live entries can match the same lookup")
+  TlbLogic.assertNoFaultCaching(entries, resp.fire && !stale && !flushF && resp.bits.status === WalkStatus.Leaf, "Itlb")
+  TlbLogic.assertFlushed(entries, flushF, "Itlb")
 }

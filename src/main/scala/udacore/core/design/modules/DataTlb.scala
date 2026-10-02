@@ -219,4 +219,6 @@ class DataTlb(val params: CoreParams) extends CoreModule {
   for (i <- 0 until n; j <- i + 1 until n)
     assert(!(entries(i).valid && entries(j).valid && TlbLogic.conflicts(entries(i), entries(j))),
       "DtlbNoDuplicate: two live entries can match the same lookup")
+  TlbLogic.assertNoFaultCaching(entries, resp.fire && !dead && resp.bits.status === WalkStatus.Leaf, "Dtlb")
+  TlbLogic.assertFlushed(entries, flushF, "Dtlb")
 }

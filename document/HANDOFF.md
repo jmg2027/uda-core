@@ -793,6 +793,95 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
       errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 291 PASS + 2 PENDING
       (FetchUnit shells), ASCII clean, firtool exit 0 on DataTlb and LsqDtlbHarness.
 
+41. RTL block 24 - PageTableWalker (PageTableWalkerSpecs, Sv32Specs, ADR-019 D-19.6) + PtwMem/PMA seam.
+    - Spec seam (text only, no ADR): funcDCachePhysicalRead now checks the PTE address with
+      funcPmaCheck - unmapped / not readable -> accessFault with no array or bus access; readable
+      and cacheable -> the normal physical lookup (a miss may allocate/join an MSHR and installs the
+      line); readable and not cacheable -> one exact uncached 4-byte physical read that installs
+      nothing (denied/corrupt -> accessFault). No HeadMemGrant (internal PTW read); it may share the
+      uncached bus resource/source id but must keep PTW vs LSQ answer identity.
+      funcPtwPhysicalAccess and the PTW contract text say the same (cacheable is not a legality
+      condition for a PTE read). OBLIGATION for the DataCache block: implement exactly this,
+      including the readable-uncacheable PTE path, with a directed L1 test.
+    - Design bundles: Sv32Pte {ppn1 12, ppn0 10, rsw 2, d a g u x w r v; ppn = Cat(ppn1, ppn0)} in
+      memory bit order, PtwMemReq {paddr}, PtwMemResp {pte, accessFault} (no VA, no translation
+      metadata).
+    - PageTableWalker: typed IO first; 19 ptw.* tests PENDING, then RTL. One walk at a time; accepts
+      only when idle and no result is held; round-robin when both TLBs request (the pointer moves
+      only on an accepted request); the loser stays backpressured (never both inputs ready, assert).
+      Requester, VPN and the complete TranslationContext are captured at acceptance and used for the
+      whole walk. Level 1 at {rootPpn, VPN[1], 00}, level 0 at {PPN, VPN[0], 00} (34-bit physical).
+      PmaLookup before every read: unmapped / not readable -> AccessFault with no PtwMemReq; a
+      readable uncacheable address is read. PtwMemReq stable until accepted; exactly one PtwMemResp
+      per read; accessFault -> AccessFault without using the PTE. PTE rules: V = 0 or (R = 0, W = 1)
+      -> PageFault; R or X -> leaf (level 1: superpage, PPN[0] != 0 -> PageFault); level-0 pointer ->
+      PageFault. No R/W/X, U/S/SUM/MXR or A/D checks (TLB duties): X-only, A = 0, D = 0 leaves are
+      Leaf. G is ORed over every PTE read (non-leaf G makes the refill global). Leaf entry = {vpn,
+      superpage, leaf PPN, captured ASID, global, R/W/X/U/A/D, advisory PMA of the walked page:
+      4K {PPN, 0}, 4M {PPN[21:10], VPN[0], 0}}; an unmapped target page is still a Leaf. One stable
+      result holder, offered only on the requester's edge. SFENCE: atomic fork (each TLB flush is
+      offered only when the other is ready; both fire in the SfenceVma transfer cycle, payload passed
+      through); not accepted while a result is held (a presented result is never changed into Retry,
+      and the response drains first even when both could transfer); wins over a new walk request in
+      its cycle (the round-robin pointer is unchanged); a walk it overlaps completes every read it
+      issued or presented (nothing retracted) and answers Retry. Asserts: PtwArbitrate (one grant),
+      PtwFlush (both tokens fire with the SFENCE), PtwNoRecursiveTranslation (@LocalSpec: PtwMemReq
+      4-byte aligned and equal to the expected physical PTE address from the captured root / pointer
+      PPN), PtwMemResp (no unsolicited answer), WalkFaultTyping (@LocalSpec: the result status
+      matches its cause; Leaf carries a valid entry).
+    - Tests: ptw.arbitrate (ITLB-only, DTLB-only, 6 contended pairs alternate, never both ready),
+      addresses (exact level-1/level-0 addresses, max VPN with a large root, max root PPN -> unmapped
+      AF with no read, alignment), structure (11 PTE shapes), global (non-leaf G, leaf G, none,
+      superpage G), entry (all fields, advisory PMA incl. device and unmapped targets), pma
+      (readable uncacheable root table is read; non-readable and unmapped -> AF with no read; level-0
+      address checked), denied (level 1, level 0, PTE data of a denied read ignored),
+      memBackpressure (stable request, one read outstanding), outputs (blocked result stable, no new
+      walk meanwhile, per-requester edge), flushIdle (atomic, payload, one TLB not ready -> neither
+      offered), flushIssue / flushWait / flushBetween / flushFault (old Leaf / PageFault /
+      AccessFault -> one Retry; every read completed once, none retracted), flushBlocked (a blocked
+      Leaf stays Leaf; SFENCE after it drains), flushPriority, context, negative (unsolicited
+      PtwMemResp), random (3000 walks from both TLBs over random two-level / superpage / malformed
+      tables, three roots incl. a device-window root and an unmapped root, denied reads, latency,
+      backpressure on memory and both result edges and both flush edges, SFENCE races; every
+      accepted walk answered once to its requester, equal to the reference or Retry when overlapped).
+      Integration MmuHarness (real ITLB + DTLB + PTW, synthetic physical PTE memory): mmu.concurrent
+      (concurrent misses both walked and routed; ITLB 4K two-level + DTLB 4M; ITLB stream held, DTLB
+      hits continue), mmu.global (level-1 G reaches both TLBs), mmu.sfence (remap + SFENCE: atomic
+      flush, both re-walk the new mapping), mmu.sfenceOverlap (overlapped DTLB walk -> Retry notice,
+      nothing stale installed; overlapped ITLB walk -> Retry, the ITLB re-walks), mmu.pmaFault
+      (PMA-illegal level-0 table -> instruction / store access fault). firtool exit 0 on the harness
+      and the PTW. The optional CommitUnit -> PTW seam harness was not built: CommitUnit leaves
+      Step.Flush only on sfenceVmaOut.fire (its unit test backpressures it) and ptw.flushIdle /
+      flushBlocked prove ready rises only in the cycle both TLB flushes fire.
+    - Shared assertions added to close the Sv32 PROPERTYs: TlbLogic.assertNoFaultCaching (@LocalSpec
+      propNoFaultCaching; called by both TLBs: a live entry appears or changes only the cycle after a
+      non-stale Leaf result), TlbLogic.assertFlushed (@LocalSpec propSfenceFlushesAll: no valid entry
+      the cycle after a flush token), and the PTW NoFaultCaching assert (every Leaf result is a legal
+      Sv32 leaf: R or X, not W without R, superpage PPN[0] = 0). The leaf-legality half lives in the
+      PTW because the TLB unit tests use synthetic walkers. Probe: DataTlb flush-skips-entry-0 and
+      stale-Leaf-installs mutants abort the simulation on these asserts.
+    - Mutants: 30 (P01-P30: fixed priority, both inputs ready, live context after acceptance, wrong
+      VPN index / root shift / pointer shift, V ignored, W-without-R accepted, PPN[0] alignment
+      ignored, level-0 pointer accepted, A = 0 / D = 0 as walk faults, non-leaf / leaf G dropped,
+      wrong TLB routing, second walk while a result is held, PMA readable ignored / cacheable
+      required, denied read as PageFault, one-sided or half-ready flush, SFENCE losing priority,
+      stale not marked, stale Leaf / PageFault / AccessFault leaking, a presented PtwMemReq
+      retracted, a blocked result changed to Retry, a blocked result not blocking SFENCE), each also
+      with asserts disabled, plus an asserts-off control: all red. The first pass caught P03 (live
+      context), P08 (V ignored) and P09 (W without R) only through ptw.random: the directed
+      structure cases used R = X = 0 PTEs, which degrade to a pointer and still page-fault at level 0;
+      they now use PTEs that would otherwise be legal leaves, and ptw.context adds back-to-back
+      requests with different contexts - all three are red on directed tests. The asserts-off
+      control fails only ptw.negative (the unsolicited-PtwMemResp assert).
+    - Allowlists: spec-check-allow 28 -> 24 (propPtwNoRecursiveTranslation, propWalkFaultTyping,
+      propNoFaultCaching, propSfenceFlushesAll); spec-test-allow 30 -> 28 (funcPtwFlush,
+      propSfenceFlushesAll; funcPtwArbitrate / funcSv32Walk / funcPtwPhysicalAccess and the two PTW
+      PROPERTYs were not listed and are now bound by ptw.* tests). propGenerationTagScope stays in
+      both until the FetchUnit stale-response generation question is closed.
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 315 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean, firtool exit 0 on PageTableWalker and MmuHarness.
+
 ## Validation status (run this session)
 
 - `bash verif/bin/build.sh`: 0 errors at each of the three commits.
@@ -802,7 +891,8 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 291 PASS + 2 PENDING after DataTlb + the LSQ wake
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 315 PASS + 2 PENDING after PageTableWalker + the MMU
+  integration (clean rebuild, fresh simulation cache); 291 PASS + 2 PENDING after DataTlb + the LSQ wake
   erratum (clean rebuild, fresh simulation cache); 254 PASS + 2 PENDING after PMA + InstructionTlb
   (clean rebuild, fresh simulation cache); 229 PASS + 2 PENDING after InstBusAdapter +
   InstructionCache (clean rebuild, fresh simulation cache); 201 PASS + 2 PENDING after FetchBuffer (clean
@@ -820,7 +910,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 30 names after the DataTlb; 31 after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
+- spec-test-allow: 28 names after the PageTableWalker; 30 after the DataTlb; 31 after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
   propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
@@ -829,7 +919,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 28 PROPERTYs after the DataTlb; 29 after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 24 PROPERTYs after the PageTableWalker; 28 after the DataTlb; 29 after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -917,7 +1007,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
    (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
-   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (done, item 40), PageTableWalker (next, red-first), FetchBuffer,
+   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (done, item 40), PageTableWalker (done, item 41), DataCache (next: real PtwMemReq service incl. the readable-uncacheable PTE path of item 41, 2 MSHRs / 2 targets, the ADR-019F store-visibility race), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
