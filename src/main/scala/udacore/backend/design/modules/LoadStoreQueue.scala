@@ -46,7 +46,7 @@ class LqEntry(val params: BackendParams) extends BackendBundle {
   val hxPending   = Bool() // a headExecute notice awaits MemResultOut
   val granted     = Bool()
   val ucIssued    = Bool()
-  val sawRefill   = Bool() // a matching refill arrived while the lookup was in flight
+  val sawRefill   = Bool() // a refill notice arrived while the lookup was in flight
 }
 
 /** One SQ entry (bndStoreQueueEntry) plus its translation, publication, and uncached bookkeeping. */
@@ -64,7 +64,7 @@ class SqEntry(val params: BackendParams) extends BackendBundle {
   val exception   = new ExceptionInfo(params)
   val xlReq       = Bool() // a DtlbReq{Store} is owed
   val xlWait      = Bool() // its answer is in flight
-  val walkWait    = Bool() // answered Miss; waits for the refill of its VPN
+  val walkWait    = Bool() // answered Miss; waits for the next refill notice
   val sawRefill   = Bool()
   val resPending  = Bool()
   val hxPending   = Bool()
@@ -344,17 +344,16 @@ class LoadStoreQueue(val params: BackendParams) extends BackendModule {
   // ---- funcTranslationWait -------------------------------------------------------------------------------
 
   private val rf      = io.dtlbRefillIn
-  private def vpnOf(va: UInt): UInt = va(vAddrWidth - 1, 12)
   private val refillV = rf.valid
   @LocalSpec(funcTranslationWait)
   val translationWait: Unit = {
     rf.ready := true.B
     when(refillV) {
-      for (i <- 0 until nL) when(lq(i).valid && vpnOf(lq(i).vaddr) === rf.bits.vpn) {
+      for (i <- 0 until nL) when(lq(i).valid) {
         when(lq(i).state === LoadState.TranslationPending) { lq(i).state := LoadState.Ready }
         when(lq(i).state === LoadState.Issued && !lq(i).uncacheable) { lq(i).sawRefill := true.B }
       }
-      for (j <- 0 until nS) when(sq(j).valid && vpnOf(sq(j).vaddr) === rf.bits.vpn) {
+      for (j <- 0 until nS) when(sq(j).valid) {
         when(sq(j).walkWait) { sq(j).walkWait := false.B; sq(j).xlReq := true.B }
         when(sq(j).xlWait) { sq(j).sawRefill := true.B }
       }
@@ -373,7 +372,7 @@ class LoadStoreQueue(val params: BackendParams) extends BackendModule {
           when(t.bits.cacheable) { sq(j).resPending := true.B }.otherwise { sq(j).hxPending := true.B }
         }
         is(TranslationStatus.Miss) {
-          when(sq(j).sawRefill || (refillV && vpnOf(sq(j).vaddr) === rf.bits.vpn)) { sq(j).xlReq := true.B }
+          when(sq(j).sawRefill || refillV) { sq(j).xlReq := true.B }
             .otherwise { sq(j).walkWait := true.B }
         }
         is(TranslationStatus.PageFault) {
@@ -444,7 +443,7 @@ class LoadStoreQueue(val params: BackendParams) extends BackendModule {
             }
         }
         is(LoadStatus.TlbMiss) {
-          when(dl.sawRefill || (refillV && vpnOf(dl.vaddr) === rf.bits.vpn)) { lq(di).state := LoadState.Ready }
+          when(dl.sawRefill || refillV) { lq(di).state := LoadState.Ready }
             .otherwise { lq(di).state := LoadState.TranslationPending }
         }
         is(LoadStatus.Replay) { lq(di).state := LoadState.Ready }

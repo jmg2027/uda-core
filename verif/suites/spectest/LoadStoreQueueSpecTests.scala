@@ -57,6 +57,7 @@ object LoadStoreQueueSpecTests {
     var dtlbReady, dcReady, memResReady, sbReady, ucLdReady, ucStReady = true
     var dcLatency = 2; var tlbLatency = 1; var walkLatency = 4; var sbDrainDelay = 2; var ucLatency = 2
     var dcOutOfOrder = false
+    var singleWalk = false      // DataTlb-faithful: a miss while a walk is active starts no walk
     var replayNext = 0          // the next n Data answers become Replay
     var sbPartial = false       // the StoreBuffer reports partial for any overlap
     var ucLoadFault, ucStoreFault = false
@@ -203,7 +204,7 @@ object LoadStoreQueueSpecTests {
             if (pgx.fault.contains("pf")) (TranslationStatus.PageFault, 0L, false)
             else if (pgx.fault.contains("af")) (TranslationStatus.AccessFault, 0L, false)
             else if (!pgx.present) {
-              if (!pgx.walking) { pgx.walking = true; refq += ((cyc + walkLatency, va >>> 12)) }
+              if (!pgx.walking && !(singleWalk && refq.nonEmpty)) { pgx.walking = true; refq += ((cyc + walkLatency, va >>> 12)) }
               (TranslationStatus.Miss, 0L, false)
             } else (TranslationStatus.Hit, pa, pgx.cacheable)
         }
@@ -392,6 +393,22 @@ object LoadStoreQueueSpecTests {
         chk(d.done(0).exists(_.data == d.mem(0x21008L >>> 2)), "a load whose refill beat its TlbMiss answer re-issues and completes", s"${d.results}"),
         chk(d.done(1).exists(_.exc.isEmpty), "a store whose refill beat its Miss answer re-translates and completes", s"${d.results}")
       )
+    }
+  }
+
+  /** DataTlb runs one walk at a time: a miss while another page is being walked starts no walk, so
+    * the entry must retry after any refill notice (not only one for its own VPN) or it waits forever. */
+  val wakeAny = new SpecTest("lsq.wakeAny", Seq("funcTranslationWait")) {
+    def run(): Seq[TCheck] = withDrv(this) { d =>
+      d.singleWalk = true; d.walkLatency = 6; d.robHead = Some(0)
+      d.pages(0x11) = Page(0x21, present = false); d.pages(0x12) = Page(0x22, present = false)
+      d.pages(0x13) = Page(0x23, present = false)
+      d.allocate(Alloc(0, isLoad = true)); d.allocate(Alloc(1, isLoad = true)); d.allocate(Alloc(2, isLoad = false))
+      d.address(Agu(0, 0x11004L)); d.address(Agu(1, 0x12008L)); d.address(Agu(2, 0x1300cL, 3))
+      d.until(150)(Seq(0, 1, 2).forall(d.done(_).nonEmpty))
+      Seq(chk(d.done(0).exists(_.data == d.mem(0x21004L >>> 2)) && d.done(1).exists(_.data == d.mem(0x22008L >>> 2)) &&
+          d.done(2).exists(_.exc.isEmpty),
+        "entries that missed while another page was walked retry after its notice, walk in turn, and complete", s"${d.results}"))
     }
   }
 
@@ -836,6 +853,6 @@ object LoadStoreQueueSpecTests {
     def run(): Seq[TCheck] = Seq(11, 23).flatMap(seed => withDrv(this, seed)(d => try modelRun(d, seed, 300) catch { case e: Throwable => lastTrace.takeRight(60).foreach(println); throw e }))
   }
 
-  val all: Seq[SpecTest] = Seq(allocate, addressCapture, translationWait, refillRace, staleAnswer, disambig, loadIssue, forward, forwardOnce,
+  val all: Seq[SpecTest] = Seq(allocate, addressCapture, translationWait, refillRace, wakeAny, staleAnswer, disambig, loadIssue, forward, forwardOnce,
     loadComplete, storeComplete, uncached, storeCommit, recovery, model)
 }
