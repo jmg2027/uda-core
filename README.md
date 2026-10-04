@@ -51,6 +51,9 @@ for validation results, integration boundaries, and implementation order.
 
 ## Build and Verify
 
+Verification runs locally. GitHub Actions CI workflows are intentionally absent
+to avoid hosted-runner usage for this personal project.
+
 ```bash
 bash verif/bin/setup.sh                        # toolchain (once per container)
 bash verif/bin/build.sh                        # compile gate: 0 errors
