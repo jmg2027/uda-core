@@ -12,12 +12,12 @@ The v0 architectural point is RV32IM_Zicsr_Zifencei + Svade with M/S/U privilege
 
 ## Status
 
-RTL implementation is in progress against the ADR-019 spec DSL contracts. The backend
-(including rename, ROB, execution, CSR/trap handling, LSQ, StoreBuffer, decode, and
-BackendTop), BranchPredictor, and FetchTargetQueue have passing L1 tests. The remaining
-frontend vertices, MMU, caches, bus adapters, and CoreTop are still design shells, so
+RTL implementation is in progress against the ADR-019 spec DSL contracts. The backend,
+BranchPredictor, FetchTargetQueue, FetchPcGen, FetchBuffer, InstructionCache,
+InstBusAdapter, InstructionTlb, DataTlb, and PageTableWalker have RTL and L1 tests.
+FetchUnit, DataCache, DataBusAdapter, FrontendTop, and CoreTop remain unfinished;
 whole-core scenario verification is not active yet. See [HANDOFF](document/HANDOFF.md)
-for the current validation results and implementation order.
+for validation results, integration boundaries, and implementation order.
 
 ## v0 Reference Machine
 

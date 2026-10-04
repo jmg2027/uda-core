@@ -15,7 +15,13 @@ object RunSpecTests {
       BranchPublishSpecTests.all ++ CsrControllerSpecTests.all ++ TrapControllerSpecTests.all ++ LoadStoreQueueSpecTests.all ++
       StoreBufferSpecTests.all ++ DecodeUnitSpecTests.all ++ BackendTopSpecTests.all ++
       CsrTrapSeamSpecTests.all ++
-      PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchUnitSpecTests.all
+      PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchTargetQueueMergeSpecTests.all ++ FetchUnitSpecTests.all ++
+      FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++
+      InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
+      ICacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
+      ItlbICacheSpecTests.all ++
+      DataTlbSpecTests.all ++ LsqDtlbSpecTests.all ++
+      PageTableWalkerSpecTests.all ++ MmuSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

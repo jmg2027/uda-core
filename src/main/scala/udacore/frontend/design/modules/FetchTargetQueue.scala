@@ -167,8 +167,12 @@ class FetchTargetQueue(val params: FrontendParams) extends FrontendModule {
         }
       }
       resolvedNext(index(ev.ftqIdx)) := ev.cfiOutcome
-      tail  := next(ev.ftqIdx)
-      fetch := next(ev.ftqIdx)
+      tail := next(ev.ftqIdx)
+      // Preserve unissued survivors; rewind only a cursor beyond the new tail.
+      val keepCount = distance(ev.ftqIdx, head) +& 1.U
+      when(distance(fetch, head) > keepCount) {
+        fetch := next(ev.ftqIdx)
+      }
     }
     when(archEvent) {
       val emptyAt = Mux(commit.fire, next(head), head)

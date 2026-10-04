@@ -1,6 +1,47 @@
-# Handoff: ADR-019 conventional OoO v0 - spec-DSL migration (2026-09-25)
+# Handoff: remote implementation integration (2026-10-05)
 
-## Current working-tree update (2026-10-05)
+## Current integration update
+
+Merged `origin/claude/spectest-validation-mutant-c7rz4l` at `cd6ef6a` into
+`main` based on `ddbb04c`, preserving both histories and the real spec-framework
+integration. The earlier session records below are historical.
+
+- Integrated FetchPcGen, FetchBuffer, InstructionCache, InstBusAdapter,
+  InstructionTlb, DataTlb, PageTableWalker, PMA helpers, and their L1/integration
+  suites. Retained the remote LSQ all-waiter refill wakeup and readable,
+  non-cacheable PTE contract corrections.
+- Kept the globally unique spec IDs and `framework.spec.Spec` imports from main.
+  Retired the remote branch's resolved assertion/test allowlist entries.
+- Reconciled the independently implemented FTQs. Kept main's restore FIFO,
+  pending-restore backpressure, last-accepted checkpoint fallback, and authoritative
+  FtqCommit exit. Adapted the remote tests to these explicit DSL contracts instead
+  of retaining incompatible expectations. Kept all 11 original tests and all 20
+  remote cases in separate registered suites.
+- The remote 2,144-scenario fetch rewind sweep exposed skipped unissued surviving
+  entries. Clarified `funcFtqFetchIssue` before changing RTL: branch recovery keeps
+  the current fetch cursor unless it lies beyond the surviving window's tail.
+  Architectural recovery still restarts at the next allocation. Observed the
+  failing baseline before the fix; the sweep covers every head position and
+  occupancy, including wrap and simultaneous older commit.
+- Refreshed README and AGENTS implementation status. No protected infrastructure
+  files changed; standing owner questions and toolchain gotchas remain below.
+
+Validation for this integration:
+- Clean direct compile and spec artifact export passed: 688 specs, 594 source
+  tags, and no unresolved references. Spec-check: 0 errors, 4 existing warnings.
+- Framework macro/artifact/failure-propagation regression tests passed.
+- Full merged L1 regression: 326 PASS, 0 FAIL, 2 PENDING (328 total). Both
+  pending cases are the existing FetchUnit shell tests. All 31 FTQ cases pass,
+  including the 2,144-scenario recovery sweep. No CoreTop simulation was claimed.
+- `sbt scalafmtCheckAll test` was attempted. It stopped at scalafmt 3.7.17
+  download failure and an Ivy lock write restriction under the user home;
+  historical sbt tests did not run. Direct L1 simulation is the active RTL gate.
+
+Next: implement FetchUnit, DataCache, and DataBusAdapter; connect FrontendTop and
+CoreTop, then enable CoreHarness/L2 scenarios. Whole-core execution is still
+unverified. The existing two FetchUnit pending tests remain explicit shell debt.
+
+## Earlier local implementation update (2026-10-05)
 
 Base: `main` at `60f689d`. The earlier branch/session narrative below is historical.
 This update is included in the owner-requested main-branch integration.
@@ -35,7 +76,7 @@ This update is included in the owner-requested main-branch integration.
   Compile: 0 errors. Spec-check: 0 errors, 4 pre-existing coverage warnings.
   No protected files were changed.
 
-Next: FetchPcGen, FetchBuffer, InstructionCache + InstBusAdapter, InstructionTlb,
+Next at that point (superseded by the integration update above): FetchPcGen, FetchBuffer, InstructionCache + InstBusAdapter, InstructionTlb,
 DataTlb, PageTableWalker, FetchUnit, DataCache, DataBusAdapter, FrontendTop, CoreTop,
 then activate CoreHarness and the L2 scenarios. BranchPredictor and FTQ are complete
 at L1; whole-core integration remains unverified.
@@ -478,13 +519,480 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
     restore = checkpoint then the resolved outcome (Branch shift, Call push pc+4, Ret pop);
     training only at PredictorTrain (BTB allocate/update for a committed taken exit, TAGE
     provider/useful update, allocation on a misprediction, useful decay otherwise); TAGE
-    training recomputes the lookup on current tables rather than trusting the stored meta.
+    training recomputed the lookup on current tables (superseded by ADR-019H E-1, item 31).
     Asserts PredictFromPcOnly, OneTakenCfiPerBlock, HistoryRestoreExact, restore-counter
     overflow. 13 L1 tests (bp.*; red: 12 PENDING, plus bp.tageUseAlt added for a survivor);
     22 mutants all red after strengthening (event-cycle hold, LRU victim, useAlt first
     survived). ADR-019G mutants (fall-through and RAS push from the raw fetch PC) are red; the
     HistoryRestore.pc mutant belongs to the FTQ block. spec-test-allow 46 -> 36,
     spec-check-allow 39 -> 36.
+
+31. ADR-019H (Erratum 08, owner ruling 2026-09-26) - pushed unverified as five WIP commits
+    (0dc1aa7..16b3925, the shell was unavailable), verified on branch
+    `claude/spectest-validation-mutant-c7rz4l`: TAGE training uses the prediction-time identity
+    in PredictorTrain.meta (provider from meta, index/tag recomputed from fetchPc/ghr, update
+    skipped when the provider entry was replaced, allocation above meta.provider); CfiType.CallRet
+    = 6 (JALR, rd and rs1 both link, rd != rs1) classified before rd-link -> Call; CallRet
+    predicts from the RAS top and pops then pushes cfiPc + 4 (prediction and restore); the
+    restore counter is sized from BranchCheckpointCount + 1 with a bound assert. Gates: build 0
+    errors, spec-check 0 errors. Red-first by reverting 9b5ead4's RTL (CfiType constant kept):
+    bp.trainIdentity, bp.callRet, bp.restoreBound, decode.rv32im red; bp.backToBack stayed green
+    (the pre-019H counter already held PredictReq per event; E-5 names that behavior), so it is
+    covered by mutants instead. 15 mutants all red: commit-time lookup (whole pre-019H training
+    block; provider choice only; no tag guard), CallRet (BTB target, speculative push / pop /
+    ignored, restore ignored, restore as push with a consistent assert, top + 1 write, decode as
+    Call, decode also for rd == rs1), restore release on any restore, events saturating at one,
+    the pre-019H `=== 7` overflow assert.
+32. RTL block 18 red-first - FetchTargetQueue: 8 new L1 tests (ftq.allocateFull,
+    fetchIssueOrder, mispredictRestore, recoveryWrap, archRedirect, backToBack (ADR-019H E-5:
+    three events with restores held, one event landing on a restore accept),
+    commitTrainHandshake, inOrderRelease (negative: the design assertion text must contain
+    `FtqInOrderRelease`)); with the 3 ADR-019G tests, 11 PENDING against the shell. They bind
+    propFtqInOrderRelease and propFtqRecoveryKeepsOlder at L1 (still in spec-check-allow until
+    their asserts land). Test assumptions the RTL must meet or the test must be revisited:
+    PredictionIn may be accepted while restores are pending; after a BranchMispredict the tail
+    rewinds to e.ftqIdx + 1 and after an ArchRedirect to the head. No RTL yet.
+
+33. RTL block 18 - FetchTargetQueue (ADR-019 D-19.2/D-19.11, ADR-019G, ADR-019H E-5): FtqDepth
+    circular queue; per entry valid, fetched, resolvedValid, resolved CfiOutcome and the whole
+    Prediction (requested fetchPc, meta, full HistoryCheckpoint). Pointers head / tail / fetchPtr
+    are ftqIdx {wrap, idx}, ordered only by ftqOlder (the funcRobOlder rule on the wrap and idx
+    fields; next() = +1 mod 2 * FtqDepth). PredictionIn.ready = !full && !RecoveryEvent (a
+    pending restore does not hold it). FetchRequest from fetchPtr (lastSlot = cfiSlot if taken,
+    else FetchWidth - 1); in an event cycle that discards the fetchPtr entry the request's valid
+    is lowered (q.valid = pending && !killed - the normal behavior, not a fired-then-cancelled
+    transfer). BranchMispredict
+    keeps e.ftqIdx and older, invalidates younger, records the resolved exit, tail = e.ftqIdx + 1,
+    fetchPtr rewound to at most e.ftqIdx + 1; ArchRedirect discards all, tail = fetchPtr = head
+    (after a same-cycle commit). Restore descriptors are captured in the event cycle into an
+    ordered FIFO of BranchCheckpointCount + 1 entries (overflow assert), one per event.
+    FtqCommit.ready = PredictorTrain.ready and PredictorTrain.valid = FtqCommit.valid (atomic);
+    committed = resolved exit if recorded, else FtqCommit.exit; training fetchPc = blockBase.
+    Asserts: FtqInOrderRelease (commit names the live head; release only with the train
+    transfer; head moves only by one commit; live slots are exactly [head, tail)),
+    FtqRecoveryKeepsOlder (next-cycle check against an event-cycle snapshot: kept entries valid
+    with unchanged Prediction and monotonic fetched, resolved exit changed only on e.ftqIdx,
+    younger entries gone, tail = e.ftqIdx + 1; no allocation in an event cycle), plus
+    "BranchMispredict names a live entry". IO unchanged from the shell. Tests: the 11 red tests
+    of item 32 went green unchanged; 4 added (ftq.resolvedExit, killedRequest (mispredict and
+    ArchRedirect), allocateDuringRestore, recoveringStaysLive), all PENDING against the shell.
+    Mutants: 17 all red (recovering entry killed, tail = e.ftqIdx, no tail rewind, no fetchPtr
+    rewind, restore pc from the requested fetchPc, ArchRedirect applyOutcome, training fetchPc
+    = requested fetchPc, committed always FtqCommit.exit, release without train ready, non-head
+    commit allowed (assert removed), a dropped back-to-back restore, reversed restore order,
+    pending restore holding PredictionIn, the killed request's valid left high in the event
+    cycle, allocation
+    in an event cycle, ArchRedirect always from the tail slot, one-entry restore storage). The
+    six caught first by design asserts were rerun with every assert disabled: all red on test
+    checks (the recovering-entry kill first survived; ftq.recoveringStaysLive was added for it).
+    spec-check-allow 36 -> 34 (propFtqInOrderRelease, propFtqRecoveryKeepsOlder).
+    Contract readings (no new ambiguity requiring an ADR): the ArchRedirect "current tail
+    checkpoint" for a non-live e.ftqIdx is the checkpoint stored in the physical slot at
+    tail.idx (deterministic, possibly stale; microarchitectural per D-19.11) - corrected in
+    item 34 for a never-written slot; an FtqCommit in the same cycle as a RecoveryEvent is
+    accepted and applied first. Two boundary defects of this block are fixed in item 34.
+
+34. FetchTargetQueue boundary fixes (no ADR or spec change):
+    - Restore FIFO enqueue index: `rq(rqWrap(rqHead + rqCount))` truncated the 3-bit sum at v0
+      (rqDepth 5): rqHead 4 + rqCount 4 wrote slot 0 instead of 3. Now `rqHead +& rqCount`
+      (and `rqHead +& 1.U` on dequeue) before modulo rqDepth; rqDepth stays 5 (not rounded to a
+      power of two). Red on the pre-fix RTL: ftq.restoreFifoWrap (four warm-up restores move the
+      read position to 4; then 4 progressively older BranchMispredicts + 1 ArchRedirect behind a
+      low ready came out misordered with a lost payload) and ftq.restoreFifoModel (independent
+      software FIFO; mismatch at cycle 39). The model test covers every read position x
+      occupancy 0..4 at an enqueue, simultaneous enqueue/dequeue at full, and several wraps.
+    - Full-queue fetchPtr rewind: `Mux(ftqOlder(r, fpAfter), next(r), fpAfter)` compared the tail
+      sentinel with a live tag. Counterexample head 0, tail 16, fetchPtr 16, BranchMispredict
+      ftqIdx 0: tail became 1, fetchPtr stayed 16, and the target block allocated at ftqIdx 1
+      was never requested (ftq.fullRewind: no request). Now, from the pre-event head:
+      keepCount = dist(r, head) + 1, fetchDist = dist(fpAfter, head), fetchPtr = head +
+      min(fetchDist, keepCount), dist(a, b) = (a - b) mod 2 * FtqDepth; ftqOlder stays for live
+      entries only. ftq.rewindSweep (one simulation, 2144 scenarios): every head position,
+      occupancy 1..16, recovering entry at head / middle / tail - 1, fetchPtr at an unissued
+      entry or the tail, a same-cycle surviving FetchRequest, a same-cycle older FtqCommit;
+      48 scenarios failed on the pre-fix RTL (all full-queue; the test then had a wrong
+      expectation for a recovery on the youngest entry of a full queue, which stays full until a
+      commit - fixed in the test, after which the pre-fix clamp fails 16 scenarios).
+    - ArchRedirect fallback: a never-written tail slot no longer supplies its (unreset)
+      Prediction register; `written` bits (set at allocation) select the reset checkpoint (all
+      zero, the BranchPredictor's reset history) instead; a written slot's stale checkpoint is
+      still used. ftq.fallbackReset is a regression guard only: svsim runs the whole test inside
+      the testbench initial block, so the DUT's RANDOMIZE_REG_INIT initializer runs after the
+      test and Verilator starts unreset registers at 0 - a never-written slot is
+      indistinguishable from the zero reset checkpoint in this simulator (an opt-in random-init
+      knob was tried in CachedSimulator and reverted for that reason).
+    - Mutants (FTQ suite, 20 tests): truncating enqueue index RED (restoreFifoWrap,
+      restoreFifoModel), also with every assert disabled; pre-fix ftqOlder clamp RED (fullRewind,
+      rewindSweep 16 scenarios), also with asserts disabled; keepCount without + 1 RED; fetchPtr
+      rewind removed RED; fallback without the written check SURVIVED (the simulator limitation
+      above); distances from the post-commit head SURVIVED - equivalent under legal inputs (both
+      distances move by the same base, and they differ only if an unfetched head commits).
+      The asserts-off control fails only ftq.inOrderRelease (it requires the assertion).
+    - Validation on the restored source after deleting verif/out/classes and with a fresh
+      simulation cache directory: build 0 errors, spec-check 0 errors (4 pre-existing warnings),
+      RunSpecTests 174 PASS + 2 PENDING (FetchUnit shells).
+
+35. RTL block 19 - FetchPcGen (FetchPcGenSpecs, ADR-019G E-1): typed IO first (BootAddrIn =
+    Decoupled UInt as BootSequencer.bootOut, RecoveryEventIn, NextPcIn/PredictReqOut =
+    Decoupled PredictReq); 7 L1 tests observed PENDING on the typed shell, then RTL. State: pc,
+    pcValid, waiting (a request transferred, its NextPc not yet in), booted. Nothing is offered
+    before boot; the boot token is accepted once (ready = !booted && !event). A RecoveryEvent
+    wins in its cycle: PredictReq.valid, NextPc.ready and Boot.ready are low, pc = e.target,
+    waiting cleared, booted set. The requested PC is offered exactly (never rounded to the block
+    base) and held under backpressure. NextPcIn.ready = !event && (waiting || PredictReqOut.valid)
+    - local state only, so the BranchPredictor's atomic fork (its request ready waits for NextPc
+    ready) has no combinational cycle and the first request is accepted; a NextPc is applied only
+    if awaited or with the same-cycle request transfer, any other token (a pre-recovery answer)
+    is consumed and dropped. Assert FetchPcAligned. Tests (8): fpg.bootOnce, noBubble,
+    backpressure, recoveryPriority, staleNextPc (delayed predictor), backToBack, aligned
+    (negative), bootVsRecovery (added while designing the mutants). Mutants 13 all red plus the
+    typed shell PENDING: NextPcIn.ready from the outstanding state only (deadlock, also in the
+    loop), boot accepted twice, transfers in the event cycle, boot winning over a same-cycle
+    event, PC rounded to the block base, PC dropped under backpressure, same-cycle NextPc not
+    applied, any NextPc applied (stale overwrite), consecutive events keeping the first target,
+    no wait for NextPc, offering before boot, assertion removed, NextPcIn.ready from
+    PredictReqOut.fire (firtool: "detected combinational cycle ... fpg.io_nextPcIn_ready <-
+    fpg.io_predictReqOut_ready <- bp.io_predictReqIn_ready <- bp.io_nextPcOut_ready"; run.sh
+    shows only FirtoolNonZeroExitCode). spec-check-allow 34 -> 33 (propFetchPcAligned).
+36. Prediction-loop integration (verif/suites/spectest/PredictLoopSpecTests.scala): a test-only
+    PredictLoopHarness wires the real FetchPcGen, BranchPredictor and FetchTargetQueue as in
+    FrontendTop (NextPc back to FetchPcGen, HistoryRestore/PredictorTrain FTQ -> BP, one
+    RecoveryEvent), with FetchRequest/FtqCommit as ports and observation taps. loop.bootFlow
+    (no prediction before boot, mid-block boot 0x1008, one prediction per cycle), loop.ftqFull
+    (16 blocks then hold with the next PC offered, exactly one more after one commit),
+    loop.recovery and loop.backToBack (no prediction through the cycle of the last
+    HistoryRestore; resume exactly once at the last redirect target). firtool over the closed
+    loop exits 0 (standalone CHIRRTL emit + firtool as well as the simulation build).
+    Also: the FTQ restore-FIFO index is sliced to its width (removes a W004 dynamic-index
+    width warning; values were already 0..rqDepth-1). The three W004 warnings left are in the
+    BranchPredictor (provider - 1 on a 4-entry Vec), pre-existing from block 17.
+    Validation (clean rebuild after deleting verif/out/classes, fresh simulation cache): build 0
+    errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 186 PASS + 2 PENDING
+    (FetchUnit shells).
+
+37. RTL block 20 - FetchBuffer (FetchBufferSpecs, ADR-019G E-6): typed IO first (FetchBlockIn =
+    Flipped(Decoupled(FetchBlock)), FetchPacketOut = Decoupled(FetchPacket), raw RecoveryEvent);
+    14 L1 tests PENDING on the typed shell, then RTL. An 8-entry FIFO of FetchInsts (circular
+    head/tail + count). Each valid slot s of an accepted block goes to tail + PopCount(valid
+    slots before s) (never the physical slot), with pc = basePc + 4 * s, its real slot,
+    blockEnd and the exit prediction on the last valid slot (predictedTarget 0 elsewhere), and
+    the block fault; a mid-block fault slot keeps its slot and PC. FetchBlockIn.ready = no
+    RecoveryEvent and free >= PopCount(slotValid) (whole block or nothing); capacity is
+    conservative - space a same-cycle packet transfer frees is usable next cycle (documented and
+    tested in fb.simultaneous). FetchPacketOut offers the oldest min(DecodeWidth, occupancy) as a
+    lane prefix, may span two blocks, and leaves whole on transfer. A RecoveryEvent lowers both
+    handshakes in its cycle and resets head/tail/count. Found while designing the mutants and
+    fixed red-first: a held one-lane packet widened to two lanes when a block arrived behind it
+    (fb.backpressureGrow FAILED on that RTL: lane valids 10 -> 11); the presented lane count is
+    now frozen until the transfer (heldValid/heldN). Asserts: FetchBlockSlots (an accepted
+    non-fault block is one contiguous run, by slot index; a fault block has exactly one valid
+    slot) and FetchBufferProgramOrder (from the output stream only: every transferred
+    instruction follows the previous one - same FTQ block with slot + 1 and pc + 4 after a
+    non-blockEnd, or the next wrap-aware ftqIdx after a blockEnd - lanes are a prefix, no
+    transfer in an event cycle; history reset by RecoveryEvent). Tests (15): fb.basic,
+    midBlock, takenExit, fault, crossBlock, backpressure, capacity, wrap (software queue,
+    several wraps), recovery, recoveryInput, simultaneous, random (2500 blocks with random
+    legal masks, 1-in-12 fault blocks, random backpressure, periodic RecoveryEvents; exact
+    per-epoch sequence equality), malformed and orderAssert (negative), backpressureGrow.
+    Mutants 17 all red (also with every assert disabled, except the two assertion-only ones):
+    physical-slot enqueue, pc from the compact index, blockEnd always slot 3, predictedTaken
+    on every slot, partial accept, one-lane dequeue, held packet widening, output or input in
+    the event cycle, occupancy kept on recovery, fault forced to slot 0, cross-block lane
+    suppressed, pointer wrap off by one, enqueue/dequeue count corruption, shape assertion
+    removed, predictedTarget on non-taken slots, ProgramOrder check removed.
+    spec-check-allow 33 -> 32 (propFetchBufferProgramOrder).
+    Validation (restored source, verif/out/classes deleted, fresh simulation cache): build 0
+    errors, spec-check 0 errors (4 pre-existing warnings), frontend suites bp 17, ftq 20,
+    fpg 8, loop 4, fb 15 all PASS; RunSpecTests 201 PASS + 2 PENDING (FetchUnit shells).
+
+38. RTL block 21 - InstBusAdapter + InstructionCache (ADR-016/019, D-19.4, D-19.12), no spec change.
+    Design bundles InstMemReq{paddr, size (instBusParams.sizeBits)} and InstMemResp{data, last,
+    denied}; CoreParams gains CoreFetchView(fetchBytes 16, fetchGenWidth 4), a mirror of the
+    frontend widths like BackendFrontendView (whoever composes FrontendParams with CoreParams
+    must require equality). Typed IO shells first: 8 iba.* and 16 ic.* tests PENDING, then RTL.
+    - InstBusAdapter: one transaction, no buffering. InstMemReq -> one held A Get (opcode Get,
+      param 0, source 0, full mask, data 0, corrupt 0; stable under backpressure); each D beat is
+      one InstMemResp (D.ready = resp ready), denied = D.denied || D.corrupt, last derived from
+      the request size and the D-fire count; the next request after the final beat. Asserts:
+      InstBusD (AccessAckData, source 0, size = active Get, no D without an active Get, no extra
+      beat); InstBusGetOnly (A opcode Get + elaboration require hasBCE = false, no B/C/E).
+    - InstructionCache: valid/PLRU in registers, tags/data in Mem (masked per way). One-entry
+      request/translation pairing register (a request is accepted in the cycle the held one's
+      Translation is consumed: one hit per cycle, ic.steadyHits); a lookup needs no miss, no
+      invalidate this cycle, and a free (or draining) answer holder. Index va[11:6], tag
+      pa[33:12], block va[5:4]; PageFault/AccessFault answer at once without bus traffic. One
+      miss context: cacheable miss Gets the 64-byte line (size 6, 16 beats), uncached Gets the
+      16-byte block (size 4) and never installs; denied accumulates over all beats (fault answer,
+      no install); install on the final beat into the invalid-first / tree-PLRU victim unless
+      fillPoison (an invalidate accepted during the fill) or an invalidate in the final-beat cycle.
+      Invalidate-all clears every valid bit in one cycle (ready always high, lookups blocked that
+      cycle). Answers leave through one stable holder. Asserts: ICacheTranslation (reqId equals
+      the paired request, no Miss status on the ITLB edge), ICacheLookup (at most one way hits),
+      ICacheFill (last flag), ICacheInvalidate (op), ICacheReadOnly (only line/block Gets),
+      ICacheResponseOrder (independent sequence numbers carried with each request; answers leave
+      consecutively; at most 3 in flight).
+    - Integration: ICacheBusHarness (real cache + adapter, TileLink memory in the driver):
+      icbus.fillAndHits (one Get of 64 bytes, 16 D beats, four blocks then hit), uncached (16-byte
+      Get each time, no later hit), denied (InstAccessFault, refill), invalidate (refill; an
+      invalidate during an outstanding fill prevents installation); A carries only Get.
+      Standalone CHIRRTL emit + firtool: exit 0 (no combinational cycle).
+    - Tests: 8 iba, 16 ic (incl. a 1500-access random stream against a software cache with
+      pages, cacheability, faults, denied lines, backpressure, translation delays and
+      invalidates; exact answers and exact bus-request sequence), 4 icbus. While bringing up the
+      random test two test bugs were fixed (a held answer released too late by the test; request
+      queueing let the quiesce bound expire so an invalidate hit a fill in flight - the RTL
+      poisoned it correctly and the model did not).
+    - Mutants: 20 required + 1 equivalent probe, each also with every assert disabled: all red
+      except C11a (removing !invFire from the install guard), equivalent because the invalidate's
+      valid clear is connected after the install (last connect wins); the strengthened C11b
+      (install actually wins) is red. With asserts off every mutant stays red on test checks,
+      except C12 (reqId mismatch accepted), which is assertion-only by nature.
+    - Allowlists: spec-check-allow 32 -> 29 (propICacheReadOnly, propICacheResponseOrder,
+      propInstBusGetOnly); spec-test-allow 36 -> 32 (the same three + funcICacheUncachedFetch).
+      propICacheFunctionTransparent stays (L3 retire equivalence, needs CoreTop).
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 229 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean.
+
+39. PMA + RTL block 22 - InstructionTlb (Sv32Specs, ADR-019 D-19.4/D-19.6), no ADR or spec change.
+    - paramPmaMap implemented: PmaRegion{base, size, cacheable, executable, readable, writable} and
+      PmaMap(regions) in core/design/shared/Pma.scala, owned by CoreContractParams.pma. Elaboration
+      requires size > 0, base >= 0, no overlap, end <= 2^PAddrWidth; no default match (unmapped =
+      access fault). PmaMap.verificationDefault is explicitly a VERIFICATION-PLATFORM default, not
+      architectural: RAM [0, 0xF000_0000) cacheable/executable/RW, device [0xF000_0000,
+      0x1_0000_0000) uncacheable/non-executable/RW, nothing above 4 GiB. One shared hardware helper
+      PmaLookup(map, pa) -> (hit, PmaAttr) (@LocalSpec funcPmaCheck) for ITLB/DTLB/PTW/caches.
+      Tests pma.legality (overlap, zero size, negative base, beyond 2^34 rejected; adjacent and
+      exact-end accepted), pma.lookupDefault / lookupCustom (region first/last addresses, holes,
+      above 4 GiB, against the software reference). Design bundle WalkReq{vpn, context =
+      TranslationContext} added (bundle contract unchanged).
+    - InstructionTlb: typed IO first; 19 tlb.* tests PENDING, then RTL. 16 fully associative entries,
+      one held request + one stable Translation holder (request N+1 accepted in the cycle N resolves:
+      one hit per cycle, tlb.hitStream), reqId echoed opaquely. Bare iff satp Bare or priv M (pa =
+      va). Sv32 match (valid, global or ASID equal, 4 KiB vpn / 4 MiB vpn[19:10]); pa {PPN, va[11:0]}
+      or {PPN[21:10], va[21:0]}; fetch permission X, A (Svade), U-mode needs U, S-mode never a U page
+      (SUM/MXR/D ignored) -> PageFault; then PmaLookup on the actual pa (entry.pma is not trusted;
+      the test walker fills it with all-false) -> AccessFault unless mapped and executable. Faults
+      canonical (paddr 0, cacheable 0); Miss never reaches the I-cache (assert ItlbNoMiss).
+      Miss: capture the committed context, one stable WalkReq, no new request; Leaf installs and the
+      held request re-resolves through the normal lookup (so permission/PMA always apply);
+      PageFault/AccessFault answer, no install; Retry re-walks with the current context. Refill
+      invalidates every conflicting live entry (mapping overlap: 4K vpn equal, or any superpage and
+      vpn[19:10] equal; address space: either global or ASIDs equal), reuses a conflicting slot, else
+      invalid-first, else 16-way tree PLRU (touched on a successful hit and on refill only).
+      Flush (v0 full): always accepted, clears all entries, blocks request acceptance/resolution
+      that cycle; a walk overlapping a flush is stale and its result is neither installed nor
+      answered - the held request re-walks with the post-flush committed context; flush wins over
+      a same-cycle Leaf. Interpretation: a WalkReq still waiting for acceptance when the flush comes
+      stays asserted and stable (ready/valid rule) and its result is discarded, rather than being
+      withdrawn and re-issued. Asserts ItlbMatch (<= 1 match), ItlbWalkResp (VPN pairing),
+      ItlbNoMiss, ItlbNoDuplicate (no two live entries can match one lookup).
+    - Tests: tlb.bare, barePma, fourK, superpage, asid, perms, walkBackpressure (incl. a satp write
+      while the WalkReq waits), walkFaults, retry (context change during the first walk), conflicts
+      (global vs local same page; superpage over a contained 4K; global 4K under another ASID's
+      superpage - an exact same-VPN same-ASID duplicate cannot arise from legal traffic because it
+      would have hit), replacement (invalid-first, then the PLRU victim), flush, flushWalkReq,
+      flushWaitResp, flushSameCycle, outBackpressure, hitStream, wrongVpn (negative), random (2500
+      requests: ASIDs, U/S/M, Bare/Sv32, 4K/superpages, A/X/U/global, PMA RAM/device/unmapped,
+      walk latency, output backpressure, 38 flushes; exact equality with the page-table/PMA
+      reference). Integration ItlbICacheHarness (real ITLB -> real I-cache, FetchUnit-style atomic
+      ITlbReq+ICacheReq, synthetic walker, backing memory): itic.bare, sv32 (miss -> walk ->
+      translation -> fill; second fetch TLB+I-cache hit; page fault and PMA fault make no InstMem
+      request; superpage fetches the right line), sfence (the VA re-walks but the physically tagged
+      I-cache still hits). firtool on the harness: exit 0.
+    - Mutants: 25 required + T22a equivalence probe + 2 PMA, each ITLB mutant also with asserts
+      disabled: all red except T22a (removing !flushF from the install guard; equivalent because the
+      flush clear is connected after the install), the strengthened T22b is red; the asserts-off
+      control fails only tlb.wrongVpn. A first mutant run hung: unbounded wait loops in the tests
+      (a mutant that never walks); all loops are now bounded and runs have a timeout.
+    - Allowlists: spec-test-allow 32 -> 31 (funcItlbFlush bound). propNoFaultCaching,
+      propSfenceFlushesAll, propGenerationTagScope stay in both lists (DTLB/PTW/FetchUnit parts).
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 254 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean.
+40. RTL block 23 - DataTlb (DataTlbSpecs, Sv32Specs, ADR-019 D-19.5/D-19.6) + LSQ wake erratum.
+    - CoreLsqView{loadQueueDepth 8, storeQueueDepth 8, generationWidth 2} owned by
+      CoreContractParams.lsq (reqIdWidth = 1 + max(lqIdx, sqIdx) + generation = 6), a core-domain
+      mirror of the BackendParams LSQ geometry; the core domain does not import BackendParams.
+      PENDING: CoreTop must require exact equality with BackendParams (LQ/SQ depth, lsqGenWidth,
+      lsqReqIdWidth) when it is composed; the LsqDtlbHarness previews that require and
+      lsqdtlb.params checks the defaults agree and a mismatch is rejected.
+    - Shared TLB helpers extracted to core/design/shared/TlbLogic.scala: matches (@LocalSpec
+      funcTlbMatch), compose (@LocalSpec funcSv32Decompose), conflicts / mapOverlap / asOverlap,
+      plruVictim / plruTouch. The InstructionTlb now uses them (behavior unchanged; all tlb./itic.
+      tests re-run green). Each TLB keeps its own state and translate/refill/flush functions.
+    - DataTlb: typed IO first; 21 dtlb.* tests PENDING, then RTL. Non-blocking: DtlbReqIn.ready =
+      !flush && (the request's own answer holder is free); it never depends on a walk. Two
+      independent stable answer holders, routed by TranslateReq.access (Load -> DCacheTranslationOut,
+      Store -> DtlbStoreRespOut) for every status incl. Miss and faults; reqId echoed opaquely, with
+      asserts that access is Load/Store and that reqId's LSQ isStore bit agrees (tag "DtlbReq").
+      Bare iff satp Bare or dataPriv M (not ctx.priv). Data permission with dataPriv: Load
+      (R or (MXR and X)) and A; Store W and A and D (Svade); U mode needs U; S mode U = 0 or SUM; MXR
+      has no effect on stores -> PageFault; then PmaLookup on the actual pa (Load: mapped and
+      readable; Store: mapped and writable) -> AccessFault; PageFault has priority; cacheable only
+      from the PMA map; faults canonical (paddr 0, cacheable 0). Miss: answered Miss at once (paddr
+      0, cacheable 0), the request is not retained; a walk starts only if none is active (captured
+      committed context, one stable WalkReq). One-entry walk-fault record {vpn, asid = the walk's
+      captured ASID, status}: written by a non-stale PageFault/AccessFault walk, cleared by a
+      non-stale Leaf/Retry result ("replaced by the next walk result") and by a flush; a later Sv32
+      miss on the same VPN and live ASID answers that fault on its own route without walking.
+      Retry, permission and PMA faults are never recorded. Walk completion: WalkResp is consumed
+      only when the refill-notice holder can take the notice, so every completed walk (Leaf / PF /
+      AF / Retry) yields exactly one stable DtlbRefillOut {walked vpn, status}; Leaf installs with
+      the ITLB conflict rule (conflicting slot, else invalid-first, else 16-way tree PLRU; touched on
+      a successful translated hit and on refill only) and never answers a request directly.
+      SFENCE.VMA (v0 full): always accepted, clears all entries and the fault record, no request
+      accepted that cycle; an overlapping walk is stale (a pending WalkReq stays asserted and
+      stable): its result installs nothing, records nothing, and is announced as Retry so the LSQ
+      re-walks with the post-flush context; flush + Leaf / flush + fault in one cycle behave the same.
+      Asserts: DtlbMissLocal (@LocalSpec propDtlbMissLocal: ready high whenever no flush and the
+      routed holder is free; every accepted request answered next cycle), DtlbReq, DtlbMatch,
+      DtlbWalkResp (VPN pairing), DtlbNoDuplicate.
+    - Erratum found by the integration harness (spec contradiction, fixed minimally): the DataTlb
+      contract (intfDtlbRefillOut "retries every translation-pending entry"; funcDtlbMissNonBlocking
+      "the retry after the next refill notice starts the next walk") and LoadStoreQueueSpecs
+      funcTranslationWait ("a DtlbRefill whose vpn matches") disagreed. With the VPN-matched wake, a
+      miss taken while another page is being walked starts no walk and its entry is never woken
+      (lsqdtlb.parkOne and lsqdtlb.faults hung; the LSQ unit model had walked every page
+      concurrently, so it never showed). funcTranslationWait / intfDtlbRefillIn now say any notice
+      wakes every translation-pending entry (and a notice during an in-flight translation is
+      remembered); the LSQ RTL drops the VPN compare (sawRefill, walkWait, TranslationPending).
+      Red first: new lsq.wakeAny with a DataTlb-faithful single-walk knob in the LSQ unit model
+      failed on the old LSQ, passes now; all lsq.* tests green. Cost: every pending entry retries
+      after each notice (most miss again while the next walk runs) - acceptable for v0, revisit
+      with the PPA work.
+    - Tests: dtlb.bare (dataPriv M is Bare with satp on and priv S; device window cacheable 0),
+      barePma, perms (R/W/D/A/X-only/MXR, MXR not for stores), privilege (U page / S page, SUM,
+      dataPriv vs priv), match (superpage, ASID, global), nonBlocking (A misses and walks, B misses
+      without a walk, C hits during the walk, ready never low, one notice for A, B retry walks),
+      routing (each port backpressured, the other keeps answering; hold stability), faultRecord
+      (load+store reuse without a second walk, other ASID walks, replacement, flush clears),
+      faultRecordAsid (context switched during the walk: keyed by the captured ASID),
+      retryNotCached, notices (all four outcomes, one stable notice each under backpressure),
+      conflicts, replacement (PLRU), flush, flushWalkReq, flushWaitResp, flushSameLeaf,
+      flushSameFault, flushWalkReqFault / flushWaitRespFault (an earlier flush: a stale PageFault
+      records nothing), noticeHold (a walk completing while the previous notice is held waits; both
+      notices arrive in order), walkCtx (the WalkReq keeps the captured ASID/root while the live
+      context changes without a flush), outputs (both ports backpressured), negative (Store with a load reqId, Fetch
+      access, wrong-VPN WalkResp), random (2500 completed requests with LSQ-style retry, in-flight
+      context changes, flushes, Retry results, backpressure on all outputs; exact equality with the
+      reference). Integration LsqDtlbHarness (real LoadStoreQueue -> real DataTlb; driver plays a
+      minimal VIPT DataCache pairing each DCacheLoadReq with the next-cycle DTLB load answer, the
+      PTW, StoreBuffer, uncached port, CommitUnit): lsqdtlb.params, parkOne, storeFirst,
+      storeMiss, genDrop (late D-cache answer of a killed load; store killed in its answer cycle),
+      wakeMany (two loads + a store, one walk, one notice), device (PMA device page -> cacheable 0
+      -> uncached head-execute path), faults (Load/Store PageFault/AccessFault causes, tval, fault
+      record), raceLoad / raceLoadLate / raceStore (the walk result lands in the cycle of the racing
+      DtlbReq: Miss answered, notice next cycle, entry not stranded). Every test checks the atomic
+      load DtlbReq + DCacheLoadReq fork and the answer pairing. firtool on the harness and on
+      DataTlb alone: exit 0. The real DataCache is not implemented yet.
+    - Mutants: 39 (D01-D38 incl. D08a/b), each also with asserts disabled, plus an asserts-off
+      control: all red. The first pass left four survivors, each a test gap now closed: D17 (PMA
+      checked before permission; no directed case failed both - perms now has an A = 0 page mapped
+      above 4 GiB), D26 (a stale fault from an earlier flush writes the record; only the same-cycle
+      flush was tested with a fault - two new fault variants), D28 (WalkResp consumed while the
+      previous notice is held - noticeHold), D34 (live context on the WalkReq - walkCtx); D08b (U/S
+      rule from priv) was caught only by the random test and now also by a directed privilege check.
+      D06/D07 (the reqId/access and Fetch assertions removed) are red only through dtlb.negative,
+      as intended for input-legality assertions; the asserts-off control fails only dtlb.negative.
+      A first background run hit the 1 h limit mid-mutant; the sources were checked against the
+      snapshot and restored before anything else.
+    - Allowlists: spec-check-allow 29 -> 28 (propDtlbMissLocal paired with its @LocalSpec assert);
+      spec-test-allow 31 -> 30 (funcDtlbFlush bound). propNoFaultCaching, propSfenceFlushesAll,
+      propGenerationTagScope stay in both lists (PTW / FetchUnit parts pending).
+
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 291 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean, firtool exit 0 on DataTlb and LsqDtlbHarness.
+
+41. RTL block 24 - PageTableWalker (PageTableWalkerSpecs, Sv32Specs, ADR-019 D-19.6) + PtwMem/PMA seam.
+    - Spec seam (text only, no ADR): funcDCachePhysicalRead now checks the PTE address with
+      funcPmaCheck - unmapped / not readable -> accessFault with no array or bus access; readable
+      and cacheable -> the normal physical lookup (a miss may allocate/join an MSHR and installs the
+      line); readable and not cacheable -> one exact uncached 4-byte physical read that installs
+      nothing (denied/corrupt -> accessFault). No HeadMemGrant (internal PTW read); it may share the
+      uncached bus resource/source id but must keep PTW vs LSQ answer identity.
+      funcPtwPhysicalAccess and the PTW contract text say the same (cacheable is not a legality
+      condition for a PTE read). OBLIGATION for the DataCache block: implement exactly this,
+      including the readable-uncacheable PTE path, with a directed L1 test.
+    - Design bundles: Sv32Pte {ppn1 12, ppn0 10, rsw 2, d a g u x w r v; ppn = Cat(ppn1, ppn0)} in
+      memory bit order, PtwMemReq {paddr}, PtwMemResp {pte, accessFault} (no VA, no translation
+      metadata).
+    - PageTableWalker: typed IO first; 19 ptw.* tests PENDING, then RTL. One walk at a time; accepts
+      only when idle and no result is held; round-robin when both TLBs request (the pointer moves
+      only on an accepted request); the loser stays backpressured (never both inputs ready, assert).
+      Requester, VPN and the complete TranslationContext are captured at acceptance and used for the
+      whole walk. Level 1 at {rootPpn, VPN[1], 00}, level 0 at {PPN, VPN[0], 00} (34-bit physical).
+      PmaLookup before every read: unmapped / not readable -> AccessFault with no PtwMemReq; a
+      readable uncacheable address is read. PtwMemReq stable until accepted; exactly one PtwMemResp
+      per read; accessFault -> AccessFault without using the PTE. PTE rules: V = 0 or (R = 0, W = 1)
+      -> PageFault; R or X -> leaf (level 1: superpage, PPN[0] != 0 -> PageFault); level-0 pointer ->
+      PageFault. No R/W/X, U/S/SUM/MXR or A/D checks (TLB duties): X-only, A = 0, D = 0 leaves are
+      Leaf. G is ORed over every PTE read (non-leaf G makes the refill global). Leaf entry = {vpn,
+      superpage, leaf PPN, captured ASID, global, R/W/X/U/A/D, advisory PMA of the walked page:
+      4K {PPN, 0}, 4M {PPN[21:10], VPN[0], 0}}; an unmapped target page is still a Leaf. One stable
+      result holder, offered only on the requester's edge. SFENCE: atomic fork (each TLB flush is
+      offered only when the other is ready; both fire in the SfenceVma transfer cycle, payload passed
+      through); not accepted while a result is held (a presented result is never changed into Retry,
+      and the response drains first even when both could transfer); wins over a new walk request in
+      its cycle (the round-robin pointer is unchanged); a walk it overlaps completes every read it
+      issued or presented (nothing retracted) and answers Retry. Asserts: PtwArbitrate (one grant),
+      PtwFlush (both tokens fire with the SFENCE), PtwNoRecursiveTranslation (@LocalSpec: PtwMemReq
+      4-byte aligned and equal to the expected physical PTE address from the captured root / pointer
+      PPN), PtwMemResp (no unsolicited answer), WalkFaultTyping (@LocalSpec: the result status
+      matches its cause; Leaf carries a valid entry).
+    - Tests: ptw.arbitrate (ITLB-only, DTLB-only, 6 contended pairs alternate, never both ready),
+      addresses (exact level-1/level-0 addresses, max VPN with a large root, max root PPN -> unmapped
+      AF with no read, alignment), structure (11 PTE shapes), global (non-leaf G, leaf G, none,
+      superpage G), entry (all fields, advisory PMA incl. device and unmapped targets), pma
+      (readable uncacheable root table is read; non-readable and unmapped -> AF with no read; level-0
+      address checked), denied (level 1, level 0, PTE data of a denied read ignored),
+      memBackpressure (stable request, one read outstanding), outputs (blocked result stable, no new
+      walk meanwhile, per-requester edge), flushIdle (atomic, payload, one TLB not ready -> neither
+      offered), flushIssue / flushWait / flushBetween / flushFault (old Leaf / PageFault /
+      AccessFault -> one Retry; every read completed once, none retracted), flushBlocked (a blocked
+      Leaf stays Leaf; SFENCE after it drains), flushPriority, context, negative (unsolicited
+      PtwMemResp), random (3000 walks from both TLBs over random two-level / superpage / malformed
+      tables, three roots incl. a device-window root and an unmapped root, denied reads, latency,
+      backpressure on memory and both result edges and both flush edges, SFENCE races; every
+      accepted walk answered once to its requester, equal to the reference or Retry when overlapped).
+      Integration MmuHarness (real ITLB + DTLB + PTW, synthetic physical PTE memory): mmu.concurrent
+      (concurrent misses both walked and routed; ITLB 4K two-level + DTLB 4M; ITLB stream held, DTLB
+      hits continue), mmu.global (level-1 G reaches both TLBs), mmu.sfence (remap + SFENCE: atomic
+      flush, both re-walk the new mapping), mmu.sfenceOverlap (overlapped DTLB walk -> Retry notice,
+      nothing stale installed; overlapped ITLB walk -> Retry, the ITLB re-walks), mmu.pmaFault
+      (PMA-illegal level-0 table -> instruction / store access fault). firtool exit 0 on the harness
+      and the PTW. The optional CommitUnit -> PTW seam harness was not built: CommitUnit leaves
+      Step.Flush only on sfenceVmaOut.fire (its unit test backpressures it) and ptw.flushIdle /
+      flushBlocked prove ready rises only in the cycle both TLB flushes fire.
+    - Shared assertions added to close the Sv32 PROPERTYs: TlbLogic.assertNoFaultCaching (@LocalSpec
+      propNoFaultCaching; called by both TLBs: a live entry appears or changes only the cycle after a
+      non-stale Leaf result), TlbLogic.assertFlushed (@LocalSpec propSfenceFlushesAll: no valid entry
+      the cycle after a flush token), and the PTW NoFaultCaching assert (every Leaf result is a legal
+      Sv32 leaf: R or X, not W without R, superpage PPN[0] = 0). The leaf-legality half lives in the
+      PTW because the TLB unit tests use synthetic walkers. Probe: DataTlb flush-skips-entry-0 and
+      stale-Leaf-installs mutants abort the simulation on these asserts.
+    - Mutants: 30 (P01-P30: fixed priority, both inputs ready, live context after acceptance, wrong
+      VPN index / root shift / pointer shift, V ignored, W-without-R accepted, PPN[0] alignment
+      ignored, level-0 pointer accepted, A = 0 / D = 0 as walk faults, non-leaf / leaf G dropped,
+      wrong TLB routing, second walk while a result is held, PMA readable ignored / cacheable
+      required, denied read as PageFault, one-sided or half-ready flush, SFENCE losing priority,
+      stale not marked, stale Leaf / PageFault / AccessFault leaking, a presented PtwMemReq
+      retracted, a blocked result changed to Retry, a blocked result not blocking SFENCE), each also
+      with asserts disabled, plus an asserts-off control: all red. The first pass caught P03 (live
+      context), P08 (V ignored) and P09 (W without R) only through ptw.random: the directed
+      structure cases used R = X = 0 PTEs, which degrade to a pointer and still page-fault at level 0;
+      they now use PTEs that would otherwise be legal leaves, and ptw.context adds back-to-back
+      requests with different contexts - all three are red on directed tests. The asserts-off
+      control fails only ptw.negative (the unsolicited-PtwMemResp assert).
+    - Allowlists: spec-check-allow 28 -> 24 (propPtwNoRecursiveTranslation, propWalkFaultTyping,
+      propNoFaultCaching, propSfenceFlushesAll); spec-test-allow 30 -> 28 (funcPtwFlush,
+      propSfenceFlushesAll; funcPtwArbitrate / funcSv32Walk / funcPtwPhysicalAccess and the two PTW
+      PROPERTYs were not listed and are now bound by ptw.* tests). propGenerationTagScope stays in
+      both until the FetchUnit stale-response generation question is closed.
+    - Validation (restored sources, verif/out/classes deleted, fresh simulation cache): build 0
+      errors, spec-check 0 errors (4 pre-existing warnings), RunSpecTests 315 PASS + 2 PENDING
+      (FetchUnit shells), ASCII clean, firtool exit 0 on PageTableWalker and MmuHarness.
 
 ## Validation status (run this session)
 
@@ -495,8 +1003,16 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 - Internal-edge reconciliation (scratch script, stronger than check 1): every labeled
   edge of FrontendTop (7), BackendTop (63), CoreTop (38) matches a producer *Out and a
   consumer *In interface; no orphan child interfaces.
-- `verif/bin/run.sh verif.spectest.RunSpecTests`: 150 PASS + 5 PENDING (the FTQ/FetchUnit ADR-019G tests) after
-  RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
+- `verif/bin/run.sh verif.spectest.RunSpecTests`: 315 PASS + 2 PENDING after PageTableWalker + the MMU
+  integration (clean rebuild, fresh simulation cache); 291 PASS + 2 PENDING after DataTlb + the LSQ wake
+  erratum (clean rebuild, fresh simulation cache); 254 PASS + 2 PENDING after PMA + InstructionTlb
+  (clean rebuild, fresh simulation cache); 229 PASS + 2 PENDING after InstBusAdapter +
+  InstructionCache (clean rebuild, fresh simulation cache); 201 PASS + 2 PENDING after FetchBuffer (clean
+  rebuild, fresh simulation cache); 186 PASS + 2 PENDING after FetchPcGen and the
+  prediction-loop integration (clean rebuild, fresh simulation cache); 174 PASS + 2 PENDING after the FTQ boundary
+  fixes (clean rebuild, fresh simulation cache); 169 PASS + 2 PENDING (FetchUnit shells) after RTL
+  block 18 (FetchTargetQueue); 154 PASS + 13 PENDING (11 FTQ + 2 FetchUnit shells) after
+  ADR-019H verification and the FTQ red-first tests; 150 PASS + 5 PENDING after RTL block 17; 137/137 PASS after ADR-019F (136/136 after RTL block 16; 101/101 after ADR-019E; 94/94 after RTL block 12 (adds 1 CommitUnit
   serialize-head test, 14 CsrController, 6 TrapController, 2 seam integration); earlier: 55/55 PASS) (6 pre-existing + 2 params +
   9 RenameUnit + 9 ReorderBuffer + 1 SystemOpDecode + 4 RecoveryController + 15 CommitUnit +
   3 PhysicalRegisterFile + 6 ReservationStation + 2 DispatchUnit + 4 execution wrappers +
@@ -506,7 +1022,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Remaining allowlist debt
 
-- spec-test-allow: 36 names after the BranchPredictor (its functions and three PROPERTYs bound;
+- spec-test-allow: 28 names after the PageTableWalker; 30 after the DataTlb; 31 after the InstructionTlb; 32 after the I-cache/adapter; 36 after the BranchPredictor (its functions and three PROPERTYs bound;
   propPredictorStateMicroarchitectural stays, an L3 retire-equivalence check) (ADR-019F added propDrainResponseMakesStoreVisible, pending the
   DataCache block) (ADR-019D: funcDebugCommitBoundary and propTrapSingleWriter bound;
   ADR-019E: funcCsrMapContribution bound) (bound since the freeze: funcRobOlder, propArchRedirectWins,
@@ -515,7 +1031,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   assembler has no mnemonic; uncacheable PMA paths - harness has no uncacheable region;
   predictor/FTQ internals and bus-adapter/cache monitors - need L1 SpecTests on RTL;
   doctrine/machine-check props; pre-ADR-019 carried names.
-- spec-check-allow: 36 PROPERTYs after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
+- spec-check-allow: 24 PROPERTYs after the PageTableWalker; 28 after the DataTlb; 29 after the I-cache/adapter; 32 after FetchBuffer; 33 after FetchPcGen; 34 after the FetchTargetQueue; 36 after the BranchPredictor (39 after ADR-019F; propDrainResponseMakesStoreVisible added;
   propForwardQueryConsumedOnce paired at once) (removed with their asserts: propPhysRegConservation,
   propCheckpointReleasedOnce, propRobRetireInOrder, propOlderSurvivesRecovery,
   propRobCompletionTargetsLive, propSingleRecoveryPerCycle, propArchRedirectWins,
@@ -571,6 +1087,13 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Unresolved architecture questions (engineering, not owner-gated)
 
+- FetchUnit fetch generation (fetchGenWidth = 4): the generation wraps after 16 recoveries, so a
+  response whose request is exactly 16 recoveries old aliases the current generation and could be
+  accepted as current. The InstructionTlb and InstructionCache treat reqId as opaque and only echo
+  it; the FetchUnit owns the generation and must close this when its RTL lands (for example: bound
+  the in-flight window so no answer can be 16 generations old, widen the tag, or drain before
+  reuse). Not changed in the ITLB block by owner instruction.
+
 - Resolved by ADR-019A: RS allocation set, sysOp, RobStatus timing, robOlder domain,
   commit/ArchRedirect ordering. Still implementation choices (not contradictions):
   a CheckpointRelease whose owner the same-cycle RecoveryEvent kills is ignored;
@@ -580,7 +1103,11 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   requires publication in the request cycle); a registered stage would need an ADR and a
   BranchUnit hold/kill rule. FTQ derives HistoryRestore.pc as block base + 4 * slot.
 - fence.i cost: D$ clean-all + I$ invalidate per fence.i (non-coherent I-side).
-- DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize.
+- DTLB single outstanding walk + fault record; multiple distinct-VPN misses serialize, and every
+  translation-pending LSQ entry retries after each refill notice (item 40 erratum); the retry
+  traffic is a PPA question, not a correctness one.
+- CoreTop composition must require CoreLsqView == the BackendParams LSQ geometry (item 40;
+  previewed in LsqDtlbHarness, still PENDING until CoreTop exists).
 - One BTB-tracked CFI per fetch block; GHR shifts one bit per block with a tracked Branch.
 - Predictor training at retirement only; no decode-time redirect for direct JAL.
 - v0 serializes every CSR op (rename into empty ROB) and refetches after CSR writes.
@@ -590,7 +1117,9 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Next steps (in order)
 
-0. After ADR-019F/G (owner order): BranchPredictor (done), FetchTargetQueue, FetchPcGen, FetchBuffer,
+0. After ADR-019F/G/H (owner order): BranchPredictor (done, ADR-019H verified), FetchTargetQueue
+   (done, items 33-34), FetchPcGen (done, item 35; loop integration item 36), FetchBuffer (done,
+   item 37), InstructionCache + InstBusAdapter (done, item 38), InstructionTlb (done, item 39), DataTlb (done, item 40), PageTableWalker (done, item 41), DataCache (next: real PtwMemReq service incl. the readable-uncacheable PTE path of item 41, 2 MSHRs / 2 targets, the ADR-019F store-visibility race), FetchBuffer,
    InstructionCache + InstBusAdapter, InstructionTlb, DataTlb, PageTableWalker, FetchUnit,
    DataCache (with the propDrainResponseMakesStoreVisible race), DataBusAdapter, FrontendTop,
    CoreTop; activate CoreHarness as soon as CoreTop elaborates (before any optimization) and
@@ -616,6 +1145,12 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 
 ## Gotchas
 
+- svsim runs the whole test inside the testbench initial block: the DUT's RANDOMIZE_REG_INIT
+  initializer runs only after the test, so unreset registers read 0 in every L1 test.
+- A firtool failure in a simulation build surfaces in run.sh only as FirtoolNonZeroExitCode; to
+  read the message, emit the CHIRRTL (circt.stage.ChiselStage.emitCHIRRTL) and run firtool
+  directly. Rebuild verif/out/classes after restoring a mutant before trusting any result.
+
 - Coursier download is blocked (GitHub 403 via proxy), so setup.sh cannot resolve jars.
   Workaround used: a Maven pom resolving chisel_2.13:6.2.0 + scala 2.13.12 into
   ~/.m2, copied to /tmp/chisel_cp.txt, /tmp/chisel_plugin.txt, /tmp/scalac/*.jar, and
@@ -626,6 +1161,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
   same way when a CONTRACT's interface list changes, or edit by hand.
 - In `.scn`, the assembler accepts `jalr x0, xN, 0` (not `0(xN)`) and decimal load/store
   offsets; unwritten memory reads 0x13, so PTE tables must write explicit zeros.
-- Chisel 3 vs 6 duality (sbt default chisel 3, verif gate 6.2.0) is unchanged.
+- Both build paths now use Scala 2.13.12 and Chisel 6.2.0; see
+  `docs/tooling/spec-framework.md`. Earlier Chisel 3 instructions are historical.
 - Protected: src/main/scala/assembler/*, src/test/scala/{cluster,assembler}. csr/CSR.scala is
   no longer protected (OQ-E waived) and is rewritten with the Trap/Csr RTL.

@@ -127,8 +127,9 @@ object FetchTargetQueueSpecs {
       .desc(
         "A fetch pointer walks live entries in order and issues one FetchRequest per entry, " +
           "with fetchPc = the entry's requested fetch PC and lastSlot = the predicted taken exit " +
-          "slot or FetchWidth-1 (ADR-019G E-6). After a RecoveryEvent " +
-          "the fetch pointer restarts at the first entry allocated after the event."
+          "slot or FetchWidth-1 (ADR-019G E-6). After BranchMispredict, resume at the " +
+          "oldest surviving entry not yet issued, clamping the fetch pointer to the new tail. " +
+          "After ArchRedirect, restart at the first entry allocated after the event."
       )
       .uses(intfFetchRequestOut)
       .build()

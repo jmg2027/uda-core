@@ -10,8 +10,6 @@
 # WP-4 backend vertices: need L1 SpecTests against the RTL (arbitration timing, port structure), or an enabled bit-manipulation config (BitAluUnit is absent in v0)
 funcIntegrateExternalBitAlu
 
-
-
 # WP-1 recurrence budgets and tag uniqueness: need the ipcCriticalEdge helper (L0) or a composed backend to observe (funcRobOlder is bound by rob.order)
 propBranchRecoveryBudget
 propLoadUseBudget
@@ -41,7 +39,6 @@ propSingleCycleValid
 
 # WP-7 bus adapters: L1 TileLink monitor SpecTest
 propDataBusCoherenceSeparate
-propInstBusGetOnly
 
 # WP-7 D-cache: needs an uncacheable PMA region in the harness or the L3 geometry sweep
 funcDCacheUncached
@@ -50,19 +47,8 @@ propDCacheFunctionTransparent
 # ADR-019F E-2: the directed store-drain / load-miss race (with partial-byte masks) lands with the DataCache L1 SpecTest
 propDrainResponseMakesStoreVisible
 
-# WP-6 SFENCE.VMA: not encodable by the protected assembler
-funcDtlbFlush
-funcItlbFlush
-funcPtwFlush
-
 # WP-7 I-cache: needs an uncacheable/executable PMA region in the harness, an L1 SpecTest, or the L3 geometry sweep
-funcICacheUncachedFetch
 propICacheFunctionTransparent
-propICacheReadOnly
-propICacheResponseOrder
-
-# WP-6 SFENCE.VMA: the owner-protected assembler has no SFENCE.VMA mnemonic, so no .scn can issue it yet
-propSfenceFlushesAll
 
 # WP-2/3 predictor/FTQ internals: microarchitectural state is only observable by an L1 BranchPredictor/FTQ SpecTest once the RTL exposes it (ADR-019 obligation: history restored from the FTQ checkpoint)
 propPredictorStateMicroarchitectural

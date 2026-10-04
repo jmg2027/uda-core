@@ -118,7 +118,7 @@ object LoadStoreQueueSpecs {
 
   val intfDtlbRefillIn = spec {
     INTERFACE("LoadStoreQueueSpecs.intfDtlbRefillIn")
-      .desc("Refill notices {vpn} from the DataTlb when a walk it started completes; wakes translation-pending entries. Always ready.")
+      .desc("Refill notices {vpn} from the DataTlb when a walk it started completes; wakes every translation-pending entry. Always ready.")
       .uses(bndWalkResp)
       .is(rawReadyValidIntf)
       .build()
@@ -271,9 +271,13 @@ object LoadStoreQueueSpecs {
     FUNCTION("TranslationWait")
       .desc(
         "A Miss answer (from DtlbStoreRespIn for a store, or status TlbMiss in the D-cache " +
-        "answer for a load) moves only that entry to TranslationPending with its VPN; every " +
-        "other entry continues. A DtlbRefill whose vpn matches returns the entry to Ready " +
-        "(load) or re-issues the translation (store). A PageFault or AccessFault answer moves " +
+        "answer for a load) moves only that entry to TranslationPending; every " +
+        "other entry continues. Any DtlbRefill (whatever its vpn) returns every such entry to " +
+        "Ready (load) or re-issues its translation (store): the DataTlb walks one page at a time " +
+        "and starts no walk for a miss while another walk is active, so the retry after the next " +
+        "notice is what starts that entry's walk. A notice that arrives while an entry's " +
+        "translation is in flight is remembered, so a later Miss answer retries at once. A " +
+        "PageFault or AccessFault answer moves " +
         "the entry to Faulted with the page-fault or access-fault cause of its access type."
       )
       .uses(intfDtlbStoreRespIn, intfDtlbRefillIn, intfDCacheLoadRespIn)

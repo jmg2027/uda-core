@@ -243,8 +243,15 @@ object DataCacheSpecs {
   val funcDCachePhysicalRead = spec {
     FUNCTION("DCachePhysicalRead")
       .desc(
-        "A PTE read is looked up with its physical address (index pa[11:6], tag pa[33:12]); a " +
-        "hit answers at once, a miss fills through an MSHR like a load. It never consults a TLB."
+        "A PTE read (PtwMemReq{paddr}) is never translated and never consults a TLB. Its " +
+        "physical address is first checked with funcPmaCheck. Unmapped or not readable: answer " +
+        "accessFault = 1 with no array or bus access. Readable and cacheable: the normal " +
+        "physical lookup (index pa[11:6], tag pa[33:12]); a hit answers at once, a miss may " +
+        "allocate or join an MSHR and installs the line like a load. Readable and not " +
+        "cacheable: one exact uncached 4-byte physical read that installs nothing; a denied or " +
+        "corrupt bus answer is accessFault = 1. This internal PTW read needs no HeadMemGrant " +
+        "(that gate is for architectural LSQ uncacheable accesses); it may share the uncached " +
+        "bus transaction resource or source id, but PTW and LSQ answers keep their identity."
       )
       .uses(intfPtwMemReqIn, intfPtwMemRespOut)
       .build()

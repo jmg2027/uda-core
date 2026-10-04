@@ -13,8 +13,8 @@ object PageTableWalkerSpecs {
     CONTRACT("PageTableWalker")
       .desc(
         "Serves ITLB and DTLB walk requests with the Sv32 two-level walk. Every PTE read is a " +
-        "physical-address request to the DataCache (so page tables are cached with, and " +
-        "coherent with, committed stores); the walker has no path through the DTLB. It is " +
+        "physical-address request to the DataCache (so cacheable page tables are cached with, " +
+        "and coherent with, committed stores); the walker has no path through the DTLB. It is " +
         "also the SFENCE.VMA distribution point: it flushes both TLBs and prevents any walk " +
         "that overlapped the flush from refilling."
       )
@@ -148,8 +148,10 @@ object PageTableWalkerSpecs {
     FUNCTION("PtwPhysicalAccess")
       .desc(
         "Every PTE read leaves on PtwMemReqOut with the physical address computed by " +
-        "funcSv32Walk; the DataCache serves it through its array (hit or fill) like any " +
-        "physical read, and never translates it."
+        "funcSv32Walk, after that address passed funcPmaCheck (mapped and readable; cacheable " +
+        "is not required). The DataCache serves it per funcDCachePhysicalRead (array hit or " +
+        "fill for a cacheable address, an exact uncached read for a readable uncacheable one) " +
+        "and never translates it."
       )
       .uses(intfPtwMemReqOut, intfPtwMemRespIn)
       .build()

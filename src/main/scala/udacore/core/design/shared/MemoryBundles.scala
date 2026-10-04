@@ -110,6 +110,36 @@ class TlbEntry extends Bundle {
   val pma       = new PmaAttr
 }
 
+/** TLB -> PTW miss handoff: the page to walk and the committed TranslationContext captured at the
+  * miss (satp root and ASID; the PTW walks with this snapshot, not the live CSRs). */
+@LocalSpec(bndWalkReq)
+class WalkReq extends Bundle {
+  val vpn     = UInt(20.W)
+  val context = new udacore.backend.design.shared.TranslationContext
+}
+
+/** Sv32 page-table entry in memory order (field order = bits 31..0, so asUInt is the raw PTE). */
+@LocalSpec(bndSv32Pte)
+class Sv32Pte extends Bundle {
+  val ppn1 = UInt(12.W)
+  val ppn0 = UInt(10.W)
+  val rsw  = UInt(2.W)
+  val d, a, g, u, x, w, r, v = Bool()
+  def ppn: UInt = chisel3.util.Cat(ppn1, ppn0)
+}
+
+/** A physical PTE read from the PageTableWalker to the DataCache: no virtual address, no translation metadata. */
+@LocalSpec(bndPtwMemReq)
+class PtwMemReq(pAddrWidth: Int) extends Bundle {
+  val paddr = UInt(pAddrWidth.W)
+}
+
+@LocalSpec(bndPtwMemResp)
+class PtwMemResp extends Bundle {
+  val pte         = new Sv32Pte
+  val accessFault = Bool()
+}
+
 @LocalSpec(bndWalkResp)
 class WalkResp extends Bundle {
   val vpn    = UInt(20.W)
@@ -181,6 +211,22 @@ class StoreDrainResp extends Bundle
 class ICacheReq(reqIdWidth: Int, vAddrWidth: Int) extends Bundle {
   val vaddr = UInt(vAddrWidth.W)
   val reqId = UInt(reqIdWidth.W)
+}
+
+/** I-cache to InstBusAdapter: one Get of 2^size bytes at paddr (a 64-byte line fill or a 16-byte
+  * uncached block, v0). sizeBits is the instruction link's TileLink size width. */
+@LocalSpec(bndInstMemReq)
+class InstMemReq(pAddrWidth: Int, sizeBits: Int) extends Bundle {
+  val paddr = UInt(pAddrWidth.W)
+  val size  = UInt(sizeBits.W)
+}
+
+/** InstBusAdapter to I-cache: one AccessAckData beat; denied = TileLink denied or corrupt. */
+@LocalSpec(bndInstMemResp)
+class InstMemResp(dataWidth: Int) extends Bundle {
+  val data   = UInt(dataWidth.W)
+  val last   = Bool()
+  val denied = Bool()
 }
 
 /** fault uses the FetchFault codes (None 0, InstPageFault 1, InstAccessFault 2). */

@@ -56,6 +56,37 @@ case class TlbParams(
   require(entries > 0, "TLB entries must be positive")
 }
 
+/** The frontend widths the core-side instruction path must agree with (a mirror, like the
+  * backend's BackendFrontendView): the FetchUnit fetch block and its fetch-generation request id.
+  * Whoever composes FrontendParams with CoreParams must require the two to be equal. */
+case class CoreFetchView(
+    fetchBytes: Int = 16,   // FrontendContractParams.fetchBytes
+    fetchGenWidth: Int = 4  // FrontendParams.fetchGenWidth (ICacheReq/Translation reqId)
+) {
+  require(fetchBytes >= 4 && (fetchBytes & (fetchBytes - 1)) == 0, "fetchBytes must be a power of two >= 4")
+  require(fetchGenWidth >= 1, "fetch generation must have at least one bit")
+  def fetchWidth: Int = fetchBytes / 4
+}
+
+/** The backend LSQ widths the core-side data path must agree with (a mirror, like CoreFetchView;
+  * the core domain never imports BackendParams). A DataTlb/DataCache request id is the LSQ encoding
+  * {isStore, entry index padded to indexWidth, entry generation}. Whoever composes BackendParams with
+  * CoreParams (CoreTop) must require loadQueueDepth, storeQueueDepth and lsqGenWidth equal. */
+case class CoreLsqView(
+    loadQueueDepth: Int = 8,  // BackendTuningParams.loadQueueDepth
+    storeQueueDepth: Int = 8, // BackendTuningParams.storeQueueDepth
+    generationWidth: Int = 2  // BackendParams.lsqGenWidth
+) {
+  require(loadQueueDepth >= 2 && (loadQueueDepth & (loadQueueDepth - 1)) == 0, "load queue depth must be a power of two >= 2")
+  require(storeQueueDepth >= 2 && (storeQueueDepth & (storeQueueDepth - 1)) == 0, "store queue depth must be a power of two >= 2")
+  require(generationWidth >= 1, "LSQ entry generation must have at least one bit")
+  private def log2(x: Int): Int = 32 - Integer.numberOfLeadingZeros(x - 1)
+  def lqIdxWidth: Int = log2(loadQueueDepth)
+  def sqIdxWidth: Int = log2(storeQueueDepth)
+  def indexWidth: Int = math.max(lqIdxWidth, sqIdxWidth)
+  def reqIdWidth: Int = 1 + indexWidth + generationWidth
+}
+
 /** Contract tier. */
 case class CoreContractParams(
     dataWidth: Int = 32,   // XLEN (v0: 32)
@@ -72,13 +103,19 @@ case class CoreContractParams(
     /** Platform / Debug Module execution address on Debug Mode entry (ADR-019E E-2);
       * implementation-specific, 0x800 is the verification platform's default. */
     @LocalSpec(paramDebugEntryAddr)
-    debugEntryAddr: Long = 0x800L
+    debugEntryAddr: Long = 0x800L,
+    fetch: CoreFetchView = CoreFetchView(),
+    /** Static PMA map (paramPmaMap); the default is the verification platform's, not architectural. */
+    pma: PmaMap = PmaMap.verificationDefault,
+    lsq: CoreLsqView = CoreLsqView()
 ) {
   require(dataWidth == 32, "v0 is RV32IM: dataWidth (XLEN) must be 32")
   require(vAddrWidth == 32 && pAddrWidth == 34, "v0 is Sv32: 32-bit VA, 34-bit PA")
   require(hartId >= 0, "Hart ID must be non-negative")
   require(privilege.usingSupervisor, "Sv32 translation requires S-mode (satp)")
   require(!dataCoherence, "TL-C data coherence is not part of v0 (ADR-019 D-19.13)")
+  require(fetch.fetchBytes <= icache.blockBytes, "a fetch block must fit in one I-cache line")
+  pma.checkWidth(pAddrWidth)
   require(debugEntryAddr >= 0 && debugEntryAddr < (1L << vAddrWidth) && debugEntryAddr % 4 == 0,
     "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
 }
@@ -109,6 +146,9 @@ case class CoreParams(
   def hartId: Int        = contract.hartId
   def debugEntryAddr: Long = contract.debugEntryAddr
   def usingRvvi: Boolean = tuning.usingRvvi
+  def fetch: CoreFetchView = contract.fetch
+  def pma: PmaMap = contract.pma
+  def lsq: CoreLsqView = contract.lsq
 
   def usingUser: Boolean       = contract.privilege.usingUser
   def usingSupervisor: Boolean = contract.privilege.usingSupervisor

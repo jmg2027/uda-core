@@ -25,9 +25,7 @@ propRobTagUniqueness
 propWakeupSelectBudget
 
 # WP-2/3 frontend vertices (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer asserts)
-propFetchBufferProgramOrder
 propFetchInOrder
-propFetchPcAligned
 propNoStaleFetchBlock
 propPredictorStateMicroarchitectural
 
@@ -36,21 +34,8 @@ propCheckpointRestoreExact
 propPreciseCommit
 propRobTagConsecutive
 
-
-# WP-6 PTW asserts
-propPtwNoRecursiveTranslation
-propWalkFaultTyping
-
-# WP-6 TLB asserts
-propDtlbMissLocal
-
-# WP-6 shared Sv32 asserts (ITLB/DTLB/PTW)
-propNoFaultCaching
-propSfenceFlushesAll
-
 # WP-7 bus adapter asserts
 propDataBusCoherenceSeparate
-propInstBusGetOnly
 
 # WP-7 cache asserts
 propDCacheCommittedStoresOnly
@@ -58,5 +43,3 @@ propDCacheFunctionTransparent
 propDCacheLoadAnswerExactlyOnce
 propDrainResponseMakesStoreVisible
 propICacheFunctionTransparent
-propICacheReadOnly
-propICacheResponseOrder

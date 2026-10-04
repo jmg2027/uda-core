@@ -28,8 +28,8 @@ scheduling require the owner. Record unresolved decisions in
 - No emoji or decorative characters. No TODO comments. Pending design shells use
   documented empty vals or `???`, never fake signal assignments.
 - Consult `README.md` and `document/HANDOFF.md` for current implementation status.
-  Backend, BranchPredictor, and FetchTargetQueue have passing L1 tests; whole-core
-  integration remains unfinished. DUT-facing scenario commands report
+  Backend, predictor/FTQ/PC generation, FetchBuffer, the I-cache/bus adapter,
+  and ITLB/DTLB/PTW have RTL and L1 tests; whole-core integration remains unfinished. DUT-facing scenario commands report
   `harness-not-ready` (exit 3) until CoreTop and its harness are implemented.
 - The optional SessionStart hook provisions tools and logs to
   `/tmp/verif-session-start.log`. Set `git config core.hooksPath .githooks` to enable
