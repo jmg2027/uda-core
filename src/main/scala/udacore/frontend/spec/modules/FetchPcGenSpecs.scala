@@ -1,7 +1,7 @@
 package udacore.frontend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
@@ -36,7 +36,7 @@ object FetchPcGenSpecs {
   }
 
   val intfBootAddrIn = spec {
-    INTERFACE("BootAddrIn")
+    INTERFACE("FetchPcGenSpecs.intfBootAddrIn")
       .desc("Single boot pulse from BootSequencer carrying the first fetch PC (M-mode, translation off).")
       .uses(bndBootAddr)
       .is(rawReadyValidIntf)
@@ -44,7 +44,7 @@ object FetchPcGenSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("FetchPcGenSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast; target is the new fetch PC.")
       .uses(bndRecoveryEvent, bndFetchRedirect)
       .is(rawNoDecoupled)

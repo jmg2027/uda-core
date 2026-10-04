@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -104,7 +104,7 @@ object CsrControllerSpecs {
   }
 
   val intfInterruptIn = spec {
-    INTERFACE("InterruptIn")
+    INTERFACE("CsrControllerSpecs.intfInterruptIn")
       .desc("Raw interrupt lines (meip, mtip, msip, seip, stip, ssip) feeding mip.")
       .uses(bndInterrupt)
       .is(rawNoDecoupled)
@@ -122,7 +122,7 @@ object CsrControllerSpecs {
   }
 
   val intfTranslationContextOut = spec {
-    INTERFACE("TranslationContextOut")
+    INTERFACE("CsrControllerSpecs.intfTranslationContextOut")
       .desc("Committed satp/priv/MPRV/SUM/MXR view to the ITLB, DTLB, and PTW.")
       .uses(bndTranslationContext)
       .is(rawNoDecoupled)

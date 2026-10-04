@@ -1,12 +1,12 @@
 package udacore.external.multiplier.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 object MultiplierSpecs {
   val contMultiplier = spec {
-    CONTRACT("Multiplier")
+    CONTRACT("MultiplierSpecs.contMultiplier")
       .desc("""
         IP level multiplier
         Supports configurable slice widths and multi-cycle execution
@@ -76,7 +76,7 @@ object MultiplierSpecs {
   }
 
   val paramMultiplier = spec {
-    PARAMETER("Multiplier")
+    PARAMETER("MultiplierSpecs.paramMultiplier")
       .desc("""
         Configuration parameters for the Multiplier
         """.stripMargin)

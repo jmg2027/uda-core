@@ -1,12 +1,12 @@
 package udacore.external.bitalu.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 object BitAluSpecs {
   val contBitAlu = spec {
-    CONTRACT("BitAlu")
+    CONTRACT("BitAluSpecs.contBitAlu")
       .desc("External bit-manipulation compute block for RV32B operations.")
       .has(intfBitAluIO)
       .build()
@@ -36,7 +36,7 @@ object BitAluSpecs {
   }
 
   val paramBitAlu = spec {
-    PARAMETER("BitAlu")
+    PARAMETER("BitAluSpecs.paramBitAlu")
       .desc("Configuration for enabling RV32B extension subsets.")
       .markdownTable(
         List("name", "type", "default", "description"),

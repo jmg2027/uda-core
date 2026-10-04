@@ -1,13 +1,19 @@
 package udacore.frontend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
 import udacore.frontend.spec.shared.FrontendParamsSpecs._
-import udacore.backend.spec.shared.BackendBundlesSpecs.{bndFtqCommit, bndRecoveryEvent}
-import udacore.backend.spec.shared.BackendParamsSpecs.{funcRobOlder, funcRecoveryKills}
+import udacore.backend.spec.shared.BackendBundlesSpecs.{
+  bndFtqCommit,
+  bndRecoveryEvent
+}
+import udacore.backend.spec.shared.BackendParamsSpecs.{
+  funcRobOlder,
+  funcRecoveryKills
+}
 
 /** FetchTargetQueue: prediction metadata and history checkpoints per fetch
   * block, from prediction to commit (ADR-019 D-19.2, D-19.11).
@@ -17,10 +23,10 @@ object FetchTargetQueueSpecs {
     CONTRACT("FetchTargetQueue")
       .desc(
         "A circular queue with one entry per predicted fetch block. It decouples prediction " +
-        "from instruction fetch, issues fetch requests in order, keeps each block's " +
-        "prediction, TAGE/BTB metadata, and GHR/RAS checkpoint until the block's last " +
-        "instruction commits, repairs predictor history after a RecoveryEvent, and emits the " +
-        "commit-time training record."
+          "from instruction fetch, issues fetch requests in order, keeps each block's " +
+          "prediction, TAGE/BTB metadata, and GHR/RAS checkpoint until the block's last " +
+          "instruction commits, repairs predictor history after a RecoveryEvent, and emits the " +
+          "commit-time training record."
       )
       .has(
         intfPredictionIn,
@@ -40,17 +46,19 @@ object FetchTargetQueueSpecs {
       .is(rawSpeculativeHolder)
       .note(
         "Speculative-holder stance: entries are ordered by ftqIdx ({wrap, idx}, compared with " +
-        "the funcRobOlder rule). An entry is live from enqueue until FtqCommit names it or a " +
-        "RecoveryEvent discards it. BranchMispredict discards entries younger than e.ftqIdx " +
-        "and keeps e.ftqIdx and all older; ArchRedirect discards all. Reclaim: the tail pointer " +
-        "rewinds to e.ftqIdx + 1 (or to the head for ArchRedirect)."
+          "the funcRobOlder rule). An entry is live from enqueue until FtqCommit names it or a " +
+          "RecoveryEvent discards it. BranchMispredict discards entries younger than e.ftqIdx " +
+          "and keeps e.ftqIdx and all older; ArchRedirect discards all. Reclaim: the tail pointer " +
+          "rewinds to e.ftqIdx + 1 (or to the head for ArchRedirect)."
       )
       .build()
   }
 
   val intfPredictionIn = spec {
     INTERFACE("PredictionIn")
-      .desc("Predictions from the BranchPredictor; ready is low when the FTQ is full.")
+      .desc(
+        "Predictions from the BranchPredictor; ready is low when the FTQ is full."
+      )
       .uses(bndPrediction)
       .is(rawReadyValidIntf)
       .build()
@@ -58,15 +66,19 @@ object FetchTargetQueueSpecs {
 
   val intfFetchRequestOut = spec {
     INTERFACE("FetchRequestOut")
-      .desc("In-order fetch requests (ftqIdx, fetchPc, lastSlot) to the FetchUnit.")
+      .desc(
+        "In-order fetch requests (ftqIdx, fetchPc, lastSlot) to the FetchUnit."
+      )
       .uses(bndFetchRequest)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfFtqCommitIn = spec {
-    INTERFACE("FtqCommitIn")
-      .desc("Block-commit notices from the backend CommitUnit (FtqCommit view of the commit broadcast), in program order.")
+    INTERFACE("FetchTargetQueueSpecs.intfFtqCommitIn")
+      .desc(
+        "Block-commit notices from the backend CommitUnit (FtqCommit view of the commit broadcast), in program order."
+      )
       .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
       .build()
@@ -74,7 +86,9 @@ object FetchTargetQueueSpecs {
 
   val intfHistoryRestoreOut = spec {
     INTERFACE("HistoryRestoreOut")
-      .desc("Exactly one restore token per RecoveryEvent to the BranchPredictor, in RecoveryEvent order (ADR-019H E-5).")
+      .desc(
+        "Exactly one restore token per RecoveryEvent to the BranchPredictor, in RecoveryEvent order (ADR-019H E-5)."
+      )
       .uses(bndHistoryRestore)
       .is(rawReadyValidIntf)
       .build()
@@ -82,14 +96,16 @@ object FetchTargetQueueSpecs {
 
   val intfPredictorTrainOut = spec {
     INTERFACE("PredictorTrainOut")
-      .desc("One training record per committed block; backpressure delays the FTQ release (and hence commit), never drops training.")
+      .desc(
+        "One training record per committed block; backpressure delays the FTQ release (and hence commit), never drops training."
+      )
       .uses(bndPredictorTrain)
       .is(rawReadyValidIntf)
       .build()
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("FetchTargetQueueSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -99,7 +115,9 @@ object FetchTargetQueueSpecs {
 
   val funcFtqAllocate = spec {
     FUNCTION("FtqAllocate")
-      .desc("Enqueue each accepted Prediction at the tail in prediction order and assign it ftqIdx = tail; the entry fetchPc is the requested fetch PC (Prediction.fetchPc, ADR-019G E-6).")
+      .desc(
+        "Enqueue each accepted Prediction at the tail in prediction order and assign it ftqIdx = tail; the entry fetchPc is the requested fetch PC (Prediction.fetchPc, ADR-019G E-6)."
+      )
       .uses(intfPredictionIn)
       .build()
   }
@@ -108,9 +126,9 @@ object FetchTargetQueueSpecs {
     FUNCTION("FtqFetchIssue")
       .desc(
         "A fetch pointer walks live entries in order and issues one FetchRequest per entry, " +
-        "with fetchPc = the entry's requested fetch PC and lastSlot = the predicted taken exit " +
-        "slot or FetchWidth-1 (ADR-019G E-6). After a RecoveryEvent " +
-        "the fetch pointer restarts at the first entry allocated after the event."
+          "with fetchPc = the entry's requested fetch PC and lastSlot = the predicted taken exit " +
+          "slot or FetchWidth-1 (ADR-019G E-6). After a RecoveryEvent " +
+          "the fetch pointer restarts at the first entry allocated after the event."
       )
       .uses(intfFetchRequestOut)
       .build()
@@ -120,18 +138,24 @@ object FetchTargetQueueSpecs {
     FUNCTION("FtqRecovery")
       .desc(
         "BranchMispredict: discard every entry younger than e.ftqIdx (funcRecoveryKills in " +
-        "the fetch-block order domain), record e.cfiOutcome as the resolved exit of entry " +
-        "e.ftqIdx, and send HistoryRestore{checkpoint of e.ftqIdx, applyOutcome, outcome, pc = " +
-        "alignDown(entry fetchPc, FetchBytes) + 4 * e.cfiOutcome.slot (ADR-019G E-5)}. " +
-        "ArchRedirect: send HistoryRestore{checkpoint of e.ftqIdx if that entry is live, else " +
-        "the current tail checkpoint, applyOutcome = false} and then discard all entries. " +
-        "Every RecoveryEvent yields exactly one HistoryRestore, and restores leave in " +
-        "RecoveryEvent order, including back-to-back events (ADR-019H E-5)."
+          "the fetch-block order domain), record e.cfiOutcome as the resolved exit of entry " +
+          "e.ftqIdx, and send HistoryRestore{checkpoint of e.ftqIdx, applyOutcome, outcome, pc = " +
+          "alignDown(entry fetchPc, FetchBytes) + 4 * e.cfiOutcome.slot (ADR-019G E-5)}. " +
+          "ArchRedirect: send HistoryRestore{checkpoint of e.ftqIdx if that entry is live, else " +
+          "the current tail checkpoint, applyOutcome = false} and then discard all entries. " +
+          "Every RecoveryEvent yields exactly one HistoryRestore, and restores leave in " +
+          "RecoveryEvent order, including back-to-back events (ADR-019H E-5). " +
+          "Restore tokens retain their snapshots independently of FTQ entry reclamation. " +
+          "The pending restore capacity covers BranchCheckpointCount + 1 events (ADR-019H E-4); " +
+          "backpressure on HistoryRestoreOut never overwrites an earlier event. Allocation " +
+          "and fetch issue pause in an event cycle and while restores remain pending. " +
+          "The tail-checkpoint fallback is the most recently accepted prediction's checkpoint " +
+          "(zero before the first allocation), retained across entry release and recovery."
       )
       .uses(intfRecoveryEventIn, intfHistoryRestoreOut, funcRecoveryKills)
       .note(
         "The ArchRedirect history choice is microarchitectural; any deterministic choice is " +
-        "legal (ADR-019 D-19.11), and this one is fixed for reproducibility."
+          "legal (ADR-019 D-19.11), and this one is fixed for reproducibility."
       )
       .build()
   }
@@ -140,9 +164,13 @@ object FetchTargetQueueSpecs {
     FUNCTION("FtqCommitTrain")
       .desc(
         "On FtqCommit{ftqIdx, exit}: the named entry is the head; emit PredictorTrain{fetchPc = " +
-        "alignDown(entry fetchPc, FetchBytes) (ADR-019G E-7), " +
-        "checkpoint.ghr, meta, prediction, committed exit} and release the head. The FtqCommit " +
-        "transfer completes only together with the PredictorTrain transfer."
+          "alignDown(entry fetchPc, FetchBytes) (ADR-019G E-7), " +
+          "checkpoint.ghr, meta, prediction, committed exit} and release the head. The FtqCommit " +
+          "transfer completes only together with the PredictorTrain transfer. " +
+          "An older head may commit in a branch-recovery cycle. A retiring ArchRedirect may " +
+          "coincide with its head's FtqCommit: training reads the pre-event entry and recovery " +
+          "empties the queue at the advanced head. Commit readiness does not depend on the " +
+          "RecoveryEvent generated by that same retirement."
       )
       .uses(intfFtqCommitIn, intfPredictorTrainOut)
       .build()
@@ -150,7 +178,9 @@ object FetchTargetQueueSpecs {
 
   val propFtqInOrderRelease = spec {
     PROPERTY("FtqInOrderRelease")
-      .desc("Every FtqCommit names the current head entry; entries are released only from the head, in ftqIdx order.")
+      .desc(
+        "Every FtqCommit names the current head entry; entries are released only from the head, in ftqIdx order."
+      )
       .uses(intfFtqCommitIn)
       .note("Simulation assert.")
       .build()
@@ -160,7 +190,7 @@ object FetchTargetQueueSpecs {
     PROPERTY("FtqRecoveryKeepsOlder")
       .desc(
         "A BranchMispredict RecoveryEvent never discards or modifies (other than recording the " +
-        "resolved exit of e.ftqIdx) any entry at or older than e.ftqIdx."
+          "resolved exit of e.ftqIdx) any entry at or older than e.ftqIdx."
       )
       .uses(intfRecoveryEventIn)
       .note("Simulation assert.")

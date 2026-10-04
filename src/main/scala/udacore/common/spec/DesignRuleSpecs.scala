@@ -1,7 +1,7 @@
 package udacore.common.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 
 /** Repository-wide design doctrine (ADR-015, ADR-017, ADR-019 D-19.14).
   *
@@ -112,19 +112,19 @@ object DesignRuleSpecs {
   }
 
   val rawZeroCycle = spec {
-    RAW("Cycle", "0")
+    RAW("DesignRuleSpecs.rawZeroCycle", "0")
       .desc("Represents a zero-cycle design.")
       .build()
   }
 
   val rawMultiCycle = spec {
-    RAW("Cycle", "N")
+    RAW("DesignRuleSpecs.rawMultiCycle", "N")
       .desc("Represents a multi-cycle design.")
       .build()
   }
 
   val rawVariableCycle = spec {
-    RAW("Cycle", "V")
+    RAW("DesignRuleSpecs.rawVariableCycle", "V")
       .desc("Represents a variable-cycle design.")
       .build()
   }

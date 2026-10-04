@@ -1,7 +1,7 @@
 package udacore.frontend.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ParamsSpecs._
 

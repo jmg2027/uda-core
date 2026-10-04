@@ -1,12 +1,12 @@
 package udacore.external.alu.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 object AluSpecs {
   val contAlu = spec {
-    CONTRACT("Alu")
+    CONTRACT("AluSpecs.contAlu")
       .desc("External arithmetic logic unit compute block.")
       .has(intfAluIO)
       .build()
@@ -34,7 +34,7 @@ object AluSpecs {
   }
 
   val paramAlu = spec {
-    PARAMETER("Alu")
+    PARAMETER("AluSpecs.paramAlu")
       .desc("Configuration for the external ALU core.")
       .build()
   }

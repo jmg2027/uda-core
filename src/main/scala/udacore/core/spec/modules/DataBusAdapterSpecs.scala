@@ -1,7 +1,7 @@
 package udacore.core.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.tilelink.TileLinkSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
@@ -48,7 +48,7 @@ object DataBusAdapterSpecs {
   }
 
   val intfDataBus = spec {
-    INTERFACE("DataBus")
+    INTERFACE("DataBusAdapterSpecs.intfDataBus")
       .desc("TileLink master link (A and D in v0; B/C/E only when DataCoherence is enabled).")
       .uses(contTileLink)
       .is(rawReadyValidIntf)

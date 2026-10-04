@@ -7,6 +7,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 VERIF="$(cd "$HERE/.." && pwd)"
 source "$HERE/env.sh"
 OUT="$VERIF/out/classes"
+if [ ! -f "$VERIF/out/.ready" ]; then
+  echo "run.sh: run verif/bin/build.sh successfully before running a suite" >&2
+  exit 1
+fi
 MAIN="$1"; shift || true
 java -cp "$VERIF_CHISEL_CP:$OUT" "$MAIN" "$@" 2>&1 \
   | grep -vE "Verilator|%Warning|verilator|Wcaller|^-|espresso|\[warn\]|^Picked up JAVA_TOOL_OPTIONS"

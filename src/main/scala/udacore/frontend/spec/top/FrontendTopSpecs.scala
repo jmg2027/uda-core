@@ -1,7 +1,7 @@
 package udacore.frontend.spec.top
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
@@ -119,7 +119,7 @@ object FrontendTopSpecs {
   }
 
   val intfBootAddrIn = spec {
-    INTERFACE("BootAddrIn")
+    INTERFACE("FrontendTopSpecs.intfBootAddrIn")
       .desc("Boot pulse from the CoreTop BootSequencer, wired to FetchPcGen.")
       .uses(bndBootAddr)
       .is(rawReadyValidIntf)
@@ -127,7 +127,7 @@ object FrontendTopSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("FrontendTopSpecs.intfRecoveryEventIn")
       .desc("The backend RecoveryEvent broadcast, fanned to every frontend speculative holder.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -136,7 +136,7 @@ object FrontendTopSpecs {
   }
 
   val intfFtqCommitIn = spec {
-    INTERFACE("FtqCommitIn")
+    INTERFACE("FrontendTopSpecs.intfFtqCommitIn")
       .desc("Block-commit notices from the backend CommitUnit, wired to the FetchTargetQueue.")
       .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
@@ -144,7 +144,7 @@ object FrontendTopSpecs {
   }
 
   val intfICacheRespIn = spec {
-    INTERFACE("ICacheRespIn")
+    INTERFACE("FrontendTopSpecs.intfICacheRespIn")
       .desc("Fetch-block responses from the CoreTop-level InstructionCache, wired to the FetchUnit.")
       .uses(bndICacheResp)
       .is(rawReadyValidIntf)
@@ -152,7 +152,7 @@ object FrontendTopSpecs {
   }
 
   val intfFetchPacketOut = spec {
-    INTERFACE("FetchPacketOut")
+    INTERFACE("FrontendTopSpecs.intfFetchPacketOut")
       .desc("Instruction packets (up to DecodeWidth) to the backend DecodeUnit.")
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
@@ -160,7 +160,7 @@ object FrontendTopSpecs {
   }
 
   val intfITlbReqOut = spec {
-    INTERFACE("ITlbReqOut")
+    INTERFACE("FrontendTopSpecs.intfITlbReqOut")
       .desc("Fetch translation requests to the CoreTop-level InstructionTlb.")
       .uses(bndTranslateReq)
       .is(rawReadyValidIntf)
@@ -168,7 +168,7 @@ object FrontendTopSpecs {
   }
 
   val intfICacheReqOut = spec {
-    INTERFACE("ICacheReqOut")
+    INTERFACE("FrontendTopSpecs.intfICacheReqOut")
       .desc("Virtually indexed fetch lookups to the CoreTop-level InstructionCache.")
       .uses(bndICacheReq)
       .is(rawReadyValidIntf)

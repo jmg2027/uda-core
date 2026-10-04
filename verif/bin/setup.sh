@@ -126,6 +126,6 @@ ok "wrote $ENVF"
 if [ "${VERIF_BUILD:-1}" = "1" ] && [ -n "${VERIF_CHISEL_CP:-}" ]; then
   log "building framework (this is the ~3-5 min compile)..."
   if bash "$HERE/build.sh" >/tmp/verif-build.log 2>&1; then touch "$VERIF/out/.ready"; ok "framework built (out/.ready)"
-  else log "WARN: framework build failed - see /tmp/verif-build.log"; fi
+  else log "ERROR: framework build failed - see /tmp/verif-build.log"; exit 1; fi
 fi
 log "done."

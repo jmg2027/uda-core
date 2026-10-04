@@ -1,7 +1,7 @@
 package udacore.frontend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
@@ -56,7 +56,7 @@ object FetchUnitSpecs {
   }
 
   val intfITlbReqOut = spec {
-    INTERFACE("ITlbReqOut")
+    INTERFACE("FetchUnitSpecs.intfITlbReqOut")
       .desc("Translation request (access = Fetch) to the CoreTop-level InstructionTlb.")
       .uses(bndTranslateReq)
       .is(rawReadyValidIntf)
@@ -64,7 +64,7 @@ object FetchUnitSpecs {
   }
 
   val intfICacheReqOut = spec {
-    INTERFACE("ICacheReqOut")
+    INTERFACE("FetchUnitSpecs.intfICacheReqOut")
       .desc("Virtually indexed lookup to the CoreTop-level InstructionCache; fires in the same cycle as ITlbReqOut.")
       .uses(bndICacheReq)
       .is(rawReadyValidIntf)
@@ -72,7 +72,7 @@ object FetchUnitSpecs {
   }
 
   val intfICacheRespIn = spec {
-    INTERFACE("ICacheRespIn")
+    INTERFACE("FetchUnitSpecs.intfICacheRespIn")
       .desc("Fetch-block data or fetch fault from the InstructionCache, in request order.")
       .uses(bndICacheResp)
       .is(rawReadyValidIntf)
@@ -88,7 +88,7 @@ object FetchUnitSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("FetchUnitSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)

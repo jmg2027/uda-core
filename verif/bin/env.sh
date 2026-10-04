@@ -8,6 +8,10 @@
 #   VERIF_SCALAC     : scala-compiler:scala-library:scala-reflect jars
 #   FIRTOOL_DIR      : dir containing the `firtool` binary (added to PATH)
 set -e
+# JAVA_HOME also works with Homebrew JDKs that are not registered with macOS.
+if [ -n "${JAVA_HOME:-}" ]; then
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
 SCALA_VER="${SCALA_VER:-2.13.12}"
 CHISEL_VER="${CHISEL_VER:-6.2.0}"
 

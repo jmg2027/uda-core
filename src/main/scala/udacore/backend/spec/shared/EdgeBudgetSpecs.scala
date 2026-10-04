@@ -1,7 +1,7 @@
 package udacore.backend.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 /** Critical-recurrence registry (ADR-007 concept, budgets re-derived for ADR-019).

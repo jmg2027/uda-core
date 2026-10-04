@@ -1,7 +1,7 @@
 package udacore.core.spec.top
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ProductSpecs._
@@ -157,7 +157,7 @@ object CoreTopSpecs {
   }
 
   val intfBootAddrIn = spec {
-    INTERFACE("BootAddrIn")
+    INTERFACE("CoreTopSpecs.intfBootAddrIn")
       .desc("Boot address input.")
       .uses(bndBootAddr)
       .is(rawNoDecoupled)
@@ -166,7 +166,7 @@ object CoreTopSpecs {
   }
 
   val intfHartEnIn = spec {
-    INTERFACE("HartEnIn")
+    INTERFACE("CoreTopSpecs.intfHartEnIn")
       .desc("Hart enable signal input.")
       .uses(bndHartEnable)
       .is(rawNoDecoupled)
@@ -175,7 +175,7 @@ object CoreTopSpecs {
   }
 
   val intfInterruptIn = spec {
-    INTERFACE("InterruptIn")
+    INTERFACE("CoreTopSpecs.intfInterruptIn")
       .desc("Interrupt source lines, wired to BackendTop.")
       .uses(bndInterrupt)
       .is(rawNoDecoupled)
@@ -184,7 +184,7 @@ object CoreTopSpecs {
   }
 
   val intfDebugReqIn = spec {
-    INTERFACE("DebugReqIn")
+    INTERFACE("CoreTopSpecs.intfDebugReqIn")
       .desc("Debug request line, wired to BackendTop.")
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
@@ -193,7 +193,7 @@ object CoreTopSpecs {
   }
 
   val intfInstBus = spec {
-    INTERFACE("InstBus")
+    INTERFACE("CoreTopSpecs.intfInstBus")
       .desc("Instruction TileLink master link, driven by the InstBusAdapter (Get only; TL-UH line fills).")
       .uses(contTileLink, paramTLLinkDerivation)
       .is(rawReadyValidIntf)
@@ -201,7 +201,7 @@ object CoreTopSpecs {
   }
 
   val intfDataBus = spec {
-    INTERFACE("DataBus")
+    INTERFACE("CoreTopSpecs.intfDataBus")
       .desc("Data TileLink master link, driven by the DataBusAdapter (TL-UH in v0; TL-C only when DataCoherence).")
       .uses(contTileLink, paramTLLinkDerivation, paramDataCoherence)
       .is(rawReadyValidIntf)
@@ -209,7 +209,7 @@ object CoreTopSpecs {
   }
 
   val intfRetireStreamOut = spec {
-    INTERFACE("RetireStreamOut")
+    INTERFACE("CoreTopSpecs.intfRetireStreamOut")
       .desc(
         "Verification-only retire stream (ADR-010), wired from BackendTop and elaborated only " +
         "when usingRvvi; it is the harness observation point for propIsaRetireEquivalence and " +
@@ -226,7 +226,7 @@ object CoreTopSpecs {
   }
 
   val capPrivilegeModes = spec {
-    CAPABILITY("PrivilegeModes")
+    CAPABILITY("CoreTopSpecs.capPrivilegeModes")
       .desc(
         "M, S, and U modes (v0). Privilege-dependent behavior enters at exactly three seams: " +
         "DecodeUnit (privileged-instruction legality), TrapController/CsrController (trap " +
@@ -261,7 +261,7 @@ object CoreTopSpecs {
   }
 
   val capDataCoherence = spec {
-    CAPABILITY("DataCoherence")
+    CAPABILITY("CoreTopSpecs.capDataCoherence")
       .desc(
         "Coherence is a separate capability from cache presence (ADR-019 D-19.13). v0 is " +
         "non-coherent TL-UH; enabling TL-C later changes only the DataCache/DataBusAdapter " +

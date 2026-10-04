@@ -1,7 +1,7 @@
 package udacore.core.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ParamsSpecs._
 
@@ -17,7 +17,7 @@ object CoreParamsSpecs {
   // ---- Contract tier ------------------------------------------------------
 
   val paramXLen = spec {
-    PARAMETER("XLen")
+    PARAMETER("CoreParamsSpecs.paramXLen")
       .desc(
         "Base integer register width (CoreParams.dataWidth). The v0 architecture point is " +
         "RV32IM_Zicsr_Zifencei, so 32 is the only v0 value; RV64 is a later ADR."
@@ -47,7 +47,7 @@ object CoreParamsSpecs {
   }
 
   val paramPrivilegeModes = spec {
-    PARAMETER("PrivilegeModes")
+    PARAMETER("CoreParamsSpecs.paramPrivilegeModes")
       .desc(
         "Privilege-mode set (PrivilegeParams). v0 requires M, S, and U (usingUser = " +
         "usingSupervisor = true); usingHypervisor stays false."
@@ -123,7 +123,7 @@ object CoreParamsSpecs {
   }
 
   val paramDataCoherence = spec {
-    PARAMETER("DataCoherence")
+    PARAMETER("CoreParamsSpecs.paramDataCoherence")
       .desc(
         "Coherence capability of the data TileLink link, independent of cache presence " +
         "(ADR-019 D-19.13). false: the D-cache is a non-coherent write-back cache on a TL-UH " +

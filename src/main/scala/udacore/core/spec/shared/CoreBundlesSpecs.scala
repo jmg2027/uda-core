@@ -1,7 +1,7 @@
 package udacore.core.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.core.spec.shared.CoreParamsSpecs._
 
 /** Core boundary bundles and the core-wide exception payload (ADR-019). */

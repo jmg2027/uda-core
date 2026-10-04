@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -112,7 +112,7 @@ object RenameUnitSpecs {
   }
 
   val intfWakeupBroadcastIn = spec {
-    INTERFACE("WakeupBroadcastIn")
+    INTERFACE("RenameUnitSpecs.intfWakeupBroadcastIn")
       .desc("Result-publication fact clearing busy bits.")
       .uses(bndWakeupBroadcast)
       .is(rawNoDecoupled)
@@ -121,7 +121,7 @@ object RenameUnitSpecs {
   }
 
   val intfRobStatusIn = spec {
-    INTERFACE("RobStatusIn")
+    INTERFACE("RenameUnitSpecs.intfRobStatusIn")
       .desc("ROB empty/head view for the serialization gate.")
       .uses(bndRobStatus)
       .is(rawNoDecoupled)
@@ -130,7 +130,7 @@ object RenameUnitSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("RenameUnitSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)

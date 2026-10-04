@@ -12,11 +12,12 @@ The v0 architectural point is RV32IM_Zicsr_Zifencei + Svade with M/S/U privilege
 
 ## Status
 
-Specification phase. The ADR-019 architecture is written as spec DSL contracts with
-red/PENDING verification bindings; the new vertices are documented design shells. The
-implemented and tested pieces today are the external functional units (ALU, multiplier,
-divider, bit-ALU), the CSR decorator library, the TileLink bundles, the BootSequencer, and
-the verification/PPA instruments.
+RTL implementation is in progress against the ADR-019 spec DSL contracts. The backend
+(including rename, ROB, execution, CSR/trap handling, LSQ, StoreBuffer, decode, and
+BackendTop), BranchPredictor, and FetchTargetQueue have passing L1 tests. The remaining
+frontend vertices, MMU, caches, bus adapters, and CoreTop are still design shells, so
+whole-core scenario verification is not active yet. See [HANDOFF](document/HANDOFF.md)
+for the current validation results and implementation order.
 
 ## v0 Reference Machine
 
@@ -57,6 +58,11 @@ python3 tools/spec-check.py                    # spec gate (ADR-015/018): 0 erro
 verif/bin/run.sh verif.spectest.RunSpecTests   # L1 SpecTests
 verif/bin/scn.sh run verif/scn/<name>.scn      # L2 scenario (harness-not-ready until CoreTop has RTL)
 ```
+
+The build uses the sibling `../spec-framework` checkout (override with
+`SPEC_FRAMEWORK_HOME`) and exports real spec/tag indexes and `SPEC.md` to
+`verif/out/spec-report/`. See [framework setup](docs/tooling/spec-framework.md)
+for toolchain settings, sbt usage, and coverage interpretation.
 
 ## Documentation
 

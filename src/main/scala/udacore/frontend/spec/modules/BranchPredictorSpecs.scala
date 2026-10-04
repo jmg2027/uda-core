@@ -1,7 +1,7 @@
 package udacore.frontend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
@@ -102,7 +102,7 @@ object BranchPredictorSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("BranchPredictorSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -179,7 +179,7 @@ object BranchPredictorSpecs {
   }
 
   val funcHistoryRestore = spec {
-    FUNCTION("HistoryRestore")
+    FUNCTION("BranchPredictorSpecs.funcHistoryRestore")
       .desc(
         "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until the " +
         "HistoryRestore of every RecoveryEvent observed so far has been accepted (one per " +

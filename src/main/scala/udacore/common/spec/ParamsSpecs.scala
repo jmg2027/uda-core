@@ -1,7 +1,7 @@
 package udacore.common.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 /** Parameter specification framework for UDACore.
@@ -21,7 +21,7 @@ object ParamsSpecs {
         |- Private: Internal settings accessible only to subsystem owners (experimental toggles, internal guardbands, etc.)
         """.stripMargin)
       .note("Three-tier parameter architecture: Contract -> Tuning -> Private")
-      .code("""
+      .code("scala", """
         |// Example domain parameter organization:
         |object CoreParamsSpecs {
         |  // Contract Tier - Must be specified by integrators
@@ -60,7 +60,7 @@ object ParamsSpecs {
         |exposed to parent domains through design/api/. Cross-domain access is permitted only through api/ packages.
         """.stripMargin)
       .note("Domain isolation with controlled API exposure")
-      .code("""
+      .code("scala", """
         |// Domain parameter isolation example:
         |// frontend/spec/shared/FrontendParamsSpecs.scala
         |// backend/spec/shared/BackendParamsSpecs.scala

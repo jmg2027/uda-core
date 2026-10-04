@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -110,7 +110,7 @@ object DispatchUnitSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("DispatchUnitSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -131,7 +131,7 @@ object DispatchUnitSpecs {
   }
 
   val funcFuAvailability = spec {
-    FUNCTION("FuAvailability")
+    FUNCTION("DispatchUnitSpecs.funcFuAvailability")
       .desc(
         "Drive one availability bit per FU class: set when an IssuedUop of that class " +
         "presented this cycle would be accepted by DispatchUnit and its execution wrapper. " +

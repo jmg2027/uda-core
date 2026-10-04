@@ -1,7 +1,7 @@
 package udacore.backend.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.backend.spec.shared.BackendParamsSpecs._
 
 /** Backend shared bundles (ADR-019 WP-1).
@@ -238,7 +238,7 @@ object BackendBundlesSpecs {
   }
 
   val bndFuAvailability = spec {
-    BUNDLE("FuAvailability")
+    BUNDLE("BackendBundlesSpecs.bndFuAvailability")
       .desc("DispatchUnit to ReservationStation (ADR-019C E-1): per FU class, whether an IssuedUop of that class presented this cycle would be accepted by DispatchUnit and its execution wrapper.")
       .markdownTable(
         List("Name", "Type", "Description"),
@@ -438,7 +438,7 @@ object BackendBundlesSpecs {
   }
 
   val bndHeadMemGrant = spec {
-    BUNDLE("HeadMemGrant")
+    BUNDLE("BackendBundlesSpecs.bndHeadMemGrant")
       .desc(
         "CommitUnit to LSQ: the ROB head is an uncacheable memory uop and may now perform its " +
         "single bus access. Issued at most once per robTag; from the grant until that head " +

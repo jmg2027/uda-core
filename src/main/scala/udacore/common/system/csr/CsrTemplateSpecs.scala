@@ -1,7 +1,7 @@
 package udacore.common.system.csr
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 
 /** CSR register template library specifications.
   *

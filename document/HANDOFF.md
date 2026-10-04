@@ -1,5 +1,76 @@
 # Handoff: ADR-019 conventional OoO v0 - spec-DSL migration (2026-09-25)
 
+## Current working-tree update (2026-10-05)
+
+Base: `main` at `60f689d`. The earlier branch/session narrative below is historical.
+This update is included in the owner-requested main-branch integration.
+
+- Restored the local Apple Silicon verification toolchain: Scala 2.13.12, Chisel
+  6.2.0 and its matching plugin, firtool 1.62.0 through Rosetta, and a separate native
+  Verilator 5.020 build. The installed Verilator 5.052 produced duplicate Ready
+  protocol messages with Chisel 6.2.0; the older tool passes the same suites without
+  changing the verification engine. SDKROOT selects the installed MacOSX26.5.sdk
+  because the default MacOSX27.0.sdk failed to link with this machine's toolchain.
+  Resolved paths are in ignored `verif/.toolchain.env`; binaries, dependency caches,
+  and logs are under `/tmp` and must be reprovisioned if that directory is cleaned.
+- Verified the previously unverified ADR-019H changes: BranchPredictor 17 PASS and
+  decode-filter tests 9 PASS. Replacing prediction-time TAGE provider selection with
+  a commit-time lookup makes `bp.trainIdentity` FAIL on the provider-identity races.
+- Implemented FetchTargetQueue: circular prediction storage, ordered fetch cursor,
+  atomic commit/training, selective branch truncation, architectural recovery, and
+  an independently retained FIFO of HistoryRestore snapshots sized to
+  BranchCheckpointCount + 1. Clarified the existing DSL before RTL: tail-checkpoint
+  fallback, restore backpressure, and concurrent commit/recovery semantics.
+- Spec-TDD: 10 FTQ tests were observed PENDING against the original shell before
+  implementation. Reviewed the checks against lost/duplicated transfers, pointer
+  wrap, preserved metadata, and event collisions. The completed suite has 11 PASS,
+  including depth 2/4/8/32 configurations and a negative out-of-order commit test.
+  The two FTQ PROPERTYs now have design assertions and were removed from the
+  assertion allowlist. No new spec-test allowlist entries were needed.
+- Five FTQ mutations each went red: unaligned restore PC, dropped stalled restore,
+  lost training metadata, discarded survivors, and missing release assertion.
+  Together with the TAGE training mutation, 6/6 mutation controls were detected.
+- Full L1 regression: **165 PASS, 0 FAIL, 2 PENDING (167 total)**. The two PENDING
+  tests are `fu.midBlockSlots` and `fu.midBlockFault`, both on the FetchUnit shell.
+  Compile: 0 errors. Spec-check: 0 errors, 4 pre-existing coverage warnings.
+  No protected files were changed.
+
+Next: FetchPcGen, FetchBuffer, InstructionCache + InstBusAdapter, InstructionTlb,
+DataTlb, PageTableWalker, FetchUnit, DataCache, DataBusAdapter, FrontendTop, CoreTop,
+then activate CoreHarness and the L2 scenarios. BranchPredictor and FTQ are complete
+at L1; whole-core integration remains unverified.
+
+## Spec framework integration and agent instructions (2026-10-05)
+
+- Removed the in-tree no-op framework. Both build paths compile the sibling
+  spec-framework core/macros before UDA specs and RTL; use SPEC_FRAMEWORK_HOME to
+  select another checkout. Build errors propagate, and stale classes/metadata
+  are cleaned before verification builds.
+- Disambiguated 115 declarations across 46 colliding spec IDs without changing
+  Scala val names or SpecTest bindings. Exported 688 specs and 573 source tags;
+  every graph reference resolves. Artifact checks reject missing or malformed
+  output, duplicate IDs, and unknown references.
+- The accompanying spec-framework changes close SpecIndex file handles and
+  preserve constructor-parameter annotations and explicit class companions.
+  Its publish script preserves user-wide dependency caches.
+- Converted the root Claude instruction entry point into AGENTS.md, retaining
+  owner gates, protected paths, language policy, architecture, and skill links.
+  Refreshed the build guidance for the real framework and active OoO test path.
+- Validation from this work session: direct compile and artifact gates passed;
+  macro integration regressions passed; L1 was 165 PASS, 0 FAIL, 2 PENDING;
+  spec-check was 0 errors with 4 existing coverage warnings. Cached sbt compilation
+  and export passed using the installed Chisel compiler plugin and excluding
+  unavailable historical Test dependencies for that validation invocation.
+- Pre-commit `sbt scalafmtCheckAll test` was attempted but stopped because
+  scalafmt 3.7.17 could not be downloaded; the chained historical tests did not run.
+- Full framework publish/golden validation could not run because sbt 1.10.0 was
+  absent and dependency downloads were unavailable. Do not interpret generated
+  formal scaffolding or implementation tags as completed formal proofs.
+- Owner requested committing and integrating all current work into origin/main
+  in both repositories. Setup details: `docs/tooling/spec-framework.md`.
+
+## Historical session record
+
 Branch: `claude/adr-019-spec-dsl-8orhnc` (on top of `main` 5c73eda, which merged
 `architecture/ooo-v0-spec-dsl`). Supersedes the 2026-07-06 handoff; the earlier session
 history (verif/PPA port, ADR-016/017/018, verified FU IP port) lives in git history.
@@ -43,7 +114,7 @@ caches, ITLB/DTLB + shared Sv32 PTW, TileLink boundary. This session executed Wo
 2. `8cf8815` - red/PENDING bindings: 21 new L2 `.scn` (all assemble, all < 0x200 bytes;
    they answer harness-not-ready today) + L1 ParamSpecTests (FAIL observed with the
    requires disabled, then PASS). spec-test-allow shrank to 54 entries.
-3. `62aed52` - deleted superseded non-ADR architecture papers/docs; README, CLAUDE.md,
+3. `62aed52` - deleted superseded non-ADR architecture papers/docs; README, the former Claude instruction file,
    AGENTS.md, skills, docs index, ADR-000 migration record updated.
 
 4. Review round 1 (owner review of 6d7ce25), all spec-level:

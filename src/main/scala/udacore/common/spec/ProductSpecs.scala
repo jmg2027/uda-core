@@ -1,7 +1,7 @@
 package udacore.common.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 /** Product-level narrative specifications for UDACore (ADR-019 root).

@@ -1,7 +1,7 @@
 package udacore.frontend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
@@ -46,7 +46,7 @@ object FetchBufferSpecs {
   }
 
   val intfFetchPacketOut = spec {
-    INTERFACE("FetchPacketOut")
+    INTERFACE("FetchBufferSpecs.intfFetchPacketOut")
       .desc("Up to DecodeWidth instructions per transfer to the backend DecodeUnit.")
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
@@ -54,7 +54,7 @@ object FetchBufferSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("FetchBufferSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)

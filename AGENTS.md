@@ -1,4 +1,43 @@
-# UDACore Development Workflow & Guidelines
+# UDACore Agent Guide
+
+This is the entry point for coding agents working in this repository. Binding
+architecture decisions live in `document/adr/`; specifications precede design.
+
+## Project Identity and Authority
+
+UDACore is a personal, conventional out-of-order RISC-V core following the Unified
+Dataflow Architecture discipline. The v0 point is RV32IM_Zicsr_Zifencei + Svade,
+M/S/U privilege, Sv32, fixed 32-bit instructions, and two TileLink master links.
+It is independent of the company KLASE32 lineage; historical references to that
+lineage's "main" do not describe this repository's current main branch.
+
+Read `document/adr/ADR-000-index.md` and ADR-019 before older architecture papers.
+ADRs outrank specs; specs outrank design. Invoke
+`.claude/skills/spec-first/SKILL.md` before changing `src/main/scala`. For OoO spec
+work, also use `.claude/skills/ooo-spec-author/SKILL.md`. Skill resources remain in
+`.claude/skills/`; this AGENTS.md is the shared instruction entry point.
+
+Project identity decisions, PPA bars (OQ-C), protected-file waivers, and RV64 decode
+scheduling require the owner. Record unresolved decisions in
+`document/HANDOFF.md` under "Open questions needing the OWNER".
+
+## Language and Session Discipline
+
+- Conversation responses and commit messages are Korean.
+- Files, including specs, comments, and documentation, are English ASCII.
+- No emoji or decorative characters. No TODO comments. Pending design shells use
+  documented empty vals or `???`, never fake signal assignments.
+- Consult `README.md` and `document/HANDOFF.md` for current implementation status.
+  Backend, BranchPredictor, and FetchTargetQueue have passing L1 tests; whole-core
+  integration remains unfinished. DUT-facing scenario commands report
+  `harness-not-ready` (exit 3) until CoreTop and its harness are implemented.
+- The optional SessionStart hook provisions tools and logs to
+  `/tmp/verif-session-start.log`. Set `git config core.hooksPath .githooks` to enable
+  the staged ASCII and spec-check hook in a new checkout.
+- End substantive sessions with `.claude/skills/handoff/SKILL.md`; preserve the
+  standing owner questions and toolchain gotchas in `document/HANDOFF.md`.
+- Commit and push only when requested by the user or explicitly authorized by an
+  invoked skill. Keep commits in logical units.
 
 ## Documentation Reading Order
 
@@ -43,7 +82,7 @@
 package udacore.subsystem.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 object ModuleNameSpecs {
@@ -177,8 +216,14 @@ This follows natural reading flow: identity -> interfaces -> behavior -> details
 - `src/test/scala/cluster/SingleCoreMulDivClusterTest.scala`
 - `src/test/scala/cluster/util/*`
 - `assembler/*`
+- `src/main/scala/assembler/*`
+- `src/test/scala/assembler/*`
+- All other `src/test/scala/cluster/*` files
 
-These provide validated test infrastructure for all regression testing.
+These are owner-held infrastructure, including historical tests against older
+APIs. The verification Gate discipline (latency, skew, differential verdicts) may
+be extended but never weakened. The former `csr/CSR.scala` protection was waived
+by the owner for the ADR-019 migration (OQ-E).
 
 ### Interface Implementation Rules
 
@@ -327,17 +372,38 @@ parameters/docs may be deleted or replaced wholesale. Do not add compatibility s
 whose only purpose is to preserve the superseded RVC/predecode/ROB-less/epoch-only
 architecture.
 
-## Testing
+## Build, Test, and Measurement
 
-Run cluster tests:
+The primary gate compiles the sibling `../spec-framework` sources, UDA specs,
+RTL, and verification suites. Override its location with `SPEC_FRAMEWORK_HOME`.
+Both build paths use Scala 2.13.12 and Chisel 6.2.0. See
+`docs/tooling/spec-framework.md` for setup and report interpretation.
+
 ```bash
-sbt testOnly udacore.cluster.SingleCoreMulDivClusterTest
-sbt 'testOnly *SingleCoreMulDivClusterTest* -- -z "Store test 0"'
+bash verif/bin/setup.sh                     # Linux toolchain provisioning
+bash verif/bin/build.sh                     # compile and spec artifact gate
+python3 tools/spec-check.py                 # ADR-015/018 gate
+bash verif/bin/test-spec-framework.sh       # macro integration regressions
+verif/bin/run.sh verif.spectest.RunSpecTests # active OoO L1 tests
+sbt specCheck                              # clean sbt compile and index export
 ```
 
-Format and test before committing:
+Spec IDs must be globally unique. Metadata exports contain real spec relations
+and source tags; design-shell annotations alone do not prove implementation or
+formal coverage. Existing coverage gaps remain visible in the reports.
+
+Run `sbt scalafmtCheckAll test` before committing. `src/test` contains protected
+historical cluster/assembler tests;
+report incompatibilities or unavailable dependencies without weakening the gates.
+
+Additional instruments:
+
 ```bash
-sbt scalafmtCheckAll test
+verif/bin/scn.sh describe
+verif/bin/scn.sh run my.scn --json
+bash verif/bin/setup-sta.sh
+verif/bin/sta.sh unit mul_csa16
+verif/bin/ppa-unit.sh
 ```
 
 ## Documentation Guidelines

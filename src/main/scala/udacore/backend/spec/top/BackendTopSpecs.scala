@@ -1,7 +1,7 @@
 package udacore.backend.spec.top
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.frontend.spec.shared.FrontendBundlesSpecs.bndFetchPacket
@@ -235,7 +235,7 @@ object BackendTopSpecs {
   }
 
   val intfFetchPacketIn = spec {
-    INTERFACE("FetchPacketIn")
+    INTERFACE("BackendTopSpecs.intfFetchPacketIn")
       .desc("Instruction packets from the frontend FetchBuffer, wired to DecodeUnit.")
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
@@ -243,7 +243,7 @@ object BackendTopSpecs {
   }
 
   val intfInterruptIn = spec {
-    INTERFACE("InterruptIn")
+    INTERFACE("BackendTopSpecs.intfInterruptIn")
       .desc("Raw interrupt lines, wired to the CsrController mip.")
       .uses(bndInterrupt)
       .is(rawNoDecoupled)
@@ -252,7 +252,7 @@ object BackendTopSpecs {
   }
 
   val intfDebugReqIn = spec {
-    INTERFACE("DebugReqIn")
+    INTERFACE("BackendTopSpecs.intfDebugReqIn")
       .desc("Debug request line, wired to the CommitUnit (sampled at a precise retire boundary).")
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
@@ -261,7 +261,7 @@ object BackendTopSpecs {
   }
 
   val intfDtlbStoreRespIn = spec {
-    INTERFACE("DtlbStoreRespIn")
+    INTERFACE("BackendTopSpecs.intfDtlbStoreRespIn")
       .desc("DataTlb answers for store-address translations, wired to the LSQ.")
       .uses(bndTranslation)
       .is(rawReadyValidIntf)
@@ -269,7 +269,7 @@ object BackendTopSpecs {
   }
 
   val intfDtlbRefillIn = spec {
-    INTERFACE("DtlbRefillIn")
+    INTERFACE("BackendTopSpecs.intfDtlbRefillIn")
       .desc("DataTlb refill notices, wired to the LSQ.")
       .uses(bndWalkResp)
       .is(rawReadyValidIntf)
@@ -277,7 +277,7 @@ object BackendTopSpecs {
   }
 
   val intfDCacheLoadRespIn = spec {
-    INTERFACE("DCacheLoadRespIn")
+    INTERFACE("BackendTopSpecs.intfDCacheLoadRespIn")
       .desc("DataCache load answers, wired to the LSQ.")
       .uses(bndDCacheLoadResp)
       .is(rawReadyValidIntf)
@@ -285,7 +285,7 @@ object BackendTopSpecs {
   }
 
   val intfUncachedLoadRespIn = spec {
-    INTERFACE("UncachedLoadRespIn")
+    INTERFACE("BackendTopSpecs.intfUncachedLoadRespIn")
       .desc("DataCache answers of uncached loads, wired to the LSQ.")
       .uses(bndUncachedLoadResp)
       .is(rawReadyValidIntf)
@@ -293,7 +293,7 @@ object BackendTopSpecs {
   }
 
   val intfUncachedLoadReqOut = spec {
-    INTERFACE("UncachedLoadReqOut")
+    INTERFACE("BackendTopSpecs.intfUncachedLoadReqOut")
       .desc("Granted uncacheable loads from the LSQ to the DataCache uncached port.")
       .uses(bndUncachedLoadReq)
       .is(rawReadyValidIntf)
@@ -301,7 +301,7 @@ object BackendTopSpecs {
   }
 
   val intfUncachedStoreRespIn = spec {
-    INTERFACE("UncachedStoreRespIn")
+    INTERFACE("BackendTopSpecs.intfUncachedStoreRespIn")
       .desc("DataCache acknowledgements of uncached stores, wired to the LSQ.")
       .uses(bndUncachedStoreResp)
       .is(rawReadyValidIntf)
@@ -309,7 +309,7 @@ object BackendTopSpecs {
   }
 
   val intfUncachedStoreReqOut = spec {
-    INTERFACE("UncachedStoreReqOut")
+    INTERFACE("BackendTopSpecs.intfUncachedStoreReqOut")
       .desc("Granted uncacheable stores from the LSQ to the DataCache uncached port.")
       .uses(bndUncachedStoreReq)
       .is(rawReadyValidIntf)
@@ -317,7 +317,7 @@ object BackendTopSpecs {
   }
 
   val intfStoreDrainRespIn = spec {
-    INTERFACE("StoreDrainRespIn")
+    INTERFACE("BackendTopSpecs.intfStoreDrainRespIn")
       .desc("DataCache store-drain completions, wired to the StoreBuffer.")
       .uses(bndStoreDrainResp)
       .is(rawReadyValidIntf)
@@ -325,7 +325,7 @@ object BackendTopSpecs {
   }
 
   val intfDCacheCleanRespIn = spec {
-    INTERFACE("DCacheCleanRespIn")
+    INTERFACE("BackendTopSpecs.intfDCacheCleanRespIn")
       .desc("DataCache clean-all completion, wired to the CommitUnit.")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
@@ -333,7 +333,7 @@ object BackendTopSpecs {
   }
 
   val intfRecoveryEventOut = spec {
-    INTERFACE("RecoveryEventOut")
+    INTERFACE("BackendTopSpecs.intfRecoveryEventOut")
       .desc("The RecoveryEvent broadcast toward the frontend.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -342,7 +342,7 @@ object BackendTopSpecs {
   }
 
   val intfFtqCommitOut = spec {
-    INTERFACE("FtqCommitOut")
+    INTERFACE("BackendTopSpecs.intfFtqCommitOut")
       .desc("Block-commit notices to the frontend FetchTargetQueue.")
       .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
@@ -350,7 +350,7 @@ object BackendTopSpecs {
   }
 
   val intfDtlbReqOut = spec {
-    INTERFACE("DtlbReqOut")
+    INTERFACE("BackendTopSpecs.intfDtlbReqOut")
       .desc("LSQ translation requests to the CoreTop-level DataTlb.")
       .uses(bndTranslateReq)
       .is(rawReadyValidIntf)
@@ -358,7 +358,7 @@ object BackendTopSpecs {
   }
 
   val intfDCacheLoadReqOut = spec {
-    INTERFACE("DCacheLoadReqOut")
+    INTERFACE("BackendTopSpecs.intfDCacheLoadReqOut")
       .desc("LSQ load lookups to the CoreTop-level DataCache.")
       .uses(bndDCacheLoadReq)
       .is(rawReadyValidIntf)
@@ -366,7 +366,7 @@ object BackendTopSpecs {
   }
 
   val intfStoreDrainReqOut = spec {
-    INTERFACE("StoreDrainReqOut")
+    INTERFACE("BackendTopSpecs.intfStoreDrainReqOut")
       .desc("Committed store drains from the StoreBuffer to the DataCache.")
       .uses(bndStoreDrainReq)
       .is(rawReadyValidIntf)
@@ -374,7 +374,7 @@ object BackendTopSpecs {
   }
 
   val intfTranslationContextOut = spec {
-    INTERFACE("TranslationContextOut")
+    INTERFACE("BackendTopSpecs.intfTranslationContextOut")
       .desc("Committed translation context from the CsrController to the ITLB, DTLB, and PTW.")
       .uses(bndTranslationContext)
       .is(rawNoDecoupled)
@@ -383,7 +383,7 @@ object BackendTopSpecs {
   }
 
   val intfSfenceVmaOut = spec {
-    INTERFACE("SfenceVmaOut")
+    INTERFACE("BackendTopSpecs.intfSfenceVmaOut")
       .desc("SFENCE.VMA tokens from the CommitUnit to the PageTableWalker.")
       .uses(bndTlbFlush)
       .is(rawReadyValidIntf)
@@ -391,7 +391,7 @@ object BackendTopSpecs {
   }
 
   val intfICacheInvalidateOut = spec {
-    INTERFACE("ICacheInvalidateOut")
+    INTERFACE("BackendTopSpecs.intfICacheInvalidateOut")
       .desc("FENCE.I invalidate tokens from the CommitUnit to the InstructionCache.")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
@@ -399,7 +399,7 @@ object BackendTopSpecs {
   }
 
   val intfRetireStreamOut = spec {
-    INTERFACE("RetireStreamOut")
+    INTERFACE("BackendTopSpecs.intfRetireStreamOut")
       .desc("Verification retire stream from the CommitUnit (ADR-010), elaborated only when usingRvvi.")
       .uses(bndRetireToken)
       .is(rawReadyValidIntf)
@@ -408,7 +408,7 @@ object BackendTopSpecs {
   }
 
   val intfDCacheCleanReqOut = spec {
-    INTERFACE("DCacheCleanReqOut")
+    INTERFACE("BackendTopSpecs.intfDCacheCleanReqOut")
       .desc("FENCE.I clean-all requests from the CommitUnit to the DataCache.")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)

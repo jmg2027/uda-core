@@ -1,7 +1,7 @@
 package udacore.core.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
 import udacore.core.spec.shared.MemoryBundlesSpecs._
@@ -105,7 +105,7 @@ object DataTlbSpecs {
   }
 
   val intfTranslationContextIn = spec {
-    INTERFACE("TranslationContextIn")
+    INTERFACE("DataTlbSpecs.intfTranslationContextIn")
       .desc("Committed satp/dataPriv/SUM/MXR view from the backend CsrController.")
       .uses(bndTranslationContext)
       .is(rawNoDecoupled)

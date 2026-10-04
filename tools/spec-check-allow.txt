@@ -28,8 +28,6 @@ propWakeupSelectBudget
 propFetchBufferProgramOrder
 propFetchInOrder
 propFetchPcAligned
-propFtqInOrderRelease
-propFtqRecoveryKeepsOlder
 propNoStaleFetchBlock
 propPredictorStateMicroarchitectural
 

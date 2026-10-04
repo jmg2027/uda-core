@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -56,7 +56,7 @@ object StoreBufferSpecs {
   }
 
   val intfStoreDrainReqOut = spec {
-    INTERFACE("StoreDrainReqOut")
+    INTERFACE("StoreBufferSpecs.intfStoreDrainReqOut")
       .desc("Head store write into the CoreTop-level DataCache (physical address).")
       .uses(bndStoreDrainReq)
       .is(rawReadyValidIntf)
@@ -64,7 +64,7 @@ object StoreBufferSpecs {
   }
 
   val intfStoreDrainRespIn = spec {
-    INTERFACE("StoreDrainRespIn")
+    INTERFACE("StoreBufferSpecs.intfStoreDrainRespIn")
       .desc("Completion of the head store's write; frees the head.")
       .uses(bndStoreDrainResp)
       .is(rawReadyValidIntf)

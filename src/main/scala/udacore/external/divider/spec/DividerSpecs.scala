@@ -1,13 +1,13 @@
 package udacore.external.divider.spec
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 object DividerSpecs {
   // === TOP-LEVEL WRAPPER CONTRACT ===
   val contDivider = spec {
-    CONTRACT("Divider")
+    CONTRACT("DividerSpecs.contDivider")
       .desc("Top-level divider wrapper providing unified interface and early-out optimizations")
       .has(intfDividerIO, funcEarlyOut, funcDecodeOperation, funcSelectDivider)
       .uses(contNonRestoringDividerCore, contRestoringDivider, paramDivider)
@@ -204,7 +204,7 @@ object DividerSpecs {
 
   // === PARAMETER SPECIFICATIONS ===  
   val paramDivider = spec {
-    PARAMETER("Divider")
+    PARAMETER("DividerSpecs.paramDivider")
       .desc("Configuration parameters for divider implementation selection and optimization")
       .markdownTable(
         List("Parameter", "Type", "Description", "Impact"),

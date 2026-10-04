@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -101,7 +101,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfDtlbReqOut = spec {
-    INTERFACE("DtlbReqOut")
+    INTERFACE("LoadStoreQueueSpecs.intfDtlbReqOut")
       .desc("Translation requests (access = Load or Store, reqId = queue, index, generation) to the CoreTop-level DataTlb.")
       .uses(bndTranslateReq)
       .is(rawReadyValidIntf)
@@ -109,7 +109,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfDtlbStoreRespIn = spec {
-    INTERFACE("DtlbStoreRespIn")
+    INTERFACE("LoadStoreQueueSpecs.intfDtlbStoreRespIn")
       .desc("Translation answers for store-address requests (loads receive theirs through the D-cache response).")
       .uses(bndTranslation)
       .is(rawReadyValidIntf)
@@ -117,7 +117,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfDtlbRefillIn = spec {
-    INTERFACE("DtlbRefillIn")
+    INTERFACE("LoadStoreQueueSpecs.intfDtlbRefillIn")
       .desc("Refill notices {vpn} from the DataTlb when a walk it started completes; wakes translation-pending entries. Always ready.")
       .uses(bndWalkResp)
       .is(rawReadyValidIntf)
@@ -125,7 +125,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfDCacheLoadReqOut = spec {
-    INTERFACE("DCacheLoadReqOut")
+    INTERFACE("LoadStoreQueueSpecs.intfDCacheLoadReqOut")
       .desc("Load lookups to the VIPT DataCache, fired in the same cycle as the load's DtlbReqOut.")
       .uses(bndDCacheLoadReq)
       .is(rawReadyValidIntf)
@@ -133,7 +133,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfDCacheLoadRespIn = spec {
-    INTERFACE("DCacheLoadRespIn")
+    INTERFACE("LoadStoreQueueSpecs.intfDCacheLoadRespIn")
       .desc("Load answers (possibly out of order), reassociated by lqIdx and lqGen.")
       .uses(bndDCacheLoadResp)
       .is(rawReadyValidIntf)
@@ -181,7 +181,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfRobStatusIn = spec {
-    INTERFACE("RobStatusIn")
+    INTERFACE("LoadStoreQueueSpecs.intfRobStatusIn")
       .desc("ROB head position (LQ release).")
       .uses(bndRobStatus)
       .is(rawNoDecoupled)
@@ -198,7 +198,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfUncachedLoadReqOut = spec {
-    INTERFACE("UncachedLoadReqOut")
+    INTERFACE("LoadStoreQueueSpecs.intfUncachedLoadReqOut")
       .desc("The single bus read of a granted uncacheable load, to the DataCache uncached port (physical; no DTLB pairing).")
       .uses(bndUncachedLoadReq)
       .is(rawReadyValidIntf)
@@ -206,7 +206,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfUncachedLoadRespIn = spec {
-    INTERFACE("UncachedLoadRespIn")
+    INTERFACE("LoadStoreQueueSpecs.intfUncachedLoadRespIn")
       .desc("Bus answer of the uncached load (data or accessFault = denied).")
       .uses(bndUncachedLoadResp)
       .is(rawReadyValidIntf)
@@ -214,7 +214,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfUncachedStoreReqOut = spec {
-    INTERFACE("UncachedStoreReqOut")
+    INTERFACE("LoadStoreQueueSpecs.intfUncachedStoreReqOut")
       .desc("The single bus write of a granted uncacheable store, to the DataCache uncached port (physical; bypasses the StoreBuffer and the array).")
       .uses(bndUncachedStoreReq)
       .is(rawReadyValidIntf)
@@ -222,7 +222,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfUncachedStoreRespIn = spec {
-    INTERFACE("UncachedStoreRespIn")
+    INTERFACE("LoadStoreQueueSpecs.intfUncachedStoreRespIn")
       .desc("Bus acknowledgement of the uncached store (accessFault = denied).")
       .uses(bndUncachedStoreResp)
       .is(rawReadyValidIntf)
@@ -238,7 +238,7 @@ object LoadStoreQueueSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("LoadStoreQueueSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)

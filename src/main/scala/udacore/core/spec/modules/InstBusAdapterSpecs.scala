@@ -1,7 +1,7 @@
 package udacore.core.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.tilelink.TileLinkSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
@@ -47,7 +47,7 @@ object InstBusAdapterSpecs {
   }
 
   val intfInstBus = spec {
-    INTERFACE("InstBus")
+    INTERFACE("InstBusAdapterSpecs.intfInstBus")
       .desc("TileLink master link (channels A and D; TL-UH bursts for line fills).")
       .uses(contTileLink)
       .is(rawReadyValidIntf)

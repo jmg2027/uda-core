@@ -1,7 +1,7 @@
 package udacore.frontend.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.frontend.spec.shared.FrontendParamsSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs.{bndCfiOutcome, bndRecoveryEvent}
 import udacore.core.spec.shared.CoreParamsSpecs.paramVAddrWidth
@@ -179,7 +179,7 @@ object FrontendBundlesSpecs {
   }
 
   val bndHistoryRestore = spec {
-    BUNDLE("HistoryRestore")
+    BUNDLE("FrontendBundlesSpecs.bndHistoryRestore")
       .desc("FTQ to BranchPredictor after a RecoveryEvent: the checkpoint to restore and the resolved outcome to apply.")
       .markdownTable(
         List("Name", "Type", "Description"),

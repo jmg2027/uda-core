@@ -1,7 +1,7 @@
 package udacore.core.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.core.spec.shared.CoreBundlesSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
@@ -26,7 +26,7 @@ object BootSequencerSpecs {
   }
 
   val intfHartEnIn = spec {
-    INTERFACE("HartEnIn")
+    INTERFACE("BootSequencerSpecs.intfHartEnIn")
       .desc("Hart enable signal from external system")
       .is(rawNoDecoupled)
       .markdownTable(
@@ -39,7 +39,7 @@ object BootSequencerSpecs {
   }
 
   val intfBootAddrIn = spec {
-    INTERFACE("BootAddrIn")
+    INTERFACE("BootSequencerSpecs.intfBootAddrIn")
       .desc("Boot address from external system")
       .is(rawNoDecoupled)
       .markdownTable(

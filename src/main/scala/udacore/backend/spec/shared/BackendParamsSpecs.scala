@@ -1,7 +1,7 @@
 package udacore.backend.spec.shared
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.common.spec.ParamsSpecs._
 
@@ -18,7 +18,7 @@ object BackendParamsSpecs {
   // ---- Contract tier ------------------------------------------------------
 
   val paramXLen = spec {
-    PARAMETER("XLen")
+    PARAMETER("BackendParamsSpecs.paramXLen")
       .desc("Integer register and datapath width in bits. The v0 configuration is 32 (RV32IM).")
       .is(rawContractParams)
       .entry("v0", "32")

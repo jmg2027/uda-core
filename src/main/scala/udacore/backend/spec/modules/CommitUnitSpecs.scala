@@ -1,7 +1,7 @@
 package udacore.backend.spec.modules
 
 import framework.macros.SpecEmit.spec
-import framework.specs.Spec._
+import framework.spec.Spec._
 import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
@@ -89,7 +89,7 @@ object CommitUnitSpecs {
   }
 
   val intfFtqCommitOut = spec {
-    INTERFACE("FtqCommitOut")
+    INTERFACE("CommitUnitSpecs.intfFtqCommitOut")
       .desc("FtqCommit to the frontend FetchTargetQueue when a blockEnd uop retires.")
       .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
@@ -123,7 +123,7 @@ object CommitUnitSpecs {
   }
 
   val intfRetireStreamOut = spec {
-    INTERFACE("RetireStreamOut")
+    INTERFACE("CommitUnitSpecs.intfRetireStreamOut")
       .desc("One verification observation event per retirement or precise trap entry (ADR-010, ADR-019B E-5), elaborated only when usingRvvi.")
       .uses(bndRetireToken)
       .is(rawReadyValidIntf)
@@ -164,7 +164,7 @@ object CommitUnitSpecs {
   }
 
   val intfICacheInvalidateOut = spec {
-    INTERFACE("ICacheInvalidateOut")
+    INTERFACE("CommitUnitSpecs.intfICacheInvalidateOut")
       .desc("FENCE.I I-cache invalidate-all token; fires when the invalidate is durable.")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
@@ -172,7 +172,7 @@ object CommitUnitSpecs {
   }
 
   val intfDCacheCleanReqOut = spec {
-    INTERFACE("DCacheCleanReqOut")
+    INTERFACE("CommitUnitSpecs.intfDCacheCleanReqOut")
       .desc("FENCE.I D-cache clean-all request (the I-side is not coherent with the D-cache).")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
@@ -180,7 +180,7 @@ object CommitUnitSpecs {
   }
 
   val intfDCacheCleanRespIn = spec {
-    INTERFACE("DCacheCleanRespIn")
+    INTERFACE("CommitUnitSpecs.intfDCacheCleanRespIn")
       .desc("D-cache clean-all completion: every dirty line has been written back.")
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
@@ -188,7 +188,7 @@ object CommitUnitSpecs {
   }
 
   val intfSfenceVmaOut = spec {
-    INTERFACE("SfenceVmaOut")
+    INTERFACE("CommitUnitSpecs.intfSfenceVmaOut")
       .desc("SFENCE.VMA token to the PageTableWalker, which flushes both TLBs; fires when the flush is durable.")
       .uses(bndTlbFlush)
       .is(rawReadyValidIntf)
@@ -196,7 +196,7 @@ object CommitUnitSpecs {
   }
 
   val intfRecoveryEventIn = spec {
-    INTERFACE("RecoveryEventIn")
+    INTERFACE("CommitUnitSpecs.intfRecoveryEventIn")
       .desc("The common RecoveryEvent broadcast; CommitUnit uses it only to release the trap hold.")
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
@@ -213,7 +213,7 @@ object CommitUnitSpecs {
   }
 
   val intfDebugReqIn = spec {
-    INTERFACE("DebugReqIn")
+    INTERFACE("CommitUnitSpecs.intfDebugReqIn")
       .desc("Asynchronous debug request line, sampled only at a precise retire boundary like an interrupt.")
       .uses(udacore.core.spec.shared.CoreBundlesSpecs.bndDebugReq)
       .is(rawNoDecoupled)
@@ -256,7 +256,7 @@ object CommitUnitSpecs {
   }
 
   val funcHeadMemGrant = spec {
-    FUNCTION("HeadMemGrant")
+    FUNCTION("CommitUnitSpecs.funcHeadMemGrant")
       .desc(
         "When RobHeadIn presents a head with headExecute && !done (an uncacheable load or " +
         "store), keep RobHeadIn.ready low (observe, do not dequeue), and if no trap hold is " +
