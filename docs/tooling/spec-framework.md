@@ -21,11 +21,33 @@ Both build paths compile the framework sources against that dependency set.
 No local Ivy publication or sbt compiler plugin for spec-framework is required;
 `spec-plugin` is an sbt AutoPlugin, not a Scala compiler plugin.
 
-For the verification build, provision the existing toolchain with
-`bash verif/bin/setup.sh` on Linux, or supply `VERIF_SCALAC`, `VERIF_CHISEL_CP`,
-`VERIF_PLUGIN` and the simulator tools through `verif/.toolchain.env`.
-Use a JDK 17 installation; set `JAVA_HOME` when Java is not already on PATH.
-The setup script provisions Linux tools; it is not a macOS installer.
+For the verification build, use the platform-specific provisioner:
+
+```bash
+bash verif/bin/setup.sh        # Linux
+bash verif/bin/setup-macos.sh  # Apple Silicon macOS
+```
+
+The Linux setup path is unchanged. The Apple Silicon path pins the validated
+JDK 17 / Scala 2.13.12 / Chisel 6.2.0 / firtool 1.62.0 / Verilator 5.020 tuple.
+`firtool` is the upstream macOS x86_64 release and is invoked through an explicit
+Rosetta wrapper; Verilator 5.020 is built as a native arm64 executable. The script
+finds or installs the RISC-V GCC/binutils tools and exposes the historical
+`riscv64-unknown-elf-*` command names expected by the verification harness.
+
+The macOS setup deliberately selects `MacOSX26.5.sdk`. The default
+`MacOSX27.0.sdk` failed to link with this validated stack, and Homebrew Verilator
+5.052 produced duplicate Ready protocol messages with Chisel 6.2.0, so neither is
+used as an automatic substitute. Rosetta 2, Homebrew, and an installed
+`MacOSX26.5.sdk` are prerequisites; `VERIF_MACOS_SDKROOT` may point to that exact SDK
+when it is installed outside the normal Xcode/CommandLineTools locations.
+
+Resolved paths are written to ignored `verif/.toolchain.env`. Downloads,
+Scala/Chisel dependencies, the native Verilator build, the Rosetta firtool wrapper,
+and ccache live under `~/Library/Caches/uda-core-verif` by default (override with
+`VERIF_CACHE_ROOT`). Nothing required for reconstruction is kept under `/tmp`, so
+re-running `setup-macos.sh` repairs the environment after `/tmp` cleanup without
+manual path recovery.
 
 ## Build and export
 
