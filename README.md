@@ -55,7 +55,8 @@ Verification runs locally. GitHub Actions CI workflows are intentionally absent
 to avoid hosted-runner usage for this personal project.
 
 ```bash
-bash verif/bin/setup.sh                        # toolchain (once per container)
+bash verif/bin/setup.sh                        # Linux toolchain
+bash verif/bin/setup-macos.sh                  # Apple Silicon toolchain (use instead of setup.sh)
 bash verif/bin/build.sh                        # compile gate: 0 errors
 python3 tools/spec-check.py                    # spec gate (ADR-015/018): 0 errors
 verif/bin/run.sh verif.spectest.RunSpecTests   # L1 SpecTests

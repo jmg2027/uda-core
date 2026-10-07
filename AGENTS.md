@@ -381,6 +381,7 @@ Both build paths use Scala 2.13.12 and Chisel 6.2.0. See
 
 ```bash
 bash verif/bin/setup.sh                     # Linux toolchain provisioning
+bash verif/bin/setup-macos.sh               # Apple Silicon toolchain provisioning
 bash verif/bin/build.sh                     # compile and spec artifact gate
 python3 tools/spec-check.py                 # ADR-015/018 gate
 bash verif/bin/test-spec-framework.sh       # macro integration regressions
