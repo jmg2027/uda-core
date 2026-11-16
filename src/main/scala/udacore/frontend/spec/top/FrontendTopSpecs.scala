@@ -5,9 +5,16 @@ import framework.spec.Spec._
 
 import udacore.common.spec.DesignRuleSpecs._
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
-import udacore.backend.spec.shared.BackendBundlesSpecs.{bndFtqCommit, bndRecoveryEvent}
+import udacore.backend.spec.shared.BackendBundlesSpecs.{
+  bndFtqCommit,
+  bndRecoveryEvent
+}
 import udacore.core.spec.shared.CoreBundlesSpecs.bndBootAddr
-import udacore.core.spec.shared.MemoryBundlesSpecs.{bndICacheReq, bndICacheResp, bndTranslateReq}
+import udacore.core.spec.shared.MemoryBundlesSpecs.{
+  bndICacheReq,
+  bndICacheResp,
+  bndTranslateReq
+}
 
 /** FrontendTop: conventional PC-indexed speculative frontend (ADR-019 D-19.2).
   *
@@ -91,19 +98,19 @@ object FrontendTopSpecs {
       )
       .note(
         "Edge reconciliation (propGraphConsistency): boot -> FetchPcGen.BootAddrIn; " +
-        "FetchPcGen.PredictReqOut -> BranchPredictor.PredictReqIn; BranchPredictor.NextPcOut -> " +
-        "FetchPcGen.NextPcIn; BranchPredictor.PredictionOut -> FetchTargetQueue.PredictionIn; " +
-        "FetchTargetQueue.HistoryRestoreOut -> BranchPredictor.HistoryRestoreIn; " +
-        "FetchTargetQueue.PredictorTrainOut -> BranchPredictor.PredictorTrainIn; " +
-        "FetchTargetQueue.FetchRequestOut -> FetchUnit.FetchRequestIn; FetchUnit.FetchBlockOut " +
-        "-> FetchBuffer.FetchBlockIn; FtqCommitIn -> FetchTargetQueue.FtqCommitIn; " +
-        "ICacheRespIn -> FetchUnit.ICacheRespIn; FetchUnit.ITlbReqOut -> ITlbReqOut; " +
-        "FetchUnit.ICacheReqOut -> ICacheReqOut; FetchBuffer.FetchPacketOut -> FetchPacketOut; " +
-        "RecoveryEventIn broadcast to all five vertices."
+          "FetchPcGen.PredictReqOut -> BranchPredictor.PredictReqIn; BranchPredictor.NextPcOut -> " +
+          "FetchPcGen.NextPcIn; BranchPredictor.PredictionOut -> FetchTargetQueue.PredictionIn; " +
+          "FetchTargetQueue.HistoryRestoreOut -> BranchPredictor.HistoryRestoreIn; " +
+          "FetchTargetQueue.PredictorTrainOut -> BranchPredictor.PredictorTrainIn; " +
+          "FetchTargetQueue.FetchRequestOut -> FetchUnit.FetchRequestIn; FetchUnit.FetchBlockOut " +
+          "-> FetchBuffer.FetchBlockIn; FtqCommitIn -> FetchTargetQueue.FtqCommitIn; " +
+          "ICacheRespIn -> FetchUnit.ICacheRespIn; FetchUnit.ITlbReqOut -> ITlbReqOut; " +
+          "FetchUnit.ICacheReqOut -> ICacheReqOut; FetchBuffer.FetchPacketOut -> FetchPacketOut; " +
+          "RecoveryEventIn broadcast to all five vertices."
       )
       .note(
         "The ITLB -> I-cache translation edge and the ITLB/PTW edges are CoreTop-level; they do " +
-        "not cross this boundary."
+          "not cross this boundary."
       )
       .uses(propGraphConsistency)
       .has(
@@ -128,7 +135,9 @@ object FrontendTopSpecs {
 
   val intfRecoveryEventIn = spec {
     INTERFACE("FrontendTopSpecs.intfRecoveryEventIn")
-      .desc("The backend RecoveryEvent broadcast, fanned to every frontend speculative holder.")
+      .desc(
+        "The backend RecoveryEvent broadcast, fanned to every frontend speculative holder."
+      )
       .uses(bndRecoveryEvent)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 6.")
@@ -137,7 +146,9 @@ object FrontendTopSpecs {
 
   val intfFtqCommitIn = spec {
     INTERFACE("FrontendTopSpecs.intfFtqCommitIn")
-      .desc("Block-commit notices from the backend CommitUnit, wired to the FetchTargetQueue.")
+      .desc(
+        "Block-commit notices from the backend CommitUnit, wired to the FetchTargetQueue."
+      )
       .uses(bndFtqCommit)
       .is(rawReadyValidIntf)
       .build()
@@ -145,7 +156,9 @@ object FrontendTopSpecs {
 
   val intfICacheRespIn = spec {
     INTERFACE("FrontendTopSpecs.intfICacheRespIn")
-      .desc("Fetch-block responses from the CoreTop-level InstructionCache, wired to the FetchUnit.")
+      .desc(
+        "Fetch-block responses from the CoreTop-level InstructionCache, wired to the FetchUnit."
+      )
       .uses(bndICacheResp)
       .is(rawReadyValidIntf)
       .build()
@@ -153,7 +166,9 @@ object FrontendTopSpecs {
 
   val intfFetchPacketOut = spec {
     INTERFACE("FrontendTopSpecs.intfFetchPacketOut")
-      .desc("Instruction packets (up to DecodeWidth) to the backend DecodeUnit.")
+      .desc(
+        "Instruction packets (up to DecodeWidth) to the backend DecodeUnit."
+      )
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
       .build()
@@ -169,7 +184,9 @@ object FrontendTopSpecs {
 
   val intfICacheReqOut = spec {
     INTERFACE("FrontendTopSpecs.intfICacheReqOut")
-      .desc("Virtually indexed fetch lookups to the CoreTop-level InstructionCache.")
+      .desc(
+        "Virtually indexed fetch lookups to the CoreTop-level InstructionCache."
+      )
       .uses(bndICacheReq)
       .is(rawReadyValidIntf)
       .build()

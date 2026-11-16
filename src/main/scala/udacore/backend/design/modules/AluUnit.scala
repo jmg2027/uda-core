@@ -10,12 +10,14 @@ import udacore.backend.spec.modules.AluUnitSpecs._
 
 /** AluUnit (spec: AluUnitSpecs; ADR-019, ADR-019C E-2).
   *
-  * Single-cycle integer ALU around the external Alu core with a one-entry result holder:
-  * operand select by the AluOp layout (register or immediate B, pc or zero A for
-  * AUIPC/LUI), result registered with the uop's robTag and prd.
+  * Single-cycle integer ALU around the external Alu core with a one-entry
+  * result holder: operand select by the AluOp layout (register or immediate B,
+  * pc or zero A for AUIPC/LUI), result registered with the uop's robTag and
+  * prd.
   *
-  * Recovery stance (rawSpeculativeHolder): the only state is the held result, dropped in
-  * the event cycle when funcRecoveryKills selects it; request ready = !held || drained.
+  * Recovery stance (rawSpeculativeHolder): the only state is the held result,
+  * dropped in the event cycle when funcRecoveryKills selects it; request ready
+  * \= !held || drained.
   */
 @LocalSpec(contAluUnit)
 class AluUnit(val params: BackendParams) extends BackendModule {
@@ -30,9 +32,14 @@ class AluUnit(val params: BackendParams) extends BackendModule {
     val recoveryEventIn = Input(new RecoveryEvent(params))
   })
 
-  private val req = io.aluReqIn
-  private val ev  = io.recoveryEventIn
-  private val holder = new ResultHolder(new FuResult(params), (r: FuResult) => r.robTag, ev, io.aluResultOut)
+  private val req    = io.aluReqIn
+  private val ev     = io.recoveryEventIn
+  private val holder = new ResultHolder(
+    new FuResult(params),
+    (r: FuResult) => r.robTag,
+    ev,
+    io.aluResultOut
+  )
 
   @LocalSpec(funcIntegrateExternalAlu)
   val integrateExternalAlu: Unit = {
@@ -48,7 +55,7 @@ class AluUnit(val params: BackendParams) extends BackendModule {
     r.data       := core.io.result
     r.exception  := 0.U.asTypeOf(r.exception)
     r.cfiOutcome := 0.U.asTypeOf(r.cfiOutcome)
-    req.ready := holder.canAccept
+    req.ready    := holder.canAccept
     holder.load(req.fire, r)
   }
 }

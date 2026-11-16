@@ -40,56 +40,79 @@ private class CsrTestBed extends Module {
   private val scratch = Csr(
     field = new CsrScratchTb,
     default = 0.U,
-    legalize = (x: CsrScratchTb) => { val v = Wire(new CsrScratchTb); v := x; v.lo := 0.U; v }
+    legalize = (x: CsrScratchTb) => {
+      val v = Wire(new CsrScratchTb); v := x; v.lo := 0.U; v
+    }
   ).named("tbScratch")
   when(io.wen) { scratch.write(io.wdata) }
   io.rdata := scratch.reg.asUInt
 
   // Self-incrementing counter with an inhibit line.
-  private val cnt = Counter(dataWidth = 32, inc = 1.U, inhibit = io.inhibit).named("tbCounter")
+  private val cnt =
+    Counter(dataWidth = 32, inc = 1.U, inhibit = io.inhibit).named("tbCounter")
   io.count := cnt.reg.data
 
   // Parent + Shadow window: the shadow's storage IS the parent's win subfield
   // (no standalone register), so shadow writes land in the parent.
-  private val parent = Csr(field = new CsrParentTb, default = 0.U).named("tbParent")
-  private val shadow = Shadow[CsrWinTb, CsrParentTb](parent, (p: CsrParentTb) => p.win)
+  private val parent =
+    Csr(field = new CsrParentTb, default = 0.U).named("tbParent")
+  private val shadow =
+    Shadow[CsrWinTb, CsrParentTb](parent, (p: CsrParentTb) => p.win)
   when(io.shadowWen) { shadow.write(io.shadowW) }
   io.parentRead := parent.reg.asUInt
   io.shadowRead := shadow.reg.asUInt
 }
 
 object CsrSpecTests {
-  val library = new SpecTest("csr.library",
-      Seq("funcCsrWriteProtocol", "propCsrLegalizeTotal", "funcCsrCounter", "funcCsrShadow")) {
+  val library = new SpecTest(
+    "csr.library",
+    Seq(
+      "funcCsrWriteProtocol",
+      "propCsrLegalizeTotal",
+      "funcCsrCounter",
+      "funcCsrShadow"
+    )
+  ) {
     def run(): Seq[TCheck] = sim(new CsrTestBed) { dut =>
-      val out = scala.collection.mutable.ArrayBuffer[TCheck]()
+      val out    = scala.collection.mutable.ArrayBuffer[TCheck]()
       def step() = dut.clock.step()
-      dut.io.wen.poke(false.B); dut.io.shadowWen.poke(false.B); dut.io.inhibit.poke(true.B)
+      dut.io.wen.poke(false.B); dut.io.shadowWen.poke(false.B);
+      dut.io.inhibit.poke(true.B)
       step()
 
       // funcCsrWriteProtocol + propCsrLegalizeTotal: write all-ones; the stored value
       // must be the LEGALIZED one (low nibble zeroed), visible on the next cycle.
       dut.io.wdata.poke("hFFFFFFFF".U)
       dut.io.wen.poke(true.B); step(); dut.io.wen.poke(false.B); step()
-      val got = dut.io.rdata.peek().litValue.toLong & 0xFFFFFFFFL
-      out += TCheck(got == 0xFFFFFFF0L, "write-then-legalized-read", f"got=0x$got%08x exp=0xfffffff0")
+      val got = dut.io.rdata.peek().litValue.toLong & 0xffffffffL
+      out += TCheck(
+        got == 0xfffffff0L,
+        "write-then-legalized-read",
+        f"got=0x$got%08x exp=0xfffffff0"
+      )
 
       // funcCsrCounter: inhibited counter holds; released counter increments by 1/cycle.
-      val c0 = dut.io.count.peek().litValue.toLong
+      val c0    = dut.io.count.peek().litValue.toLong
       step(); step()
       val cHeld = dut.io.count.peek().litValue.toLong
       out += TCheck(cHeld == c0, "counter-inhibit-holds", s"c0=$c0 held=$cHeld")
-      dut.io.inhibit.poke(false.B); step(); step(); step(); dut.io.inhibit.poke(true.B); step()
-      val c3 = dut.io.count.peek().litValue.toLong
+      dut.io.inhibit.poke(false.B); step(); step(); step();
+      dut.io.inhibit.poke(true.B); step()
+      val c3    = dut.io.count.peek().litValue.toLong
       out += TCheck(c3 == c0 + 3, "counter-increments", s"c0=$c0 after3=$c3")
 
       // funcCsrShadow: a shadow write lands in the parent's windowed subfield only.
-      dut.io.shadowW.poke(0xA.U)
-      dut.io.shadowWen.poke(true.B); step(); dut.io.shadowWen.poke(false.B); step()
-      val pr = dut.io.parentRead.peek().litValue.toLong & 0xFFFFFFFFL
-      val sr = dut.io.shadowRead.peek().litValue.toLong & 0xFL
-      out += TCheck(sr == 0xAL, "shadow-read-window", f"shadow=0x$sr%x exp=0xa")
-      out += TCheck(pr == 0xAL, "shadow-writes-parent-subfield-only", f"parent=0x$pr%08x exp=0x0000000a")
+      dut.io.shadowW.poke(0xa.U)
+      dut.io.shadowWen.poke(true.B); step(); dut.io.shadowWen.poke(false.B);
+      step()
+      val pr = dut.io.parentRead.peek().litValue.toLong & 0xffffffffL
+      val sr = dut.io.shadowRead.peek().litValue.toLong & 0xfL
+      out += TCheck(sr == 0xaL, "shadow-read-window", f"shadow=0x$sr%x exp=0xa")
+      out += TCheck(
+        pr == 0xaL,
+        "shadow-writes-parent-subfield-only",
+        f"parent=0x$pr%08x exp=0x0000000a"
+      )
       out.toSeq
     }
   }

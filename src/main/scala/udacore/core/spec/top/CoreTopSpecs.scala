@@ -29,7 +29,13 @@ object CoreTopSpecs {
               | RecoveryEvent is the single selective-recovery broadcast back into the frontend.
               """)
       .is(rawTop)
-      .uses(rawUdacoreProduct, rawUDAMethodology, rawParametricISA, rawReferencePipeline, propGraphConsistency)
+      .uses(
+        rawUdacoreProduct,
+        rawUDAMethodology,
+        rawParametricISA,
+        rawReferencePipeline,
+        propGraphConsistency
+      )
       .has(
         intfBootAddrIn,
         intfHartEnIn,
@@ -139,20 +145,22 @@ object CoreTopSpecs {
       )
       .note(
         "Edge reconciliation (propGraphConsistency) by child INTERFACE: BootSequencer.BootAddrOut " +
-        "-> FrontendTop.BootAddrIn; FrontendTop.FetchPacketOut -> BackendTop.FetchPacketIn; " +
-        "BackendTop.{FtqCommitOut, RecoveryEventOut} -> FrontendTop.{FtqCommitIn, " +
-        "RecoveryEventIn}; FrontendTop.{ITlbReqOut, ICacheReqOut} -> InstructionTlb.ITlbReqIn, " +
-        "InstructionCache.ICacheReqIn; InstructionTlb.ICacheTranslationOut -> " +
-        "InstructionCache.ICacheTranslationIn; InstructionCache.ICacheRespOut -> " +
-        "FrontendTop.ICacheRespIn; BackendTop.{DtlbReqOut, DCacheLoadReqOut, StoreDrainReqOut, " +
-        "DCacheCleanReqOut, ICacheInvalidateOut, SfenceVmaOut, TranslationContextOut} -> " +
-        "DataTlb/DataCache/InstructionCache/PageTableWalker/both TLBs; DataTlb." +
-        "{DCacheTranslationOut, DtlbStoreRespOut, DtlbRefillOut}; DataCache.{DCacheLoadRespOut, " +
-        "StoreDrainRespOut, DCacheCleanRespOut} -> BackendTop; TLB walk and flush edges <-> " +
-        "PageTableWalker; PageTableWalker.PtwMemReqOut <-> DataCache.PtwMemReqIn/RespOut; cache " +
-        "memory edges <-> bus adapters; adapters -> InstBus/DataBus."
+          "-> FrontendTop.BootAddrIn; FrontendTop.FetchPacketOut -> BackendTop.FetchPacketIn; " +
+          "BackendTop.{FtqCommitOut, RecoveryEventOut} -> FrontendTop.{FtqCommitIn, " +
+          "RecoveryEventIn}; FrontendTop.{ITlbReqOut, ICacheReqOut} -> InstructionTlb.ITlbReqIn, " +
+          "InstructionCache.ICacheReqIn; InstructionTlb.ICacheTranslationOut -> " +
+          "InstructionCache.ICacheTranslationIn; InstructionCache.ICacheRespOut -> " +
+          "FrontendTop.ICacheRespIn; BackendTop.{DtlbReqOut, DCacheLoadReqOut, StoreDrainReqOut, " +
+          "DCacheCleanReqOut, ICacheInvalidateOut, SfenceVmaOut, TranslationContextOut} -> " +
+          "DataTlb/DataCache/InstructionCache/PageTableWalker/both TLBs; DataTlb." +
+          "{DCacheTranslationOut, DtlbStoreRespOut, DtlbRefillOut}; DataCache.{DCacheLoadRespOut, " +
+          "StoreDrainRespOut, DCacheCleanRespOut} -> BackendTop; TLB walk and flush edges <-> " +
+          "PageTableWalker; PageTableWalker.PtwMemReqOut <-> DataCache.PtwMemReqIn/RespOut; cache " +
+          "memory edges <-> bus adapters; adapters -> InstBus/DataBus."
       )
-      .note("Roadmap (not in v0): power management, CLIC, TL-C coherence, RV64, compressed instructions.")
+      .note(
+        "Roadmap (not in v0): power management, CLIC, TL-C coherence, RV64, compressed instructions."
+      )
       .build()
   }
 
@@ -194,7 +202,9 @@ object CoreTopSpecs {
 
   val intfInstBus = spec {
     INTERFACE("CoreTopSpecs.intfInstBus")
-      .desc("Instruction TileLink master link, driven by the InstBusAdapter (Get only; TL-UH line fills).")
+      .desc(
+        "Instruction TileLink master link, driven by the InstBusAdapter (Get only; TL-UH line fills)."
+      )
       .uses(contTileLink, paramTLLinkDerivation)
       .is(rawReadyValidIntf)
       .build()
@@ -202,7 +212,9 @@ object CoreTopSpecs {
 
   val intfDataBus = spec {
     INTERFACE("CoreTopSpecs.intfDataBus")
-      .desc("Data TileLink master link, driven by the DataBusAdapter (TL-UH in v0; TL-C only when DataCoherence).")
+      .desc(
+        "Data TileLink master link, driven by the DataBusAdapter (TL-UH in v0; TL-C only when DataCoherence)."
+      )
       .uses(contTileLink, paramTLLinkDerivation, paramDataCoherence)
       .is(rawReadyValidIntf)
       .build()
@@ -212,13 +224,13 @@ object CoreTopSpecs {
     INTERFACE("CoreTopSpecs.intfRetireStreamOut")
       .desc(
         "Verification-only retire stream (ADR-010), wired from BackendTop and elaborated only " +
-        "when usingRvvi; it is the harness observation point for propIsaRetireEquivalence and " +
-        "is absent from the product boundary."
+          "when usingRvvi; it is the harness observation point for propIsaRetireEquivalence and " +
+          "is absent from the product boundary."
       )
       .note(
         "ADR-019B E-3/E-5: each token is a retirement or precise trap-entry observation event; " +
-        "wdata comes from the backend-internal CommitUnit -> PhysicalRegisterFile commit read " +
-        "(CommitPrfReadReq/Resp), which elaborates only with this port."
+          "wdata comes from the backend-internal CommitUnit -> PhysicalRegisterFile commit read " +
+          "(CommitPrfReadReq/Resp), which elaborates only with this port."
       )
       .uses(paramUsingRvvi)
       .is(rawReadyValidIntf)
@@ -229,8 +241,8 @@ object CoreTopSpecs {
     CAPABILITY("CoreTopSpecs.capPrivilegeModes")
       .desc(
         "M, S, and U modes (v0). Privilege-dependent behavior enters at exactly three seams: " +
-        "DecodeUnit (privileged-instruction legality), TrapController/CsrController (trap " +
-        "routing, delegation, xRET, CSR access), and the TLBs (translation mode and permission)."
+          "DecodeUnit (privileged-instruction legality), TrapController/CsrController (trap " +
+          "routing, delegation, xRET, CSR access), and the TLBs (translation mode and permission)."
       )
       .uses(paramPrivilegeModes)
       .build()
@@ -240,7 +252,7 @@ object CoreTopSpecs {
     CAPABILITY("AddressTranslation")
       .desc(
         "Sv32 through the InstructionTlb, the DataTlb, and the shared PageTableWalker, all " +
-        "present in v0. Translation faults are precise and never appear on the TileLink boundary."
+          "present in v0. Translation faults are precise and never appear on the TileLink boundary."
       )
       .uses(
         udacore.core.spec.modules.InstructionTlbSpecs.contInstructionTlb,
@@ -252,7 +264,9 @@ object CoreTopSpecs {
 
   val capCacheHierarchy = spec {
     CAPABILITY("CacheHierarchy")
-      .desc("VIPT L1 InstructionCache and DataCache, both present in v0 (16 KiB, 4-way, 64-byte lines).")
+      .desc(
+        "VIPT L1 InstructionCache and DataCache, both present in v0 (16 KiB, 4-way, 64-byte lines)."
+      )
       .uses(
         udacore.core.spec.modules.InstructionCacheSpecs.contInstructionCache,
         udacore.core.spec.modules.DataCacheSpecs.contDataCache
@@ -264,8 +278,8 @@ object CoreTopSpecs {
     CAPABILITY("CoreTopSpecs.capDataCoherence")
       .desc(
         "Coherence is a separate capability from cache presence (ADR-019 D-19.13). v0 is " +
-        "non-coherent TL-UH; enabling TL-C later changes only the DataCache/DataBusAdapter " +
-        "internals and the link parameters, never the backend, LSQ, or MMU interfaces."
+          "non-coherent TL-UH; enabling TL-C later changes only the DataCache/DataBusAdapter " +
+          "internals and the link parameters, never the backend, LSQ, or MMU interfaces."
       )
       .uses(paramDataCoherence)
       .build()
@@ -275,9 +289,9 @@ object CoreTopSpecs {
     RAW("SelectiveRecovery", "DOCTRINE")
       .desc(
         "Branch mispredictions are recovered at execute: the RecoveryEvent names the recovering " +
-        "branch by robTag and every speculative holder discards only younger work, so older " +
-        "correct-path uops survive. Commit-head architectural redirects discard the whole " +
-        "window. There is no global epoch and no flush wire."
+          "branch by robTag and every speculative holder discards only younger work, so older " +
+          "correct-path uops survive. Commit-head architectural redirects discard the whole " +
+          "window. There is no global epoch and no flush wire."
       )
       .build()
   }
@@ -286,7 +300,7 @@ object CoreTopSpecs {
     RAW("UnifiedDataflow", "DOCTRINE")
       .desc(
         "All components are vertices connected by ready/valid edges; rawTop modules contain " +
-        "only :<>= wiring; broadcast facts use only the sanctioned rawNoDecoupled classes."
+          "only :<>= wiring; broadcast facts use only the sanctioned rawNoDecoupled classes."
       )
       .build()
   }

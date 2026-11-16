@@ -7,13 +7,15 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs.funcRecoveryKills
 
-/** MultiplierUnit: execution vertex wrapping the external Multiplier core (ADR-019). */
+/** MultiplierUnit: execution vertex wrapping the external Multiplier core
+  * (ADR-019).
+  */
 object MultiplierUnitSpecs {
   val contMultiplierUnit = spec {
     CONTRACT("MultiplierUnit")
       .desc(
         "MultiplierUnit is the M-extension multiplier (MUL/MULH/MULHSU/MULHU). It accepts IssuedUop tokens from DispatchUnit and emits " +
-        "FuResult tokens (value, destination, completion) to PublishMux."
+          "FuResult tokens (value, destination, completion) to PublishMux."
       )
       .has(
         intfMultiplierReqIn,
@@ -33,13 +35,17 @@ object MultiplierUnitSpecs {
       .desc("Issued uops routed to this unit by DispatchUnit.")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
-      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
+      .note(
+        "ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload."
+      )
       .build()
   }
 
   val intfMultiplierResultOut = spec {
     INTERFACE("MultiplierResultOut")
-      .desc("Results toward PublishMux; backpressured by the single publish lane.")
+      .desc(
+        "Results toward PublishMux; backpressured by the single publish lane."
+      )
       .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
@@ -58,9 +64,14 @@ object MultiplierUnitSpecs {
     FUNCTION("IntegrateExternalMultiplier")
       .desc(
         "Drive udacore.external.multiplier.design.Multiplier from the IssuedUop operands and operation, and emit " +
-        "one FuResult carrying the uop's robTag and prd when the core produces its result."
+          "one FuResult carrying the uop's robTag and prd when the core produces its result."
       )
-      .uses(intfMultiplierReqIn, intfMultiplierResultOut, intfRecoveryEventIn, funcRecoveryKills)
+      .uses(
+        intfMultiplierReqIn,
+        intfMultiplierResultOut,
+        intfRecoveryEventIn,
+        funcRecoveryKills
+      )
       .build()
   }
 }

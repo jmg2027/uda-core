@@ -13,10 +13,10 @@ trait HasCoreParams {
   val instLen: Int  = wordsize
 
   // Core parameter access
-  def dataWidth: Int   = params.dataWidth
-  def vAddrWidth: Int  = params.vAddrWidth
-  def pAddrWidth: Int  = params.pAddrWidth
-  def hartId: Int      = params.hartId
+  def dataWidth: Int  = params.dataWidth
+  def vAddrWidth: Int = params.vAddrWidth
+  def pAddrWidth: Int = params.pAddrWidth
+  def hartId: Int     = params.hartId
 
   // Derived widths
   def pcWidth: Int = vAddrWidth

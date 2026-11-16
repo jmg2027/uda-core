@@ -5,13 +5,14 @@ import framework.macros.LocalSpec
 import udacore.backend.design.shared.CfiOutcome
 import udacore.frontend.spec.shared.FrontendBundlesSpecs._
 
-/** Frontend bundles (FrontendBundlesSpecs). Widths are explicit on the two bundles the backend
-  * DecodeUnit consumes, so the backend can build them from its BackendFrontendView mirror; the
-  * rest take FrontendParams. Plain UInt codes keep every port pokeable by the L1 SpecTests.
+/** Frontend bundles (FrontendBundlesSpecs). Widths are explicit on the two
+  * bundles the backend DecodeUnit consumes, so the backend can build them from
+  * its BackendFrontendView mirror; the rest take FrontendParams. Plain UInt
+  * codes keep every port pokeable by the L1 SpecTests.
   *
-  * ADR-019G: every fetchPc below is the requested (possibly mid-block) fetch PC except
-  * PredictorTrain.fetchPc, which is the aligned block base; blockBase and startSlot are derived
-  * combinationally (FetchPc).
+  * ADR-019G: every fetchPc below is the requested (possibly mid-block) fetch PC
+  * except PredictorTrain.fetchPc, which is the aligned block base; blockBase
+  * and startSlot are derived combinationally (FetchPc).
   */
 
 /** FetchFault codes (bndFetchInst.fault). */
@@ -22,16 +23,21 @@ object FetchFault {
   val InstAccessFault = 2.U(width.W)
 }
 
-/** ADR-019G E-1: blockBase = alignDown(fetchPc, FetchBytes), startSlot = (fetchPc - blockBase) / 4. */
+/** ADR-019G E-1: blockBase = alignDown(fetchPc, FetchBytes), startSlot =
+  * (fetchPc - blockBase) / 4.
+  */
 object FetchPc {
-  def blockBase(pc: UInt, offsetBits: Int): UInt = chisel3.util.Cat(pc(pc.getWidth - 1, offsetBits), 0.U(offsetBits.W))
+  def blockBase(pc: UInt, offsetBits: Int): UInt =
+    chisel3.util.Cat(pc(pc.getWidth - 1, offsetBits), 0.U(offsetBits.W))
   def startSlot(pc: UInt, offsetBits: Int): UInt = pc(offsetBits - 1, 2)
+
   /** cfiPc = blockBase + 4 * slot (ADR-019G E-5). */
   def slotPc(base: UInt, slot: UInt): UInt = base + (slot << 2)
 }
 
 @LocalSpec(bndFetchInst)
-class FetchInst(vAddrWidth: Int, ftqIdxWidth: Int, slotWidth: Int) extends Bundle {
+class FetchInst(vAddrWidth: Int, ftqIdxWidth: Int, slotWidth: Int)
+    extends Bundle {
   val inst            = UInt(32.W)
   val pc              = UInt(vAddrWidth.W)
   val ftqIdx          = UInt(ftqIdxWidth.W)
@@ -43,8 +49,14 @@ class FetchInst(vAddrWidth: Int, ftqIdxWidth: Int, slotWidth: Int) extends Bundl
 }
 
 @LocalSpec(bndFetchPacket)
-class FetchPacket(decodeWidth: Int, vAddrWidth: Int, ftqIdxWidth: Int, slotWidth: Int) extends Bundle {
-  val insts = Vec(decodeWidth, new FetchInst(vAddrWidth, ftqIdxWidth, slotWidth))
+class FetchPacket(
+    decodeWidth: Int,
+    vAddrWidth: Int,
+    ftqIdxWidth: Int,
+    slotWidth: Int
+) extends Bundle {
+  val insts =
+    Vec(decodeWidth, new FetchInst(vAddrWidth, ftqIdxWidth, slotWidth))
   val valid = Vec(decodeWidth, Bool())
 }
 

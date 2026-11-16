@@ -13,10 +13,10 @@ object PageTableWalkerSpecs {
     CONTRACT("PageTableWalker")
       .desc(
         "Serves ITLB and DTLB walk requests with the Sv32 two-level walk. Every PTE read is a " +
-        "physical-address request to the DataCache (so cacheable page tables are cached with, " +
-        "and coherent with, committed stores); the walker has no path through the DTLB. It is " +
-        "also the SFENCE.VMA distribution point: it flushes both TLBs and prevents any walk " +
-        "that overlapped the flush from refilling."
+          "physical-address request to the DataCache (so cacheable page tables are cached with, " +
+          "and coherent with, committed stores); the walker has no path through the DTLB. It is " +
+          "also the SFENCE.VMA distribution point: it flushes both TLBs and prevents any walk " +
+          "that overlapped the flush from refilling."
       )
       .has(
         intfItlbWalkReqIn,
@@ -35,11 +35,16 @@ object PageTableWalkerSpecs {
         propPtwNoRecursiveTranslation,
         propWalkFaultTyping
       )
-      .uses(paramPtwOutstanding, funcSv32Decompose, funcPmaCheck, propSfenceFlushesAll)
+      .uses(
+        paramPtwOutstanding,
+        funcSv32Decompose,
+        funcPmaCheck,
+        propSfenceFlushesAll
+      )
       .note(
         "State classes: the outstanding walk is an uncancelable transaction (its requester may " +
-        "have been canceled); it always completes and answers its TLB (propGenerationTagScope). " +
-        "Walk results are microarchitectural refills."
+          "have been canceled); it always completes and answers its TLB (propGenerationTagScope). " +
+          "Walk results are microarchitectural refills."
       )
       .build()
   }
@@ -94,7 +99,9 @@ object PageTableWalkerSpecs {
 
   val intfSfenceVmaIn = spec {
     INTERFACE("SfenceVmaIn")
-      .desc("SFENCE.VMA tokens from the backend CommitUnit; accepted in the cycle both TLB flush tokens fire.")
+      .desc(
+        "SFENCE.VMA tokens from the backend CommitUnit; accepted in the cycle both TLB flush tokens fire."
+      )
       .uses(bndTlbFlush)
       .is(rawReadyValidIntf)
       .build()
@@ -120,7 +127,7 @@ object PageTableWalkerSpecs {
     FUNCTION("PtwArbitrate")
       .desc(
         "One walk at a time (PtwOutstanding = 1 in v0). When both TLBs request, alternate " +
-        "(round-robin) so neither side starves; the answer returns on the requester's response edge."
+          "(round-robin) so neither side starves; the answer returns on the requester's response edge."
       )
       .uses(intfItlbWalkReqIn, intfDtlbWalkReqIn)
       .build()
@@ -130,15 +137,15 @@ object PageTableWalkerSpecs {
     FUNCTION("Sv32Walk")
       .desc(
         "a = satp.PPN * 4096; read the level-1 PTE at a + VPN[1] * 4. If V = 0, or R = 0 and W " +
-        "= 1: PageFault. If R or X: a leaf at level 1 - a superpage, which requires PPN[0] = 0 " +
-        "(else PageFault). Otherwise read the level-0 PTE at PPN * 4096 + VPN[0] * 4 and apply " +
-        "the same validity rules; a non-leaf at level 0 is a PageFault. Each PTE address must " +
-        "pass funcPmaCheck (readable, else AccessFault); a denied read is an AccessFault. " +
-        "Global accumulation: globalSeen starts at 0 and is ORed with G of every PTE read on " +
-        "the walk (a non-leaf PTE with G = 1 makes every mapping below it global); the refill " +
-        "entry's global = globalSeen. The leaf's R/W/X/U/A/D, the walk ASID, and the PMA " +
-        "attribute complete the refill entry; permission checks against the access are made " +
-        "by the TLB, not the walker."
+          "= 1: PageFault. If R or X: a leaf at level 1 - a superpage, which requires PPN[0] = 0 " +
+          "(else PageFault). Otherwise read the level-0 PTE at PPN * 4096 + VPN[0] * 4 and apply " +
+          "the same validity rules; a non-leaf at level 0 is a PageFault. Each PTE address must " +
+          "pass funcPmaCheck (readable, else AccessFault); a denied read is an AccessFault. " +
+          "Global accumulation: globalSeen starts at 0 and is ORed with G of every PTE read on " +
+          "the walk (a non-leaf PTE with G = 1 makes every mapping below it global); the refill " +
+          "entry's global = globalSeen. The leaf's R/W/X/U/A/D, the walk ASID, and the PMA " +
+          "attribute complete the refill entry; permission checks against the access are made " +
+          "by the TLB, not the walker."
       )
       .uses(funcSv32Decompose, funcPmaCheck, bndSv32Pte)
       .build()
@@ -148,10 +155,10 @@ object PageTableWalkerSpecs {
     FUNCTION("PtwPhysicalAccess")
       .desc(
         "Every PTE read leaves on PtwMemReqOut with the physical address computed by " +
-        "funcSv32Walk, after that address passed funcPmaCheck (mapped and readable; cacheable " +
-        "is not required). The DataCache serves it per funcDCachePhysicalRead (array hit or " +
-        "fill for a cacheable address, an exact uncached read for a readable uncacheable one) " +
-        "and never translates it."
+          "funcSv32Walk, after that address passed funcPmaCheck (mapped and readable; cacheable " +
+          "is not required). The DataCache serves it per funcDCachePhysicalRead (array hit or " +
+          "fill for a cacheable address, an exact uncached read for a readable uncacheable one) " +
+          "and never translates it."
       )
       .uses(intfPtwMemReqOut, intfPtwMemRespIn)
       .build()
@@ -161,10 +168,15 @@ object PageTableWalkerSpecs {
     FUNCTION("PtwFlush")
       .desc(
         "Accept SfenceVma only when ItlbFlushOut and DtlbFlushOut can fire in the same cycle; " +
-        "a walk outstanding at that moment finishes its memory reads but answers Retry, so it " +
-        "installs nothing."
+          "a walk outstanding at that moment finishes its memory reads but answers Retry, so it " +
+          "installs nothing."
       )
-      .uses(intfSfenceVmaIn, intfItlbFlushOut, intfDtlbFlushOut, propSfenceFlushesAll)
+      .uses(
+        intfSfenceVmaIn,
+        intfItlbFlushOut,
+        intfDtlbFlushOut,
+        propSfenceFlushesAll
+      )
       .build()
   }
 
@@ -172,8 +184,8 @@ object PageTableWalkerSpecs {
     PROPERTY("PtwNoRecursiveTranslation")
       .desc(
         "The PageTableWalker has no DataTlb interface, and every PtwMemReq address is a " +
-        "physical address derived from satp or a PTE; a walk can never trigger another " +
-        "translation or another walk."
+          "physical address derived from satp or a PTE; a walk can never trigger another " +
+          "translation or another walk."
       )
       .uses(funcPtwPhysicalAccess)
       .note("Structural (interface set) plus a simulation assert.")
@@ -184,8 +196,8 @@ object PageTableWalkerSpecs {
     PROPERTY("WalkFaultTyping")
       .desc(
         "A walk reports PageFault exactly for the Sv32 PTE-validity failures of funcSv32Walk " +
-        "and AccessFault exactly for PMA-illegal or bus-denied PTE reads; the TLB maps them to " +
-        "the page-fault or access-fault cause of the original access type."
+          "and AccessFault exactly for PMA-illegal or bus-denied PTE reads; the TLB maps them to " +
+          "the page-fault or access-fault cause of the original access type."
       )
       .uses(funcSv32Walk)
       .build()

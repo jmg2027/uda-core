@@ -23,5 +23,8 @@ import udacore.frontend.design.shared._
 object UDACoreElab extends App {
   val coreParams = DefaultCoreConfig.default
   (new ChiselStage)
-  .execute(args, Seq(ChiselGeneratorAnnotation(() => new CoreTop(coreParams))))
+    .execute(
+      args,
+      Seq(ChiselGeneratorAnnotation(() => new CoreTop(coreParams)))
+    )
 }

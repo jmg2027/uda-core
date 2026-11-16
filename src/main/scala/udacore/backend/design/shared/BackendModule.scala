@@ -6,20 +6,20 @@ import chisel3._
 sealed protected trait HasBackendParams {
   val params: BackendParams
 
-  def xLen: Int             = params.xLen
-  def iLen: Int             = params.iLen
-  def regNum: Int           = params.regNum
-  def regIdWidth: Int       = params.regIdWidth
-  def hartId: Int           = params.hartId
-  def enableMulDiv: Boolean = params.enableMulDiv
-  def enableBitAlu: Boolean = params.enableBitAlu
-  def robTagWidth: Int      = params.robTagWidth
-  def physRegIdWidth: Int   = params.physRegIdWidth
+  def xLen: Int              = params.xLen
+  def iLen: Int              = params.iLen
+  def regNum: Int            = params.regNum
+  def regIdWidth: Int        = params.regIdWidth
+  def hartId: Int            = params.hartId
+  def enableMulDiv: Boolean  = params.enableMulDiv
+  def enableBitAlu: Boolean  = params.enableBitAlu
+  def robTagWidth: Int       = params.robTagWidth
+  def physRegIdWidth: Int    = params.physRegIdWidth
   def checkpointIdWidth: Int = params.checkpointIdWidth
-  def ftqIdxWidth: Int      = params.ftqIdxWidth
-  def fetchSlotWidth: Int   = params.fetchSlotWidth
-  def vAddrWidth: Int       = params.vAddrWidth
-  def pAddrWidth: Int       = params.pAddrWidth
+  def ftqIdxWidth: Int       = params.ftqIdxWidth
+  def fetchSlotWidth: Int    = params.fetchSlotWidth
+  def vAddrWidth: Int        = params.vAddrWidth
+  def pAddrWidth: Int        = params.pAddrWidth
 
   val bytesize: Int = 8
   val halfsize: Int = bytesize * 2

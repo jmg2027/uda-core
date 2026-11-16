@@ -8,8 +8,8 @@ import udacore.common.tilelink.TileLinkSpecs._
 /** Standard TileLink bundles (SiFive TileLink Specification 1.8.x), ADR-016.
   *
   * These are the wire-level bundle shapes only - protocol behavior (bursts,
-  * atomics, coherence state machines) lives in the agents that will speak
-  * them (the CoreTop bus adapters, later the caches). Field names follow the
+  * atomics, coherence state machines) lives in the agents that will speak them
+  * (the CoreTop bus adapters, later the caches). Field names follow the
   * specification so external fabrics and standard tooling read the ports
   * directly.
   */
@@ -24,7 +24,10 @@ case class TLLinkParams(
     hasBCE: Boolean = false
 ) {
   require(addressBits > 0, "TileLink addressBits must be positive")
-  require(dataBits >= 8 && dataBits % 8 == 0, "TileLink dataBits must be a positive byte multiple")
+  require(
+    dataBits >= 8 && dataBits % 8 == 0,
+    "TileLink dataBits must be a positive byte multiple"
+  )
   require(isPow2(dataBits / 8), "TileLink beat bytes must be a power of two")
   require(sourceBits >= 1, "TileLink sourceBits must be at least 1")
   require(sinkBits >= 1, "TileLink sinkBits must be at least 1")
@@ -33,8 +36,10 @@ case class TLLinkParams(
 }
 
 object TLLinkParams {
+
   /** Link geometry for a master issuing up to `maxTransferBytes` transfers from
-    * `sourceIds` outstanding ids - the usual way an integrator derives a link. */
+    * `sourceIds` outstanding ids - the usual way an integrator derives a link.
+    */
   def forMaster(
       addressBits: Int,
       dataBits: Int,
@@ -43,7 +48,10 @@ object TLLinkParams {
       sinkBits: Int = 1,
       hasBCE: Boolean = false
   ): TLLinkParams = {
-    require(maxTransferBytes >= dataBits / 8, "max transfer must cover one beat")
+    require(
+      maxTransferBytes >= dataBits / 8,
+      "max transfer must cover one beat"
+    )
     TLLinkParams(
       addressBits = addressBits,
       dataBits = dataBits,
@@ -67,40 +75,43 @@ object TLMessages {
   def AcquireBlock   = 6.U(3.W)
   def AcquirePerm    = 7.U(3.W)
   // Channel B (TL-C)
-  def ProbeBlock = 6.U(3.W)
-  def ProbePerm  = 7.U(3.W)
+  def ProbeBlock     = 6.U(3.W)
+  def ProbePerm      = 7.U(3.W)
   // Channel C (TL-C)
-  def ProbeAck     = 4.U(3.W)
-  def ProbeAckData = 5.U(3.W)
-  def Release      = 6.U(3.W)
-  def ReleaseData  = 7.U(3.W)
+  def ProbeAck       = 4.U(3.W)
+  def ProbeAckData   = 5.U(3.W)
+  def Release        = 6.U(3.W)
+  def ReleaseData    = 7.U(3.W)
   // Channel C/D shared access responses
-  def AccessAck     = 0.U(3.W)
-  def AccessAckData = 1.U(3.W)
-  def HintAck       = 2.U(3.W)
+  def AccessAck      = 0.U(3.W)
+  def AccessAckData  = 1.U(3.W)
+  def HintAck        = 2.U(3.W)
   // Channel D (TL-C)
-  def Grant      = 4.U(3.W)
-  def GrantData  = 5.U(3.W)
-  def ReleaseAck = 6.U(3.W)
+  def Grant          = 4.U(3.W)
+  def GrantData      = 5.U(3.W)
+  def ReleaseAck     = 6.U(3.W)
 }
 
 /** Permission transitions carried in param fields (TL-C). */
 object TLPermissions {
   // Cap (B.param): probe to at most this permission
-  def toT = 0.U(3.W); def toB = 1.U(3.W); def toN = 2.U(3.W)
+  def toT      = 0.U(3.W); def toB      = 1.U(3.W); def toN      = 2.U(3.W)
   // Grow (A.param on Acquire)
-  def NtoB = 0.U(3.W); def NtoT = 1.U(3.W); def BtoT = 2.U(3.W)
+  def NtoB     = 0.U(3.W); def NtoT     = 1.U(3.W); def BtoT     = 2.U(3.W)
   // Prune/Report (C.param)
-  def TtoB = 0.U(3.W); def TtoN = 1.U(3.W); def BtoN = 2.U(3.W)
-  def TtoT = 3.U(3.W); def BtoB = 4.U(3.W); def NtoN = 5.U(3.W)
+  def TtoB     = 0.U(3.W); def TtoN     = 1.U(3.W); def BtoN     = 2.U(3.W)
+  def TtoT     = 3.U(3.W); def BtoB     = 4.U(3.W); def NtoN     = 5.U(3.W)
   // D.param on Grant (permissions granted)
   def grantToT = 0.U(2.W); def grantToB = 1.U(2.W); def grantToN = 2.U(2.W)
 }
 
-/** Arithmetic/logical atomic opcodes (A.param for Arithmetic/LogicalData, TL-UH). */
+/** Arithmetic/logical atomic opcodes (A.param for Arithmetic/LogicalData,
+  * TL-UH).
+  */
 object TLAtomics {
-  def MIN = 0.U(3.W); def MAX = 1.U(3.W); def MINU = 2.U(3.W); def MAXU = 3.U(3.W); def ADD = 4.U(3.W)
-  def XOR = 0.U(3.W); def OR  = 1.U(3.W); def AND  = 2.U(3.W); def SWAP = 3.U(3.W)
+  def MIN  = 0.U(3.W); def MAX = 1.U(3.W); def MINU = 2.U(3.W);
+  def MAXU = 3.U(3.W); def ADD = 4.U(3.W)
+  def XOR  = 0.U(3.W); def OR  = 1.U(3.W); def AND  = 2.U(3.W); def SWAP = 3.U(3.W)
 }
 
 @LocalSpec(bndTLChannelA)
@@ -156,11 +167,13 @@ class TLBundleE(val params: TLLinkParams) extends Bundle {
 }
 
 /** One full link, master view: A/C/E outbound, B/D inbound. B/C/E elaborate
-  * only on a TL-C link (hasBCE), so a TL-UL/UH master pays no coherence wires. */
+  * only on a TL-C link (hasBCE), so a TL-UL/UH master pays no coherence wires.
+  */
 @LocalSpec(contTileLink)
 class TLBundle(val params: TLLinkParams) extends Bundle {
   val a = Decoupled(new TLBundleA(params))
-  val b = if (params.hasBCE) Some(Flipped(Decoupled(new TLBundleB(params)))) else None
+  val b =
+    if (params.hasBCE) Some(Flipped(Decoupled(new TLBundleB(params)))) else None
   val c = if (params.hasBCE) Some(Decoupled(new TLBundleC(params))) else None
   val d = Flipped(Decoupled(new TLBundleD(params)))
   val e = if (params.hasBCE) Some(Decoupled(new TLBundleE(params))) else None

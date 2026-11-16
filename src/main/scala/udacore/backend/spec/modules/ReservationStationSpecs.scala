@@ -7,14 +7,16 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs._
 
-/** ReservationStation: unified integer RS with out-of-order wakeup/select (ADR-019). */
+/** ReservationStation: unified integer RS with out-of-order wakeup/select
+  * (ADR-019).
+  */
 object ReservationStationSpecs {
   val contReservationStation = spec {
     CONTRACT("ReservationStation")
       .desc(
         "Holds renamed uops until their source operands are ready, then selects IssueWidth " +
-        "ready uops per cycle independent of program order, reads their operands from the " +
-        "PRF, and sends them to DispatchUnit."
+          "ready uops per cycle independent of program order, reads their operands from the " +
+          "PRF, and sends them to DispatchUnit."
       )
       .has(
         intfRsAllocIn,
@@ -35,16 +37,18 @@ object ReservationStationSpecs {
       .is(rawSpeculativeHolder)
       .note(
         "Speculative-holder stance. Ordering: entries are unordered storage, each holding its " +
-        "robTag; age for arbitration comes from funcRobOlder. Live: from allocation until " +
-        "issue. Recovery: funcRecoveryKills per entry and per held output token. Survives: " +
-        "older entries and their ready bits. Reclaim: killed entries become free in the event cycle."
+          "robTag; age for arbitration comes from funcRobOlder. Live: from allocation until " +
+          "issue. Recovery: funcRecoveryKills per entry and per held output token. Survives: " +
+          "older entries and their ready bits. Reclaim: killed entries become free in the event cycle."
       )
       .build()
   }
 
   val intfRsAllocIn = spec {
     INTERFACE("RsAllocIn")
-      .desc("Allocation tokens from RenameUnit; ready is low when no entry is free.")
+      .desc(
+        "Allocation tokens from RenameUnit; ready is low when no entry is free."
+      )
       .uses(bndRenameAllocation)
       .is(rawReadyValidIntf)
       .build()
@@ -103,7 +107,9 @@ object ReservationStationSpecs {
 
   val funcRsWakeup = spec {
     FUNCTION("RsWakeup")
-      .desc("Each cycle, set the ready bit of every entry source whose prs equals WakeupBroadcast.prd; an allocation in the same cycle as the wakeup of its source is also woken.")
+      .desc(
+        "Each cycle, set the ready bit of every entry source whose prs equals WakeupBroadcast.prd; an allocation in the same cycle as the wakeup of its source is also woken."
+      )
       .uses(intfWakeupBroadcastIn)
       .build()
   }
@@ -112,11 +118,11 @@ object ReservationStationSpecs {
     FUNCTION("SelectOldestReady")
       .desc(
         "Among entries with both sources ready whose FuAvailability bit is set, select the " +
-        "oldest by funcRobOlder (the v0 arbitration policy), read its operands, and issue it. " +
-        "A ready entry of an unavailable class never blocks a younger ready entry of an " +
-        "available class; within a class the choice is oldest-first, so the ROB head is never " +
-        "starved. The PRF read and the entry release coincide with the issue transfer; a " +
-        "selected entry killed by a same-cycle RecoveryEvent is not issued and is freed."
+          "oldest by funcRobOlder (the v0 arbitration policy), read its operands, and issue it. " +
+          "A ready entry of an unavailable class never blocks a younger ready entry of an " +
+          "available class; within a class the choice is oldest-first, so the ROB head is never " +
+          "starved. The PRF read and the entry release coincide with the issue transfer; a " +
+          "selected entry killed by a same-cycle RecoveryEvent is not issued and is freed."
       )
       .note("ADR-019C E-1/E-3.")
       .uses(intfIssuedUopOut, intfFuAvailabilityIn, funcRobOlder)
@@ -126,14 +132,18 @@ object ReservationStationSpecs {
 
   val funcRsRecovery = spec {
     FUNCTION("RsRecovery")
-      .desc("On a RecoveryEvent, free every entry and drop every unaccepted output token whose robTag funcRecoveryKills selects; all other entries are untouched.")
+      .desc(
+        "On a RecoveryEvent, free every entry and drop every unaccepted output token whose robTag funcRecoveryKills selects; all other entries are untouched."
+      )
       .uses(intfRecoveryEventIn, funcRecoveryKills)
       .build()
   }
 
   val propRsIssueOnlyReady = spec {
     PROPERTY("RsIssueOnlyReady")
-      .desc("A uop is issued only when both source prds hold their final values (ready bit set by a wakeup or at rename).")
+      .desc(
+        "A uop is issued only when both source prds hold their final values (ready bit set by a wakeup or at rename)."
+      )
       .uses(intfIssuedUopOut)
       .build()
   }
@@ -142,8 +152,8 @@ object ReservationStationSpecs {
     PROPERTY("RsIssueStable")
       .desc(
         "While IssuedUopOut is valid and not ready, its bits and selected entry stay unchanged " +
-        "until the transfer or a RecoveryEvent kill of that entry; an entry is freed only by " +
-        "its issue transfer or a kill, never for a uop that was not accepted (ADR-019C E-3)."
+          "until the transfer or a RecoveryEvent kill of that entry; an entry is freed only by " +
+          "its issue transfer or a kill, never for a uop that was not accepted (ADR-019C E-3)."
       )
       .uses(intfIssuedUopOut)
       .note("Simulation assert.")
@@ -152,7 +162,9 @@ object ReservationStationSpecs {
 
   val propRsRecoveryKeepsOlder = spec {
     PROPERTY("RsRecoveryKeepsOlder")
-      .desc("A BranchMispredict RecoveryEvent never frees or alters an entry at or older than the recovering branch.")
+      .desc(
+        "A BranchMispredict RecoveryEvent never frees or alters an entry at or older than the recovering branch."
+      )
       .uses(funcRsRecovery)
       .build()
   }

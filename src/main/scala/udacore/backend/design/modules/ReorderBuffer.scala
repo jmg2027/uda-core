@@ -8,17 +8,18 @@ import udacore.backend.spec.modules.ReorderBufferSpecs._
 
 /** ReorderBuffer (spec: ReorderBufferSpecs, ADR-019 D-19.7).
   *
-  * A circular buffer of RobDepth data-less entries indexed by robTag.idx, with a head and
-  * a tail RobTag pointer. The live window is [head, tail); every entry in it is valid, so
-  * RobStatus.empty is head == tail and "full" is equal idx with opposite wrap. Both are
-  * computed from registers: an allocation accepted in cycle t is visible (empty low) in
-  * cycle t + 1.
+  * A circular buffer of RobDepth data-less entries indexed by robTag.idx, with
+  * a head and a tail RobTag pointer. The live window is [head, tail); every
+  * entry in it is valid, so RobStatus.empty is head == tail and "full" is equal
+  * idx with opposite wrap. Both are computed from registers: an allocation
+  * accepted in cycle t is visible (empty low) in cycle t + 1.
   *
   * Recovery stance (rawSpeculativeHolder): funcRobRecovery below applies
-  * funcRecoveryKills per entry; surviving entries keep done/exception/outcome state; the
-  * tail rewinds to e.robTag + 1 (ArchRedirect also moves the head there and releases
-  * headLocked). A completion accepted in the event cycle whose uop the same event kills
-  * is dropped (the entry is invalidated in that cycle).
+  * funcRecoveryKills per entry; surviving entries keep done/exception/outcome
+  * state; the tail rewinds to e.robTag + 1 (ArchRedirect also moves the head
+  * there and releases headLocked). A completion accepted in the event cycle
+  * whose uop the same event kills is dropped (the entry is invalidated in that
+  * cycle).
   */
 @LocalSpec(contReorderBuffer)
 class ReorderBuffer(val params: BackendParams) extends BackendModule {
@@ -59,11 +60,16 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
     t.wrap := Mux(i.U >= head.idx, head.wrap, !head.wrap)
     t
   }
-  /** t is in [head, tail). {wrap, idx} is a counter modulo 2 * RobDepth, so the window test
-    * is a distance compare; robOlder alone cannot place the tail, which is RobDepth away
-    * from the head when the ROB is full. */
+
+  /** t is in [head, tail). {wrap, idx} is a counter modulo 2 * RobDepth, so the
+    * window test is a distance compare; robOlder alone cannot place the tail,
+    * which is RobDepth away from the head when the ROB is full.
+    */
   private def live(t: RobTag): Bool =
-    (t.asUInt - head.asUInt)(robTagWidth - 1, 0) < (tail.asUInt - head.asUInt)(robTagWidth - 1, 0)
+    (t.asUInt - head.asUInt)(robTagWidth - 1, 0) < (tail.asUInt - head.asUInt)(
+      robTagWidth - 1,
+      0
+    )
 
   private val ev       = io.recoveryEventIn
   private val branchEv = ev.valid && ev.kind === RecoveryKind.BranchMispredict
@@ -87,31 +93,34 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
       val e = entriesNext(al.bits.robTag.idx)
       // Execution-free uops (ADR-019A E-1) are done at allocation: a fetch/decode exception,
       // and every fuType System uop (performed by CommitUnit at the head).
-      e.done            := u.exception.valid || u.fuType === FuType.System
-      e.pc              := u.pc
-      e.insn            := u.insn
-      e.archRd          := u.rd
-      e.hasDest         := al.bits.hasDest
-      e.newPrd          := al.bits.newPrd
-      e.oldPrd          := al.bits.oldPrd
-      e.exception       := u.exception
-      e.isCfi           := u.isCfi
-      e.checkpointId    := al.bits.checkpointId
-      e.cfiOutcome      := 0.U.asTypeOf(e.cfiOutcome)
-      e.ftqIdx          := u.prediction.ftqIdx
-      e.blockEnd        := u.prediction.blockEnd
-      e.isLoad          := u.isLoad
-      e.isStore         := u.isStore
-      e.headExecute     := false.B
-      e.serialize       := u.serialize
-      e.sysOp           := u.sysOp // ADR-019A E-2: explicit, never derived from op
-      e.predictionFault := u.predictionFault
-      e.valid           := true.B
+      e.done                        := u.exception.valid || u.fuType === FuType.System
+      e.pc                          := u.pc
+      e.insn                        := u.insn
+      e.archRd                      := u.rd
+      e.hasDest                     := al.bits.hasDest
+      e.newPrd                      := al.bits.newPrd
+      e.oldPrd                      := al.bits.oldPrd
+      e.exception                   := u.exception
+      e.isCfi                       := u.isCfi
+      e.checkpointId                := al.bits.checkpointId
+      e.cfiOutcome                  := 0.U.asTypeOf(e.cfiOutcome)
+      e.ftqIdx                      := u.prediction.ftqIdx
+      e.blockEnd                    := u.prediction.blockEnd
+      e.isLoad                      := u.isLoad
+      e.isStore                     := u.isStore
+      e.headExecute                 := false.B
+      e.serialize                   := u.serialize
+      e.sysOp                       := u.sysOp // ADR-019A E-2: explicit, never derived from op
+      e.predictionFault             := u.predictionFault
+      e.valid                       := true.B
       validNext(al.bits.robTag.idx) := true.B
-      tail := RobOrder.next(tail)
+      tail                          := RobOrder.next(tail)
     }
     when(al.fire) {
-      assert(al.bits.robTag.asUInt === tail.asUInt, "RobAllocate: allocation robTag is not the tail")
+      assert(
+        al.bits.robTag.asUInt === tail.asUInt,
+        "RobAllocate: allocation robTag is not the tail"
+      )
       assert(!ev.valid, "RobAllocate: allocation in a RecoveryEvent cycle")
     }
   }
@@ -132,7 +141,9 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
         e.done        := true.B
         e.headExecute := false.B
         e.exception   := cp.bits.exception
-        when(entries(cp.bits.robTag.idx).isCfi) { e.cfiOutcome := cp.bits.cfiOutcome }
+        when(entries(cp.bits.robTag.idx).isCfi) {
+          e.cfiOutcome := cp.bits.cfiOutcome
+        }
       }
     }
   }
@@ -143,8 +154,10 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
 
   @LocalSpec(funcRobHeadOffer)
   val robHeadOffer: Unit = {
-    io.robHeadOut.valid :=
-      !empty && entryValid(head.idx) && !headLocked && (headEntry.done || headEntry.headExecute)
+    io.robHeadOut.valid            :=
+      !empty && entryValid(
+        head.idx
+      ) && !headLocked && (headEntry.done || headEntry.headExecute)
     io.robHeadOut.bits.robTag      := head
     io.robHeadOut.bits.entry       := headEntry
     io.robHeadOut.bits.entry.valid := entryValid(head.idx)
@@ -153,11 +166,11 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
         headLocked := true.B // trap hand-off: the head stays until the ArchRedirect
       }.otherwise {
         validNext(head.idx) := false.B
-        head := RobOrder.next(head)
+        head                := RobOrder.next(head)
       }
     }
-    io.robStatusOut.empty   := empty
-    io.robStatusOut.headTag := head
+    io.robStatusOut.empty          := empty
+    io.robStatusOut.headTag        := head
   }
 
   // ---- funcRobRecovery ------------------------------------------------------------------
@@ -172,7 +185,7 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
     when(branchEv) {
       for (i <- 0 until depth) when(killMask(i)) { validNext(i) := false.B }
       entriesNext(ev.robTag.idx).blockEnd := true.B
-      tail := RobOrder.next(ev.robTag)
+      tail                                := RobOrder.next(ev.robTag)
     }
     when(archEv) {
       for (i <- 0 until depth) validNext(i) := false.B
@@ -188,31 +201,55 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
   val robRetireInOrder: Unit = {
     // Window integrity: exactly the entries in [head, tail) are valid.
     for (i <- 0 until depth)
-      assert(entryValid(i) === (!empty && live(tagAt(i))), "RobRetireInOrder: valid entries are not the window [head, tail)")
+      assert(
+        entryValid(i) === (!empty && live(tagAt(i))),
+        "RobRetireInOrder: valid entries are not the window [head, tail)"
+      )
     when(io.robHeadOut.fire) {
       assert(!headLocked, "RobRetireInOrder: transfer while headLocked")
-      assert(headEntry.done, "RobRetireInOrder: transfer of a head that is not done")
-      assert(!empty && entryValid(head.idx), "RobRetireInOrder: transfer of an empty head")
+      assert(
+        headEntry.done,
+        "RobRetireInOrder: transfer of a head that is not done"
+      )
+      assert(
+        !empty && entryValid(head.idx),
+        "RobRetireInOrder: transfer of an empty head"
+      )
     }
   }
 
   @LocalSpec(propOlderSurvivesRecovery)
   val olderSurvivesRecovery: Unit = {
-    val cpHit = VecInit(Seq.tabulate(depth)(i => cp.valid && cp.bits.robTag.idx === i.U))
+    val cpHit = VecInit(
+      Seq.tabulate(depth)(i => cp.valid && cp.bits.robTag.idx === i.U)
+    )
     when(branchEv) {
-      assert(live(ev.robTag) && !empty, "OlderSurvivesRecovery: BranchMispredict names a robTag that is not live")
+      assert(
+        live(ev.robTag) && !empty,
+        "OlderSurvivesRecovery: BranchMispredict names a robTag that is not live"
+      )
       for (i <- 0 until depth) {
         val survivor = entryValid(i) && !RobOrder.robOlder(ev.robTag, tagAt(i))
         when(survivor) {
           assert(!killMask(i), "OlderSurvivesRecovery: a survivor is killed")
-          val retiring = io.robHeadOut.fire && !headEntry.exception.valid && head.idx === i.U
-          assert(validNext(i) || retiring, "OlderSurvivesRecovery: a survivor is invalidated")
+          val retiring =
+            io.robHeadOut.fire && !headEntry.exception.valid && head.idx === i.U
+          assert(
+            validNext(i) || retiring,
+            "OlderSurvivesRecovery: a survivor is invalidated"
+          )
           // done/exception/outcome change only through this cycle's own completion.
           when(!cpHit(i)) {
-            assert(entriesNext(i).done === entries(i).done &&
-              entriesNext(i).exception.asUInt === entries(i).exception.asUInt &&
-              entriesNext(i).cfiOutcome.asUInt === entries(i).cfiOutcome.asUInt,
-              "OlderSurvivesRecovery: survivor state changed by the recovery")
+            assert(
+              entriesNext(i).done === entries(i).done &&
+                entriesNext(i).exception.asUInt === entries(
+                  i
+                ).exception.asUInt &&
+                entriesNext(i).cfiOutcome.asUInt === entries(
+                  i
+                ).cfiOutcome.asUInt,
+              "OlderSurvivesRecovery: survivor state changed by the recovery"
+            )
           }
         }
       }
@@ -223,7 +260,11 @@ class ReorderBuffer(val params: BackendParams) extends BackendModule {
   val robCompletionTargetsLive: Unit =
     when(cp.valid) {
       val e = entries(cp.bits.robTag.idx)
-      assert(live(cp.bits.robTag) && entryValid(cp.bits.robTag.idx) && !e.done && !(cp.bits.headExecute && e.headExecute),
-        "RobCompletionTargetsLive: completion names an entry that is not live and not done")
+      assert(
+        live(cp.bits.robTag) && entryValid(
+          cp.bits.robTag.idx
+        ) && !e.done && !(cp.bits.headExecute && e.headExecute),
+        "RobCompletionTargetsLive: completion names an entry that is not live and not done"
+      )
     }
 }

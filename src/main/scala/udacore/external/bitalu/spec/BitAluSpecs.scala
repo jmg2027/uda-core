@@ -18,7 +18,12 @@ object BitAluSpecs {
       .markdownTable(
         List("name", "description", "direction", "type"),
         List(
-          List("start", "Pulse asserting the beginning of an operation", "Input", "Bool"),
+          List(
+            "start",
+            "Pulse asserting the beginning of an operation",
+            "Input",
+            "Bool"
+          ),
           List("srcA", "First operand", "Input", "UInt(dataWidth.W)"),
           List("srcB", "Second operand", "Input", "UInt(dataWidth.W)"),
           List(
@@ -31,7 +36,9 @@ object BitAluSpecs {
           List("done", "Pulse indicating completion", "Output", "Bool")
         )
       )
-      .note("Wrapper modules must translate ready/valid handshake into start/done pulses.")
+      .note(
+        "Wrapper modules must translate ready/valid handshake into start/done pulses."
+      )
       .build()
   }
 
@@ -42,9 +49,24 @@ object BitAluSpecs {
         List("name", "type", "default", "description"),
         List(
           List("dataWidth", "Int", "32", "Operand width in bits"),
-          List("enableZba", "Boolean", "true", "Enable shift-and-add instructions"),
-          List("enableZbb", "Boolean", "true", "Enable base bit-manipulation ops"),
-          List("enableZbs", "Boolean", "true", "Enable single-bit set/clear ops"),
+          List(
+            "enableZba",
+            "Boolean",
+            "true",
+            "Enable shift-and-add instructions"
+          ),
+          List(
+            "enableZbb",
+            "Boolean",
+            "true",
+            "Enable base bit-manipulation ops"
+          ),
+          List(
+            "enableZbs",
+            "Boolean",
+            "true",
+            "Enable single-bit set/clear ops"
+          ),
           List("enableZbc", "Boolean", "true", "Enable carry-less multiply ops")
         )
       )

@@ -14,9 +14,9 @@ object InstructionTlbSpecs {
     CONTRACT("InstructionTlb")
       .desc(
         "A fully associative TLB (16 entries, v0) translating fetch addresses. Each FetchUnit " +
-        "request is answered, in request order, to the InstructionCache (which uses the " +
-        "physical address for its tag compare) with Hit, InstPageFault, or InstAccessFault. " +
-        "On a miss it requests a walk from the shared PageTableWalker and answers after the refill."
+          "request is answered, in request order, to the InstructionCache (which uses the " +
+          "physical address for its tag compare) with Hit, InstPageFault, or InstAccessFault. " +
+          "On a miss it requests a walk from the shared PageTableWalker and answers after the refill."
       )
       .has(
         intfITlbReqIn,
@@ -30,13 +30,21 @@ object InstructionTlbSpecs {
         funcItlbRefill,
         funcItlbFlush
       )
-      .uses(paramTlbGeometry, funcSv32Decompose, funcTlbMatch, funcTranslationMode,
-            funcSv32PermissionCheck, funcPmaCheck, propNoFaultCaching, propSfenceFlushesAll)
+      .uses(
+        paramTlbGeometry,
+        funcSv32Decompose,
+        funcTlbMatch,
+        funcTranslationMode,
+        funcSv32PermissionCheck,
+        funcPmaCheck,
+        propNoFaultCaching,
+        propSfenceFlushesAll
+      )
       .note(
         "State classes: entries are microarchitectural (never rolled back; a wrong-path fetch " +
-        "may refill). A request canceled by a RecoveryEvent is not canceled here: its answer " +
-        "is dropped by the FetchUnit's fetch generation (propGenerationTagScope). Addresses: " +
-        "requests are virtual, answers physical."
+          "may refill). A request canceled by a RecoveryEvent is not canceled here: its answer " +
+          "is dropped by the FetchUnit's fetch generation (propGenerationTagScope). Addresses: " +
+          "requests are virtual, answers physical."
       )
       .build()
   }
@@ -51,7 +59,9 @@ object InstructionTlbSpecs {
 
   val intfICacheTranslationOut = spec {
     INTERFACE("ICacheTranslationOut")
-      .desc("One translation per request, in request order, to the InstructionCache.")
+      .desc(
+        "One translation per request, in request order, to the InstructionCache."
+      )
       .uses(bndTranslation)
       .is(rawReadyValidIntf)
       .build()
@@ -75,7 +85,9 @@ object InstructionTlbSpecs {
 
   val intfItlbFlushIn = spec {
     INTERFACE("ItlbFlushIn")
-      .desc("SFENCE.VMA flush tokens from the PageTableWalker; accepted only when the flush is applied.")
+      .desc(
+        "SFENCE.VMA flush tokens from the PageTableWalker; accepted only when the flush is applied."
+      )
       .uses(bndTlbFlush)
       .is(rawReadyValidIntf)
       .build()
@@ -94,9 +106,9 @@ object InstructionTlbSpecs {
     FUNCTION("ItlbTranslate")
       .desc(
         "Bare mode (funcTranslationMode): answer Hit with pa = va after funcPmaCheck(Fetch). " +
-        "Sv32: on a funcTlbMatch hit compose pa (funcSv32Decompose), apply " +
-        "funcSv32PermissionCheck(Fetch) then funcPmaCheck(Fetch), and answer Hit, " +
-        "InstPageFault, or InstAccessFault."
+          "Sv32: on a funcTlbMatch hit compose pa (funcSv32Decompose), apply " +
+          "funcSv32PermissionCheck(Fetch) then funcPmaCheck(Fetch), and answer Hit, " +
+          "InstPageFault, or InstAccessFault."
       )
       .uses(intfITlbReqIn, intfICacheTranslationOut)
       .build()
@@ -106,9 +118,9 @@ object InstructionTlbSpecs {
     FUNCTION("ItlbMissWalk")
       .desc(
         "On a miss, send one WalkReq{vpn, context} and hold the request (the single fetch " +
-        "stream waits by backpressure). A Leaf result is refilled and the request is answered " +
-        "from it; a PageFault or AccessFault result answers the held request with that fault " +
-        "and installs nothing; a Retry result (walk overlapped an SFENCE.VMA) re-walks."
+          "stream waits by backpressure). A Leaf result is refilled and the request is answered " +
+          "from it; a PageFault or AccessFault result answers the held request with that fault " +
+          "and installs nothing; a Retry result (walk overlapped an SFENCE.VMA) re-walks."
       )
       .uses(intfItlbWalkReqOut, intfItlbWalkRespIn)
       .build()
@@ -116,7 +128,9 @@ object InstructionTlbSpecs {
 
   val funcItlbRefill = spec {
     FUNCTION("ItlbRefill")
-      .desc("Install a Leaf walk result, replacing an invalid entry or else a pseudo-LRU victim; never create a second matching entry.")
+      .desc(
+        "Install a Leaf walk result, replacing an invalid entry or else a pseudo-LRU victim; never create a second matching entry."
+      )
       .uses(intfItlbWalkRespIn, propNoFaultCaching)
       .build()
   }

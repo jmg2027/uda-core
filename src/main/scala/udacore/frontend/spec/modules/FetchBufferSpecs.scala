@@ -14,9 +14,9 @@ object FetchBufferSpecs {
     CONTRACT("FetchBuffer")
       .desc(
         "An instruction FIFO between the FetchUnit and the backend DecodeUnit. It accepts the " +
-        "valid slots of one FetchBlock at a time and delivers up to DecodeWidth consecutive " +
-        "instructions per cycle in program order, tagging each with its PC, FTQ reference, " +
-        "slot, blockEnd, prediction, and fetch fault."
+          "valid slots of one FetchBlock at a time and delivers up to DecodeWidth consecutive " +
+          "instructions per cycle in program order, tagging each with its PC, FTQ reference, " +
+          "slot, blockEnd, prediction, and fetch fault."
       )
       .has(
         intfFetchBlockIn,
@@ -31,15 +31,17 @@ object FetchBufferSpecs {
       .is(rawSpeculativeHolder)
       .note(
         "Speculative-holder stance: entries are FIFO ordered. Every buffered instruction is " +
-        "younger than every uop in the backend (delivery is in order), so any RecoveryEvent " +
-        "discards all entries. Reclaim: pointers reset."
+          "younger than every uop in the backend (delivery is in order), so any RecoveryEvent " +
+          "discards all entries. Reclaim: pointers reset."
       )
       .build()
   }
 
   val intfFetchBlockIn = spec {
     INTERFACE("FetchBlockIn")
-      .desc("Fetch blocks from the FetchUnit. Ready only when all valid slots of the block fit.")
+      .desc(
+        "Fetch blocks from the FetchUnit. Ready only when all valid slots of the block fit."
+      )
       .uses(bndFetchBlock)
       .is(rawReadyValidIntf)
       .build()
@@ -47,7 +49,9 @@ object FetchBufferSpecs {
 
   val intfFetchPacketOut = spec {
     INTERFACE("FetchBufferSpecs.intfFetchPacketOut")
-      .desc("Up to DecodeWidth instructions per transfer to the backend DecodeUnit.")
+      .desc(
+        "Up to DecodeWidth instructions per transfer to the backend DecodeUnit."
+      )
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
       .build()
@@ -66,8 +70,8 @@ object FetchBufferSpecs {
     FUNCTION("FetchBufferEnqueue")
       .desc(
         "Append the valid slots of an accepted FetchBlock in slot order; the last appended " +
-        "slot is marked blockEnd, the predicted-taken exit slot carries predictedTaken and " +
-        "predictedTarget from the block's exitTaken/exitTarget."
+          "slot is marked blockEnd, the predicted-taken exit slot carries predictedTaken and " +
+          "predictedTarget from the block's exitTaken/exitTarget."
       )
       .uses(intfFetchBlockIn)
       .build()
@@ -75,21 +79,27 @@ object FetchBufferSpecs {
 
   val funcFetchPacketDequeue = spec {
     FUNCTION("FetchPacketDequeue")
-      .desc("Offer the oldest min(DecodeWidth, occupancy) instructions as one packet; they leave together when the packet transfers.")
+      .desc(
+        "Offer the oldest min(DecodeWidth, occupancy) instructions as one packet; they leave together when the packet transfers."
+      )
       .uses(intfFetchPacketOut)
       .build()
   }
 
   val funcFetchBufferRecovery = spec {
     FUNCTION("FetchBufferRecovery")
-      .desc("On any RecoveryEvent, discard every buffered instruction and any unaccepted packet in the event cycle.")
+      .desc(
+        "On any RecoveryEvent, discard every buffered instruction and any unaccepted packet in the event cycle."
+      )
       .uses(intfRecoveryEventIn)
       .build()
   }
 
   val propFetchBufferProgramOrder = spec {
     PROPERTY("FetchBufferProgramOrder")
-      .desc("Between RecoveryEvents, the instructions leaving on FetchPacketOut are exactly the valid slots accepted on FetchBlockIn, in the same order, none duplicated or skipped.")
+      .desc(
+        "Between RecoveryEvents, the instructions leaving on FetchPacketOut are exactly the valid slots accepted on FetchBlockIn, in the same order, none duplicated or skipped."
+      )
       .uses(intfFetchBlockIn, intfFetchPacketOut)
       .build()
   }

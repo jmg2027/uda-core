@@ -8,13 +8,15 @@ import udacore.backend.spec.modules.DispatchUnitSpecs._
 
 /** DispatchUnit (spec: DispatchUnitSpecs; ADR-019, ADR-019C E-1/E-2).
   *
-  * Stateless router: the presented IssuedUop is offered on exactly one request edge,
-  * selected by fuType, and IssuedUopIn.ready is that edge's ready. It holds no token, so
-  * FuAvailability is exactly the per-class downstream request readiness, which every
-  * execution wrapper derives from its own registered state (never from this request).
+  * Stateless router: the presented IssuedUop is offered on exactly one request
+  * edge, selected by fuType, and IssuedUopIn.ready is that edge's ready. It
+  * holds no token, so FuAvailability is exactly the per-class downstream
+  * request readiness, which every execution wrapper derives from its own
+  * registered state (never from this request).
   *
-  * Recovery stance (rawSpeculativeHolder): it holds no entries; a presented token that the
-  * same-cycle RecoveryEvent kills (funcRecoveryKills) is not routed.
+  * Recovery stance (rawSpeculativeHolder): it holds no entries; a presented
+  * token that the same-cycle RecoveryEvent kills (funcRecoveryKills) is not
+  * routed.
   */
 @LocalSpec(contDispatchUnit)
 class DispatchUnit(val params: BackendParams) extends BackendModule {
@@ -26,7 +28,8 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     val aluReqOut = Decoupled(new IssuedUop(params))
 
     @LocalSpec(intfBitAluReqOut)
-    val bitAluReqOut = if (params.enableBitAlu) Some(Decoupled(new IssuedUop(params))) else None
+    val bitAluReqOut =
+      if (params.enableBitAlu) Some(Decoupled(new IssuedUop(params))) else None
 
     @LocalSpec(intfMultiplierReqOut)
     val multiplierReqOut = Decoupled(new IssuedUop(params))
@@ -50,15 +53,20 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     val recoveryEventIn = Input(new RecoveryEvent(params))
   })
 
-  private val in    = io.issuedUopIn
-  private val alive = in.valid && !RobOrder.recoveryKills(io.recoveryEventIn, in.bits.robTag)
+  private val in                = io.issuedUopIn
+  private val alive             =
+    in.valid && !RobOrder.recoveryKills(io.recoveryEventIn, in.bits.robTag)
   private def is(t: UInt): Bool = in.bits.fuType === t
 
   /** The IssuedUop request edges by class. */
   private val edges: Seq[(UInt, DecoupledIO[IssuedUop])] = Seq(
-    FuType.Alu -> io.aluReqOut, FuType.Mul -> io.multiplierReqOut, FuType.Div -> io.dividerReqOut,
-    FuType.Branch -> io.branchUnitReqOut, FuType.Mem -> io.addressGenerationReqOut,
-    FuType.Csr -> io.csrReqOut)
+    FuType.Alu    -> io.aluReqOut,
+    FuType.Mul    -> io.multiplierReqOut,
+    FuType.Div    -> io.dividerReqOut,
+    FuType.Branch -> io.branchUnitReqOut,
+    FuType.Mem    -> io.addressGenerationReqOut,
+    FuType.Csr    -> io.csrReqOut
+  )
 
   // ---- funcFuAvailability (ADR-019C E-2: downstream readiness only) -----------------------
 
@@ -71,7 +79,9 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     a.branch := io.branchUnitReqOut.ready
     a.mem    := io.addressGenerationReqOut.ready
     a.csr    := io.csrReqOut.ready
-    a.bitAlu.foreach(_ := false.B) // the BitAluUnit edge is added with that extension
+    a.bitAlu.foreach(
+      _ := false.B
+    ) // the BitAluUnit edge is added with that extension
     a
   }
 
@@ -87,6 +97,9 @@ class DispatchUnit(val params: BackendParams) extends BackendModule {
     // IssuedUopIn.ready equals the availability bit of the presented class (ADR-019C E-2).
     in.ready := fuAvailability.of(in.bits.fuType)
     val offered = edges.map(_._2.valid)
-    assert(PopCount(offered) <= 1.U, "FuRoute: a uop was offered on more than one edge")
+    assert(
+      PopCount(offered) <= 1.U,
+      "FuRoute: a uop was offered on more than one edge"
+    )
   }
 }

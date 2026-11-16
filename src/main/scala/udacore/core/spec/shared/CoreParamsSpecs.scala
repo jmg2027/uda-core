@@ -20,7 +20,7 @@ object CoreParamsSpecs {
     PARAMETER("CoreParamsSpecs.paramXLen")
       .desc(
         "Base integer register width (CoreParams.dataWidth). The v0 architecture point is " +
-        "RV32IM_Zicsr_Zifencei, so 32 is the only v0 value; RV64 is a later ADR."
+          "RV32IM_Zicsr_Zifencei, so 32 is the only v0 value; RV64 is a later ADR."
       )
       .is(rawContractParams)
       .entry("v0", "32")
@@ -39,7 +39,7 @@ object CoreParamsSpecs {
     PARAMETER("PAddrWidth")
       .desc(
         "Physical address width: 34 for Sv32 (22-bit PPN + 12-bit offset). Every physical " +
-        "address field (LSQ paddr, cache tags, PTW requests, TileLink addressBits) derives from it."
+          "address field (LSQ paddr, cache tags, PTW requests, TileLink addressBits) derives from it."
       )
       .is(rawContractParams)
       .entry("v0", "34")
@@ -50,11 +50,13 @@ object CoreParamsSpecs {
     PARAMETER("CoreParamsSpecs.paramPrivilegeModes")
       .desc(
         "Privilege-mode set (PrivilegeParams). v0 requires M, S, and U (usingUser = " +
-        "usingSupervisor = true); usingHypervisor stays false."
+          "usingSupervisor = true); usingHypervisor stays false."
       )
       .is(rawContractParams)
       .entry("v0", "M + S + U")
-      .note("Legality requires: S requires U, H requires S, and Sv32 translation requires S.")
+      .note(
+        "Legality requires: S requires U, H requires S, and Sv32 translation requires S."
+      )
       .build()
   }
 
@@ -62,17 +64,20 @@ object CoreParamsSpecs {
     PARAMETER("PmaMap")
       .desc(
         "Static physical-memory-attribute map: a list of physical regions with {cacheable, " +
-        "executable, readable, writable}. Consulted by the ITLB/DTLB after translation (or in " +
-        "Bare mode) and by the PTW for page-table reads. Unmapped addresses raise access faults."
+          "executable, readable, writable}. Consulted by the ITLB/DTLB after translation (or in " +
+          "Bare mode) and by the PTW for page-table reads. Unmapped addresses raise access faults."
       )
       .note(
         "Platform contract: a cacheable region never denies a line fill or writeback of an " +
-        "address the PMA check accepted, so cached stores and dirty writebacks cannot fault " +
-        "after retirement. Only uncacheable accesses may be denied, and those are performed at " +
-        "the ROB head, so every store access fault is precise."
+          "address the PMA check accepted, so cached stores and dirty writebacks cannot fault " +
+          "after retirement. Only uncacheable accesses may be denied, and those are performed at " +
+          "the ROB head, so every store access fault is precise."
       )
       .is(rawContractParams)
-      .entry("v0", "one cacheable RAM region plus one uncacheable device region; set by the integrator")
+      .entry(
+        "v0",
+        "one cacheable RAM region plus one uncacheable device region; set by the integrator"
+      )
       .build()
   }
 
@@ -80,7 +85,7 @@ object CoreParamsSpecs {
     PARAMETER("ICacheGeometry")
       .desc(
         "L1 instruction cache geometry (CacheParams: sets, ways, lineBytes) and miss contexts. " +
-        "VIPT legality: sets * lineBytes <= 4096 (the Sv32 base page size)."
+          "VIPT legality: sets * lineBytes <= 4096 (the Sv32 base page size)."
       )
       .is(rawContractParams)
       .entry("v0", "16 KiB: 64 sets x 4 ways x 64-byte lines, 1 miss context")
@@ -91,10 +96,13 @@ object CoreParamsSpecs {
     PARAMETER("DCacheGeometry")
       .desc(
         "L1 data cache geometry (CacheParams: sets, ways, lineBytes), MSHR count, and load " +
-        "targets per MSHR. VIPT legality: sets * lineBytes <= 4096."
+          "targets per MSHR. VIPT legality: sets * lineBytes <= 4096."
       )
       .is(rawContractParams)
-      .entry("v0", "16 KiB: 64 sets x 4 ways x 64-byte lines, 2 MSHRs, 2 load targets per MSHR")
+      .entry(
+        "v0",
+        "16 KiB: 64 sets x 4 ways x 64-byte lines, 2 MSHRs, 2 load targets per MSHR"
+      )
       .build()
   }
 
@@ -102,7 +110,7 @@ object CoreParamsSpecs {
     PARAMETER("TlbGeometry")
       .desc(
         "ITLB and DTLB geometry (TlbParams: entries, fully associative). Entries hold either " +
-        "a 4 KiB page or a 4 MiB Sv32 superpage."
+          "a 4 KiB page or a 4 MiB Sv32 superpage."
       )
       .is(rawContractParams)
       .entry("v0", "ITLB 16 entries, DTLB 16 entries")
@@ -113,9 +121,9 @@ object CoreParamsSpecs {
     PARAMETER("DebugEntryAddr")
       .desc(
         "Platform / Debug Module supplied execution address used when the hart enters Debug " +
-        "Mode (ADR-019E E-2). Its value is implementation-specific; it is exposed through " +
-        "CoreApiParams for the Debug Module integration and mirrored into the backend for the " +
-        "TrapController DebugEntry redirect. It is never the resume address (dpc)."
+          "Mode (ADR-019E E-2). Its value is implementation-specific; it is exposed through " +
+          "CoreApiParams for the Debug Module integration and mirrored into the backend for the " +
+          "TrapController DebugEntry redirect. It is never the resume address (dpc)."
       )
       .is(rawContractParams)
       .entry("verification platform default", "0x800")
@@ -126,14 +134,14 @@ object CoreParamsSpecs {
     PARAMETER("CoreParamsSpecs.paramDataCoherence")
       .desc(
         "Coherence capability of the data TileLink link, independent of cache presence " +
-        "(ADR-019 D-19.13). false: the D-cache is a non-coherent write-back cache on a TL-UH " +
-        "link (Get/PutFullData bursts). true (later): TL-C with Acquire/Probe/Release."
+          "(ADR-019 D-19.13). false: the D-cache is a non-coherent write-back cache on a TL-UH " +
+          "link (Get/PutFullData bursts). true (later): TL-C with Acquire/Probe/Release."
       )
       .is(rawContractParams)
       .entry("v0", "false")
       .note(
         "Amends ADR-016 D-16.4: a configured D-cache no longer implies hasBCE. Enabling TL-C " +
-        "later MUST NOT change the backend/LSQ/MMU architectural interfaces."
+          "later MUST NOT change the backend/LSQ/MMU architectural interfaces."
       )
       .build()
   }
@@ -142,13 +150,15 @@ object CoreParamsSpecs {
     PARAMETER("TLLinkDerivation")
       .desc(
         "Derived TileLink link geometries (CoreParams.instBusParams / dataBusParams): " +
-        "addressBits = PAddrWidth, dataBits = XLen, maxTransferBytes = lineBytes of the " +
-        "side's cache, source ids 1 (inst) / DCache MSHRs + 1 (data: fills, writeback, " +
-        "uncached), hasBCE = DataCoherence (never cache presence)."
+          "addressBits = PAddrWidth, dataBits = XLen, maxTransferBytes = lineBytes of the " +
+          "side's cache, source ids 1 (inst) / DCache MSHRs + 1 (data: fills, writeback, " +
+          "uncached), hasBCE = DataCoherence (never cache presence)."
       )
       .is(rawContractParams)
       .uses(paramDataCoherence)
-      .note("ADR-016 single derivation point for both CoreTop boundary links, amended by ADR-019 D-19.13.")
+      .note(
+        "ADR-016 single derivation point for both CoreTop boundary links, amended by ADR-019 D-19.13."
+      )
       .build()
   }
 
@@ -169,7 +179,9 @@ object CoreParamsSpecs {
       )
       .is(rawTuningParams)
       .entry("default", "false")
-      .note("ADR-010 D-10.3: when false the entire retire path folds away, including the order counter.")
+      .note(
+        "ADR-010 D-10.3: when false the entire retire path folds away, including the order counter."
+      )
       .build()
   }
 
@@ -197,8 +209,8 @@ object CoreParamsSpecs {
     PROPERTY("ViptGeometryLegal")
       .desc(
         "Elaboration legality for both L1 caches: sets * lineBytes <= 4096, so every set-index " +
-        "bit is an untranslated page-offset bit and a virtual index names the same set as the " +
-        "physical address (no synonyms in the v0 reference)."
+          "bit is an untranslated page-offset bit and a virtual index names the same set as the " +
+          "physical address (no synonyms in the v0 reference)."
       )
       .uses(paramICacheGeometry, paramDCacheGeometry)
       .note("Elaboration require in CacheParams (ADR-015 D-15.3).")

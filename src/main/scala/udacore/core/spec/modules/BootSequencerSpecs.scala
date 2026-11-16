@@ -9,7 +9,9 @@ import udacore.core.spec.shared.CoreParamsSpecs._
 object BootSequencerSpecs {
   val contBootSequencer = spec {
     CONTRACT("BootSequencer")
-      .desc("Coordinates hart enable and boot address delivery with configurable delay")
+      .desc(
+        "Coordinates hart enable and boot address delivery with configurable delay"
+      )
       .has(
         intfHartEnIn,
         intfBootAddrIn,
@@ -45,7 +47,12 @@ object BootSequencerSpecs {
       .markdownTable(
         List("Signal", "Direction", "Type", "Description"),
         List(
-          List("bootAddr", "input", "UInt(vAddrWidth)", "Initial PC value for boot")
+          List(
+            "bootAddr",
+            "input",
+            "UInt(vAddrWidth)",
+            "Initial PC value for boot"
+          )
         )
       )
       .build()
@@ -58,7 +65,12 @@ object BootSequencerSpecs {
       .markdownTable(
         List("Signal", "Direction", "Type", "Description"),
         List(
-          List("bootOut", "output", "Decoupled(UInt)", "Boot address with valid/ready handshake")
+          List(
+            "bootOut",
+            "output",
+            "Decoupled(UInt)",
+            "Boot address with valid/ready handshake"
+          )
         )
       )
       .note("Valid asserts for single cycle when boot sequence completes")
@@ -71,7 +83,9 @@ object BootSequencerSpecs {
   val funcBootDelay = spec {
     FUNCTION("BootDelay")
       .desc("Counts bootCycles after hartEn assertion before releasing bootOut")
-      .code("scala", """
+      .code(
+        "scala",
+        """
         val counter = RegInit(0.U(cntWidth.W))
         when(io.hartEn && bootReg) {
           counter := counter + 1.U
@@ -79,7 +93,8 @@ object BootSequencerSpecs {
             bootReg := false.B
           }
         }
-      """)
+      """
+      )
       .note("Ensures stable boot conditions before starting execution")
       .build()
   }
@@ -87,12 +102,15 @@ object BootSequencerSpecs {
   val funcSingleBootPulse = spec {
     FUNCTION("SingleBootPulse")
       .desc("Generates single valid pulse on bootOut after delay completes")
-      .code("scala", """
+      .code(
+        "scala",
+        """
         io.bootOut.valid := !bootReg && io.hartEn && !bootSent
         when(!bootReg && io.bootOut.fire) {
           bootSent := true.B
         }
-      """)
+      """
+      )
       .note("bootSent flag prevents multiple boot pulses")
       .build()
   }
@@ -100,13 +118,16 @@ object BootSequencerSpecs {
   val funcResetOnDisable = spec {
     FUNCTION("ResetOnDisable")
       .desc("Resets boot sequence state when hartEn deasserts")
-      .code("scala", """
+      .code(
+        "scala",
+        """
         when(!io.hartEn) {
           bootReg  := true.B
           counter  := 0.U
           bootSent := false.B
         }
-      """)
+      """
+      )
       .note("Allows clean re-initialization on subsequent hartEn pulses")
       .build()
   }

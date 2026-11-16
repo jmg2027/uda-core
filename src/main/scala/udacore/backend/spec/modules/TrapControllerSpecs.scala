@@ -14,11 +14,11 @@ object TrapControllerSpecs {
     CONTRACT("TrapController")
       .desc(
         "Consumes commit-head hand-offs (synchronous exceptions, interrupts, xRET, Refetch) " +
-        "and the live trap-CSR snapshot, and produces exactly one CSRTrapWrite (when " +
-        "architectural trap state changes) and exactly one ArchRedirect per hand-off. It " +
-        "implements M/S/U trap routing with medeleg/mideleg delegation. It computes transitions " +
-        "but owns no CSR register: the CsrController is the sole committed CSR-state owner " +
-        "(ADR-019D E-7)."
+          "and the live trap-CSR snapshot, and produces exactly one CSRTrapWrite (when " +
+          "architectural trap state changes) and exactly one ArchRedirect per hand-off. It " +
+          "implements M/S/U trap routing with medeleg/mideleg delegation. It computes transitions " +
+          "but owns no CSR register: the CsrController is the sole committed CSR-state owner " +
+          "(ADR-019D E-7)."
       )
       .has(
         intfExceptionIn,
@@ -34,7 +34,7 @@ object TrapControllerSpecs {
       )
       .note(
         "Recovery stance: holds at most one hand-off, which always concerns the oldest uop; it " +
-        "is never killed by a BranchMispredict."
+          "is never killed by a BranchMispredict."
       )
       .build()
   }
@@ -49,10 +49,14 @@ object TrapControllerSpecs {
 
   val intfCsrTrapReadIn = spec {
     INTERFACE("CSRTrapReadIn")
-      .desc("Live trap-CSR snapshot from the CsrController (combinational view).")
+      .desc(
+        "Live trap-CSR snapshot from the CsrController (combinational view)."
+      )
       .uses(bndCsrTrapRead)
       .is(rawNoDecoupled)
-      .note("rawNoDecoupled class 4: a committed-state view read at the commit head.")
+      .note(
+        "rawNoDecoupled class 4: a committed-state view read at the commit head."
+      )
       .build()
   }
 
@@ -66,7 +70,9 @@ object TrapControllerSpecs {
 
   val intfArchRedirectOut = spec {
     INTERFACE("ArchRedirectOut")
-      .desc("Architectural redirect request to the RecoveryController; fires together with CSRTrapWriteOut when both are needed.")
+      .desc(
+        "Architectural redirect request to the RecoveryController; fires together with CSRTrapWriteOut when both are needed."
+      )
       .uses(bndArchRedirect)
       .is(rawReadyValidIntf)
       .build()
@@ -76,13 +82,22 @@ object TrapControllerSpecs {
     FUNCTION("TrapSingleOwner")
       .desc(
         "For each hand-off produce the ArchRedirect target and, when trap state changes, the " +
-        "CSRTrapWrite: Sync/Interrupt -> TrapEntryM or TrapEntryS (xepc = pc, xcause, xtval, " +
-        "status push, privNext), target = xtvec base (direct) or base + 4 * cause (vectored " +
-        "interrupts); XRet -> MRet/SRet; Refetch -> no CSR write, target = pc + 4."
+          "CSRTrapWrite: Sync/Interrupt -> TrapEntryM or TrapEntryS (xepc = pc, xcause, xtval, " +
+          "status push, privNext), target = xtvec base (direct) or base + 4 * cause (vectored " +
+          "interrupts); XRet -> MRet/SRet; Refetch -> no CSR write, target = pc + 4."
       )
-      .uses(intfExceptionIn, intfCsrTrapReadIn, intfCsrTrapWriteOut, intfArchRedirectOut)
-      .note("ADR-004 D-4.3: the CSR node performs no trap encoding; this vertex is the only trap-CSR writer.")
-      .note("ADR-019D E-6: kind TrapEntryM/TrapEntryS selects the M or S trap registers; the CsrController applies the packet.")
+      .uses(
+        intfExceptionIn,
+        intfCsrTrapReadIn,
+        intfCsrTrapWriteOut,
+        intfArchRedirectOut
+      )
+      .note(
+        "ADR-004 D-4.3: the CSR node performs no trap encoding; this vertex is the only trap-CSR writer."
+      )
+      .note(
+        "ADR-019D E-6: kind TrapEntryM/TrapEntryS selects the M or S trap registers; the CsrController applies the packet."
+      )
       .build()
   }
 
@@ -90,9 +105,9 @@ object TrapControllerSpecs {
     FUNCTION("TrapDelegation")
       .desc(
         "A synchronous exception with cause c taken in S or U mode is delegated to S-mode when " +
-        "medeleg[c] is set; an interrupt is delegated when mideleg bit is set and the current " +
-        "privilege is S or U. Traps taken in M-mode are never delegated. Delegated traps write " +
-        "sepc/scause/stval, SPP, SPIE, clear SIE, and enter S-mode at stvec."
+          "medeleg[c] is set; an interrupt is delegated when mideleg bit is set and the current " +
+          "privilege is S or U. Traps taken in M-mode are never delegated. Delegated traps write " +
+          "sepc/scause/stval, SPP, SPIE, clear SIE, and enter S-mode at stvec."
       )
       .uses(intfCsrTrapReadIn)
       .build()
@@ -102,13 +117,15 @@ object TrapControllerSpecs {
     FUNCTION("XRet")
       .desc(
         "MRET: priv := MPP, MIE := MPIE, MPIE := 1, MPP := U, and MPRV := 0 when leaving " +
-        "M-mode; target = mepc. SRET: priv := SPP, SIE := SPIE, SPIE := 1, SPP := U, MPRV := 0; " +
-        "target = sepc. DRET: CSRTrapWrite{DRet, privNext = dcsr.prv} (Debug Mode clears); " +
-        "target = dpc. Every xRET redirect carries cause XRet. Illegal xRET was already turned " +
-        "into an exception by decode."
+          "M-mode; target = mepc. SRET: priv := SPP, SIE := SPIE, SPIE := 1, SPP := U, MPRV := 0; " +
+          "target = sepc. DRET: CSRTrapWrite{DRet, privNext = dcsr.prv} (Debug Mode clears); " +
+          "target = dpc. Every xRET redirect carries cause XRet. Illegal xRET was already turned " +
+          "into an exception by decode."
       )
       .uses(intfCsrTrapWriteOut)
-      .note("ADR-019E E-3/E-5: DRET resumes at dpc, never at the debug entry address.")
+      .note(
+        "ADR-019E E-3/E-5: DRET resumes at dpc, never at the debug entry address."
+      )
       .build()
   }
 
@@ -116,14 +133,20 @@ object TrapControllerSpecs {
     FUNCTION("DebugCommitBoundary")
       .desc(
         "A debug hand-off (Exception{Debug} from the CommitUnit, which alone samples the debug " +
-        "request at a precise retire boundary) and trigger/step/ebreak effects qualified at " +
-        "the commit head are emitted as CSRTrapWrite(DebugEntry) plus ArchRedirect through this " +
-        "single owner. The TrapController itself never decides when a boundary is safe."
+          "request at a precise retire boundary) and trigger/step/ebreak effects qualified at " +
+          "the commit head are emitted as CSRTrapWrite(DebugEntry) plus ArchRedirect through this " +
+          "single owner. The TrapController itself never decides when a boundary is safe."
       )
       .uses(intfExceptionIn, intfCsrTrapWriteOut, intfArchRedirectOut)
-      .note("ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP.")
-      .note("ADR-019B E-1: the debug-entry ArchRedirect carries cause Debug, never Trap.")
-      .note("ADR-019E E-2/E-5: DebugEntry records dpc = the next normal PC (the head pc) and dcsr.prv/cause, and redirects to debugEntryAddr (core contract parameter, platform-defined); debugEntryAddr is never dpc.")
+      .note(
+        "ADR-004 D-4.7: TriggerUnit/DebugUnit remain pure-function leaf IP."
+      )
+      .note(
+        "ADR-019B E-1: the debug-entry ArchRedirect carries cause Debug, never Trap."
+      )
+      .note(
+        "ADR-019E E-2/E-5: DebugEntry records dpc = the next normal PC (the head pc) and dcsr.prv/cause, and redirects to debugEntryAddr (core contract parameter, platform-defined); debugEntryAddr is never dpc."
+      )
       .build()
   }
 
@@ -131,19 +154,25 @@ object TrapControllerSpecs {
     PROPERTY("PreciseCommit")
       .desc(
         "At a trap on uop U every uop older than U has applied its architectural state and no " +
-        "uop younger than U has applied any, so the trap observes exactly the state after U-1; " +
-        "this holds for instruction, load, and store page faults."
+          "uop younger than U has applied any, so the trap observes exactly the state after U-1; " +
+          "this holds for instruction, load, and store page faults."
       )
       .uses(intfExceptionIn, intfCsrTrapWriteOut)
-      .note("Simulation monitor on the retire stream plus the ADR-019 precise page-fault directed cases.")
+      .note(
+        "Simulation monitor on the retire stream plus the ADR-019 precise page-fault directed cases."
+      )
       .build()
   }
 
   val propTrapSingleWriter = spec {
     PROPERTY("TrapSingleWriter")
-      .desc("Each trap CSR and the privilege register receive at most one trap-driven write per cycle, and every trap-driven write originates from CSRTrapWrite.fire.")
+      .desc(
+        "Each trap CSR and the privilege register receive at most one trap-driven write per cycle, and every trap-driven write originates from CSRTrapWrite.fire."
+      )
       .uses(intfCsrTrapWriteOut)
-      .note("Structural single-writer argument plus a simulation monitor (ADR-015 D-15.3).")
+      .note(
+        "Structural single-writer argument plus a simulation monitor (ADR-015 D-15.3)."
+      )
       .build()
   }
 }

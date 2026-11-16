@@ -7,13 +7,14 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs.funcRecoveryKills
 
-/** DividerUnit: execution vertex wrapping the external Divider core (ADR-019). */
+/** DividerUnit: execution vertex wrapping the external Divider core (ADR-019).
+  */
 object DividerUnitSpecs {
   val contDividerUnit = spec {
     CONTRACT("DividerUnit")
       .desc(
         "DividerUnit is the M-extension divider (DIV/DIVU/REM/REMU). It accepts IssuedUop tokens from DispatchUnit and emits " +
-        "FuResult tokens (value, destination, completion) to PublishMux."
+          "FuResult tokens (value, destination, completion) to PublishMux."
       )
       .has(
         intfDividerReqIn,
@@ -33,13 +34,17 @@ object DividerUnitSpecs {
       .desc("Issued uops routed to this unit by DispatchUnit.")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
-      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
+      .note(
+        "ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload."
+      )
       .build()
   }
 
   val intfDividerResultOut = spec {
     INTERFACE("DividerResultOut")
-      .desc("Results toward PublishMux; backpressured by the single publish lane.")
+      .desc(
+        "Results toward PublishMux; backpressured by the single publish lane."
+      )
       .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
@@ -58,9 +63,14 @@ object DividerUnitSpecs {
     FUNCTION("IntegrateExternalDivider")
       .desc(
         "Drive udacore.external.divider.design.Divider from the IssuedUop operands and operation, and emit " +
-        "one FuResult carrying the uop's robTag and prd when the core produces its result."
+          "one FuResult carrying the uop's robTag and prd when the core produces its result."
       )
-      .uses(intfDividerReqIn, intfDividerResultOut, intfRecoveryEventIn, funcRecoveryKills)
+      .uses(
+        intfDividerReqIn,
+        intfDividerResultOut,
+        intfRecoveryEventIn,
+        funcRecoveryKills
+      )
       .build()
   }
 }

@@ -5,7 +5,13 @@ import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.backend.design.shared.{FtqCommit, RecoveryEvent}
 import udacore.core.design.shared.{ICacheReq, ICacheResp, TranslateReq}
-import udacore.frontend.design.modules.{BranchPredictor, FetchBuffer, FetchPcGen, FetchTargetQueue, FetchUnit}
+import udacore.frontend.design.modules.{
+  BranchPredictor,
+  FetchBuffer,
+  FetchPcGen,
+  FetchTargetQueue,
+  FetchUnit
+}
 import udacore.frontend.design.shared._
 import udacore.frontend.spec.top.FrontendTopSpecs._
 
@@ -23,24 +29,34 @@ class FrontendTop(val params: FrontendParams) extends FrontendModule {
     val ftqCommitIn = Flipped(Decoupled(new FtqCommit(params.backend)))
 
     @LocalSpec(intfICacheRespIn)
-    val iCacheRespIn = Flipped(Decoupled(new ICacheResp(params.fetchGenWidth, params.fetchWidth)))
+    val iCacheRespIn = Flipped(
+      Decoupled(new ICacheResp(params.fetchGenWidth, params.fetchWidth))
+    )
 
     @LocalSpec(intfFetchPacketOut)
-    val fetchPacketOut = Decoupled(new FetchPacket(params.decodeWidth, params.vAddrWidth,
-      params.ftqIdxWidth, params.slotWidth))
+    val fetchPacketOut = Decoupled(
+      new FetchPacket(
+        params.decodeWidth,
+        params.vAddrWidth,
+        params.ftqIdxWidth,
+        params.slotWidth
+      )
+    )
 
     @LocalSpec(intfITlbReqOut)
-    val iTlbReqOut = Decoupled(new TranslateReq(params.fetchGenWidth, params.vAddrWidth))
+    val iTlbReqOut =
+      Decoupled(new TranslateReq(params.fetchGenWidth, params.vAddrWidth))
 
     @LocalSpec(intfICacheReqOut)
-    val iCacheReqOut = Decoupled(new ICacheReq(params.fetchGenWidth, params.vAddrWidth))
+    val iCacheReqOut =
+      Decoupled(new ICacheReq(params.fetchGenWidth, params.vAddrWidth))
   })
 
-  val pcg = Module(new FetchPcGen(params))
+  val pcg       = Module(new FetchPcGen(params))
   val predictor = Module(new BranchPredictor(params))
-  val ftq = Module(new FetchTargetQueue(params))
-  val fetch = Module(new FetchUnit(params))
-  val buffer = Module(new FetchBuffer(params))
+  val ftq       = Module(new FetchTargetQueue(params))
+  val fetch     = Module(new FetchUnit(params))
+  val buffer    = Module(new FetchBuffer(params))
 
   pcg.io.bootAddrIn :<>= io.bootAddrIn
   predictor.io.predictReqIn :<>= pcg.io.predictReqOut
@@ -56,9 +72,9 @@ class FrontendTop(val params: FrontendParams) extends FrontendModule {
   io.iTlbReqOut :<>= fetch.io.iTlbReqOut
   io.iCacheReqOut :<>= fetch.io.iCacheReqOut
 
-  pcg.io.recoveryEventIn := io.recoveryEventIn
+  pcg.io.recoveryEventIn       := io.recoveryEventIn
   predictor.io.recoveryEventIn := io.recoveryEventIn
-  ftq.io.recoveryEventIn := io.recoveryEventIn
-  fetch.io.recoveryEventIn := io.recoveryEventIn
-  buffer.io.recoveryEventIn := io.recoveryEventIn
+  ftq.io.recoveryEventIn       := io.recoveryEventIn
+  fetch.io.recoveryEventIn     := io.recoveryEventIn
+  buffer.io.recoveryEventIn    := io.recoveryEventIn
 }

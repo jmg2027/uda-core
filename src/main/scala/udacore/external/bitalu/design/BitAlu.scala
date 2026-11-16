@@ -9,10 +9,10 @@ import udacore.external.bitalu.spec.BitAluSpecs._
 
 @LocalSpec(intfBitAluIO)
 class BitAluIO(dataWidth: Int) extends Bundle {
-  val start = Input(Bool())
-  val srcA  = Input(UInt(dataWidth.W))
-  val srcB  = Input(UInt(dataWidth.W))
-  val ctrl  = Input(BitAluControl())
+  val start  = Input(Bool())
+  val srcA   = Input(UInt(dataWidth.W))
+  val srcB   = Input(UInt(dataWidth.W))
+  val ctrl   = Input(BitAluControl())
   val result = Output(UInt(dataWidth.W))
   val done   = Output(Bool())
 }
@@ -30,7 +30,7 @@ case class BitAluParams(
 class BitAlu(params: BitAluParams) extends Module {
   val io = IO(new BitAluIO(params.dataWidth))
 
-  private val width = params.dataWidth
+  private val width  = params.dataWidth
   private val config = params
 
   def clmul(x: UInt, y: UInt): UInt = {
@@ -62,7 +62,8 @@ class BitAlu(params: BitAluParams) extends Module {
   when(io.start) {
     switch(io.ctrl) {
       is(BitAluControl.BCLR) {
-        if (config.enableZbs) result := io.srcA & (~(1.U << io.srcB(4, 0)).asUInt).asUInt
+        if (config.enableZbs)
+          result := io.srcA & (~(1.U << io.srcB(4, 0)).asUInt).asUInt
       }
       is(BitAluControl.BSET) {
         if (config.enableZbs) result := io.srcA | (1.U << io.srcB(4, 0)).asUInt
@@ -75,7 +76,8 @@ class BitAlu(params: BitAluParams) extends Module {
       }
 
       is(BitAluControl.BCLRI) {
-        if (config.enableZbs) result := io.srcA & (~(1.U << io.srcB(4, 0)).asUInt).asUInt
+        if (config.enableZbs)
+          result := io.srcA & (~(1.U << io.srcB(4, 0)).asUInt).asUInt
       }
       is(BitAluControl.BSETI) {
         if (config.enableZbs) result := io.srcA | (1.U << io.srcB(4, 0)).asUInt
@@ -98,13 +100,15 @@ class BitAlu(params: BitAluParams) extends Module {
       }
 
       is(BitAluControl.MIN) {
-        if (config.enableZbb) result := Mux(io.srcA.asSInt < io.srcB.asSInt, io.srcA, io.srcB)
+        if (config.enableZbb)
+          result := Mux(io.srcA.asSInt < io.srcB.asSInt, io.srcA, io.srcB)
       }
       is(BitAluControl.MINU) {
         if (config.enableZbb) result := Mux(io.srcA < io.srcB, io.srcA, io.srcB)
       }
       is(BitAluControl.MAX) {
-        if (config.enableZbb) result := Mux(io.srcA.asSInt > io.srcB.asSInt, io.srcA, io.srcB)
+        if (config.enableZbb)
+          result := Mux(io.srcA.asSInt > io.srcB.asSInt, io.srcA, io.srcB)
       }
       is(BitAluControl.MAXU) {
         if (config.enableZbb) result := Mux(io.srcA > io.srcB, io.srcA, io.srcB)
@@ -117,7 +121,8 @@ class BitAlu(params: BitAluParams) extends Module {
         if (config.enableZbb) result := Cat(Fill(24, io.srcA(7)), io.srcA(7, 0))
       }
       is(BitAluControl.SEXT_H) {
-        if (config.enableZbb) result := Cat(Fill(16, io.srcA(15)), io.srcA(15, 0))
+        if (config.enableZbb)
+          result := Cat(Fill(16, io.srcA(15)), io.srcA(15, 0))
       }
 
       is(BitAluControl.ANDN) {
@@ -132,22 +137,33 @@ class BitAlu(params: BitAluParams) extends Module {
 
       is(BitAluControl.ROL) {
         if (config.enableZbb)
-          result := (io.srcA << io.srcB(4, 0)).asUInt | (io.srcA >> (width.U - io.srcB(4, 0))).asUInt
+          result := (io.srcA << io.srcB(
+            4,
+            0
+          )).asUInt | (io.srcA >> (width.U - io.srcB(4, 0))).asUInt
       }
       is(BitAluControl.ROR) {
         if (config.enableZbb)
-          result := (io.srcA >> io.srcB(4, 0)).asUInt | (io.srcA << (width.U - io.srcB(4, 0))).asUInt
+          result := (io.srcA >> io.srcB(
+            4,
+            0
+          )).asUInt | (io.srcA << (width.U - io.srcB(4, 0))).asUInt
       }
       is(BitAluControl.RORI) {
         if (config.enableZbb)
-          result := (io.srcA >> io.srcB(4, 0)).asUInt | (io.srcA << (width.U - io.srcB(4, 0))).asUInt
+          result := (io.srcA >> io.srcB(
+            4,
+            0
+          )).asUInt | (io.srcA << (width.U - io.srcB(4, 0))).asUInt
       }
 
       is(BitAluControl.REV8) {
-        if (config.enableZbb) result := Cat(split(io.srcA, 8).map(b => Reverse(b)))
+        if (config.enableZbb)
+          result := Cat(split(io.srcA, 8).map(b => Reverse(b)))
       }
       is(BitAluControl.ORC_B) {
-        if (config.enableZbb) result := Cat(split(io.srcA, 8).map(b => Fill(8, b.orR)))
+        if (config.enableZbb)
+          result := Cat(split(io.srcA, 8).map(b => Fill(8, b.orR)))
       }
 
       is(BitAluControl.SH1ADD) {
@@ -164,10 +180,12 @@ class BitAlu(params: BitAluParams) extends Module {
         if (config.enableZbc) result := clmul(io.srcA, io.srcB)(width - 1, 0)
       }
       is(BitAluControl.CLMULH) {
-        if (config.enableZbc) result := clmul(io.srcA, io.srcB)(2 * width - 1, width)
+        if (config.enableZbc)
+          result := clmul(io.srcA, io.srcB)(2 * width - 1, width)
       }
       is(BitAluControl.CLMULR) {
-        if (config.enableZbc) result := clmul(io.srcA, Reverse(io.srcB))(width - 1, 0)
+        if (config.enableZbc)
+          result := clmul(io.srcA, Reverse(io.srcB))(width - 1, 0)
       }
     }
     valid := true.B

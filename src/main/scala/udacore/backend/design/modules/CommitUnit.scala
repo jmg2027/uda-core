@@ -5,24 +5,31 @@ import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.backend.design.shared._
 import udacore.backend.spec.modules.CommitUnitSpecs._
-import udacore.core.design.shared.{CacheMaintenance, DebugReq, MaintOp, TlbFlush}
+import udacore.core.design.shared.{
+  CacheMaintenance,
+  DebugReq,
+  MaintOp,
+  TlbFlush
+}
 
-/** CommitUnit (spec: CommitUnitSpecs; ADR-019 D-19.7/D-19.8, ADR-019A, ADR-019B).
+/** CommitUnit (spec: CommitUnitSpecs; ADR-019 D-19.7/D-19.8, ADR-019A,
+  * ADR-019B).
   *
-  * Consumes the ROB head in program order. Exactly one of these acts on a presented head
-  * in a cycle, in priority order:
-  *  1. an interrupt/debug hand-off sampled at the boundary (funcInterruptSampling), held
-  *     stable once offered;
-  *  2. the precise hand-off of a head that carries an exception (funcPreciseTrapHandoff);
-  *  3. the HeadMemGrant of an uncacheable head (funcHeadMemGrant);
-  *  4. a maintenance sequence step of a FENCE / FENCE.I / SFENCE.VMA head;
-  *  5. the retirement (funcCommitHead), atomic over its required views and, for a
-  *     retiring redirect, its ExceptionOut (ADR-019B E-6).
-  * After any ExceptionOut transfer the unit holds (trapPending) until the ArchRedirect that
-  * names the hand-off robTag.
+  * Consumes the ROB head in program order. Exactly one of these acts on a
+  * presented head in a cycle, in priority order:
+  *   1. an interrupt/debug hand-off sampled at the boundary
+  *      (funcInterruptSampling), held stable once offered; 2. the precise
+  *      hand-off of a head that carries an exception (funcPreciseTrapHandoff);
+  *      3. the HeadMemGrant of an uncacheable head (funcHeadMemGrant); 4. a
+  *      maintenance sequence step of a FENCE / FENCE.I / SFENCE.VMA head; 5.
+  *      the retirement (funcCommitHead), atomic over its required views and,
+  *      for a retiring redirect, its ExceptionOut (ADR-019B E-6).
+  * After any ExceptionOut transfer the unit holds (trapPending) until the
+  * ArchRedirect that names the hand-off robTag.
   *
-  * Recovery stance: it only ever handles the oldest live uop, which no BranchMispredict can
-  * kill; an ArchRedirect ends any sequence, grant, or latched hand-off it caused.
+  * Recovery stance: it only ever handles the oldest live uop, which no
+  * BranchMispredict can kill; an ArchRedirect ends any sequence, grant, or
+  * latched hand-off it caused.
   */
 @LocalSpec(contCommitUnit)
 class CommitUnit(val params: BackendParams) extends BackendModule {
@@ -49,13 +56,19 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
     val interruptCtrlIn = Input(new InterruptCtrl)
 
     @LocalSpec(intfRetireStreamOut)
-    val retireStreamOut = if (params.usingRvvi) Some(Decoupled(new RetireToken(params))) else None
+    val retireStreamOut =
+      if (params.usingRvvi) Some(Decoupled(new RetireToken(params))) else None
 
     @LocalSpec(intfCommitPrfReadReqOut)
-    val commitPrfReadReqOut = if (params.usingRvvi) Some(Decoupled(new CommitPrfReadReq(params))) else None
+    val commitPrfReadReqOut =
+      if (params.usingRvvi) Some(Decoupled(new CommitPrfReadReq(params)))
+      else None
 
     @LocalSpec(intfCommitPrfReadRespIn)
-    val commitPrfReadRespIn = if (params.usingRvvi) Some(Flipped(Decoupled(new CommitPrfReadResp(params)))) else None
+    val commitPrfReadRespIn =
+      if (params.usingRvvi)
+        Some(Flipped(Decoupled(new CommitPrfReadResp(params))))
+      else None
 
     @LocalSpec(intfStoreBufferDrainReqOut)
     val storeBufferDrainReqOut = Decoupled(new HandshakeToken)
@@ -85,29 +98,38 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
     val debugReqIn = Input(new DebugReq)
   })
 
-  private val hv   = io.robHeadIn.valid
-  private val head = io.robHeadIn.bits.entry
-  private val tag  = io.robHeadIn.bits.robTag
-  private val ev   = io.recoveryEventIn
+  private val hv     = io.robHeadIn.valid
+  private val head   = io.robHeadIn.bits.entry
+  private val tag    = io.robHeadIn.bits.robTag
+  private val ev     = io.recoveryEventIn
   private val archEv = ev.valid && ev.kind === RecoveryKind.ArchRedirect
-  private val ic   = io.interruptCtrlIn
-  private val exc  = io.exceptionOut
+  private val ic     = io.interruptCtrlIn
+  private val exc    = io.exceptionOut
 
   // ---- Head classification ---------------------------------------------------------
 
-  private val op          = head.sysOp
-  private val isHx        = head.headExecute && !head.done
-  private val isExc       = head.done && head.exception.valid
-  private val isSeqOp     = op === SysOp.Fence || op === SysOp.FenceI || op === SysOp.SfenceVma
+  private val op      = head.sysOp
+  private val isHx    = head.headExecute && !head.done
+  private val isExc   = head.done && head.exception.valid
+  private val isSeqOp =
+    op === SysOp.Fence || op === SysOp.FenceI || op === SysOp.SfenceVma
+
   /** Retiring architectural redirects (ADR-019B E-6). */
-  private val redirecting = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
-    op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret || head.predictionFault
-  /** Intrinsic retiring redirects keep their sysOp in ExceptionOut; a redirect caused only by
-    * predictionFault carries sysOp None (ADR-019B E-6). */
-  private val intrinsicRedirect = op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
-    op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret // Dret: ADR-019E E-3
-  /** A CSR uop: serialize with sysOp None (read-only) or CsrWrite (ADR-019A E-2). */
-  private val isCsr       = head.serialize && (op === SysOp.None || op === SysOp.CsrWrite)
+  private val redirecting =
+    op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
+      op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret || head.predictionFault
+
+  /** Intrinsic retiring redirects keep their sysOp in ExceptionOut; a redirect
+    * caused only by predictionFault carries sysOp None (ADR-019B E-6).
+    */
+  private val intrinsicRedirect =
+    op === SysOp.FenceI || op === SysOp.SfenceVma || op === SysOp.CsrWrite ||
+      op === SysOp.Mret || op === SysOp.Sret || op === SysOp.Dret // Dret: ADR-019E E-3
+  /** A CSR uop: serialize with sysOp None (read-only) or CsrWrite (ADR-019A
+    * E-2).
+    */
+  private val isCsr =
+    head.serialize && (op === SysOp.None || op === SysOp.CsrWrite)
 
   // ---- State -------------------------------------------------------------------------
 
@@ -120,7 +142,7 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   val latchedCause  = Reg(UInt(5.W))
 
   private object Step {
-    val width = 3
+    val width     = 3
     val Idle      = 0.U(width.W)
     val DrainReq  = 1.U(width.W)
     val DrainWait = 2.U(width.W)
@@ -139,17 +161,28 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   private val dbgTake = io.debugReqIn.debugReq && !ic.debugMode
   private val intTake = ic.interruptPending && !ic.debugMode
 
-  /** An interrupt/debug hand-off is offered this cycle (sampled now, or latched earlier). A
-    * presented serialize head suppresses sampling from its first presented cycle until it
-    * retires or traps (ADR-019D E-5): a CSR write may already be staged in the CsrController. */
+  /** An interrupt/debug hand-off is offered this cycle (sampled now, or latched
+    * earlier). A presented serialize head suppresses sampling from its first
+    * presented cycle until it retires or traps (ADR-019D E-5): a CSR write may
+    * already be staged in the CsrController.
+    */
   @LocalSpec(funcInterruptSampling)
   val interruptSampling: Bool = {
-    val sampleOk = hv && !head.serialize && !hold && !grantInFlight && seqState === Step.Idle
+    val sampleOk =
+      hv && !head.serialize && !hold && !grantInFlight && seqState === Step.Idle
     !hold && (asyncLatched || (sampleOk && (dbgTake || intTake)))
   }
-  private val takeAsync   = interruptSampling
-  private val asyncSource = Mux(asyncLatched, latchedSource, Mux(dbgTake, ExceptionSource.Debug, ExceptionSource.Interrupt))
-  private val asyncCause  = Mux(asyncLatched, latchedCause, Mux(dbgTake, 3.U(5.W), ic.interruptCause)) // 3 = haltreq
+  private val takeAsync       = interruptSampling
+  private val asyncSource     = Mux(
+    asyncLatched,
+    latchedSource,
+    Mux(dbgTake, ExceptionSource.Debug, ExceptionSource.Interrupt)
+  )
+  private val asyncCause      = Mux(
+    asyncLatched,
+    latchedCause,
+    Mux(dbgTake, 3.U(5.W), ic.interruptCause)
+  ) // 3 = haltreq
   when(takeAsync && !exc.ready) {
     asyncLatched  := true.B
     latchedSource := asyncSource
@@ -163,7 +196,7 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
   @LocalSpec(funcPreciseTrapHandoff)
   val preciseTrapHandoff: Bool = active && isExc
-  private val syncGo = preciseTrapHandoff
+  private val syncGo           = preciseTrapHandoff
 
   // ---- funcHeadMemGrant --------------------------------------------------------------------
 
@@ -176,7 +209,9 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
       grantTag      := tag
     }
     // Cleared at that head's retirement or trap hand-off, or by the ArchRedirect.
-    when((io.robHeadIn.fire && tag.asUInt === grantTag.asUInt) || archEv) { grantInFlight := false.B }
+    when((io.robHeadIn.fire && tag.asUInt === grantTag.asUInt) || archEv) {
+      grantInFlight := false.B
+    }
   }
 
   // ---- funcSystemOpSequencing ----------------------------------------------------------------
@@ -199,18 +234,32 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
     io.sfenceVmaOut.bits.asid       := 0.U
     io.sfenceVmaOut.bits.asidValid  := false.B
     switch(seqState) {
-      is(Step.Idle)      { when(retireEligible && isSeqOp) { seqState := Step.DrainReq } }
-      is(Step.DrainReq)  { when(io.storeBufferDrainReqOut.fire) { seqState := Step.DrainWait } }
+      is(Step.Idle) {
+        when(retireEligible && isSeqOp) { seqState := Step.DrainReq }
+      }
+      is(Step.DrainReq) {
+        when(io.storeBufferDrainReqOut.fire) { seqState := Step.DrainWait }
+      }
       is(Step.DrainWait) {
         when(io.storeBufferDrainRespIn.fire) {
-          seqState := Mux(op === SysOp.Fence, Step.Final, Mux(op === SysOp.FenceI, Step.CleanReq, Step.Flush))
+          seqState := Mux(
+            op === SysOp.Fence,
+            Step.Final,
+            Mux(op === SysOp.FenceI, Step.CleanReq, Step.Flush)
+          )
         }
       }
-      is(Step.CleanReq)  { when(io.dCacheCleanReqOut.fire) { seqState := Step.CleanWait } }
-      is(Step.CleanWait) { when(io.dCacheCleanRespIn.fire) { seqState := Step.Inv } }
-      is(Step.Inv)       { when(io.iCacheInvalidateOut.fire) { seqState := Step.Final } }
-      is(Step.Flush)     { when(io.sfenceVmaOut.fire) { seqState := Step.Final } }
-      is(Step.Final)     { when(io.robHeadIn.fire) { seqState := Step.Idle } }
+      is(Step.CleanReq) {
+        when(io.dCacheCleanReqOut.fire) { seqState := Step.CleanWait }
+      }
+      is(Step.CleanWait) {
+        when(io.dCacheCleanRespIn.fire) { seqState := Step.Inv }
+      }
+      is(Step.Inv) {
+        when(io.iCacheInvalidateOut.fire) { seqState := Step.Final }
+      }
+      is(Step.Flush) { when(io.sfenceVmaOut.fire) { seqState := Step.Final } }
+      is(Step.Final) { when(io.robHeadIn.fire) { seqState := Step.Idle } }
     }
     when(archEv) { seqState := Step.Idle }
   }
@@ -218,13 +267,13 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   // ---- funcCommitHead (atomic over the required views, ADR-019B E-6) --------------------------
 
   private val retireGo = retireEligible && (!isSeqOp || seqState === Step.Final)
-  private val rcOk  = io.renameCommitOut.ready
-  private val scOk  = !head.isStore || io.storeCommitOut.ready
-  private val fqOk  = !head.blockEnd || io.ftqCommitOut.ready
-  private val exOk  = !redirecting || exc.ready
+  private val rcOk     = io.renameCommitOut.ready
+  private val scOk     = !head.isStore || io.storeCommitOut.ready
+  private val fqOk     = !head.blockEnd || io.ftqCommitOut.ready
+  private val exOk     = !redirecting || exc.ready
 
   @LocalSpec(funcCommitHead)
-  val commitHead: Bool = {
+  val commitHead: Bool   = {
     io.renameCommitOut.valid        := retireGo && scOk && fqOk && exOk
     io.renameCommitOut.bits.archRd  := head.archRd
     io.renameCommitOut.bits.newPrd  := head.newPrd
@@ -246,24 +295,42 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   val blockEndCommit: Unit = {
     io.ftqCommitOut.bits.ftqIdx := head.ftqIdx
     val takenCfi = head.isCfi && head.cfiOutcome.taken
-    io.ftqCommitOut.bits.exit := Mux(takenCfi, head.cfiOutcome, 0.U.asTypeOf(head.cfiOutcome)) // cfiType None
+    io.ftqCommitOut.bits.exit := Mux(
+      takenCfi,
+      head.cfiOutcome,
+      0.U.asTypeOf(head.cfiOutcome)
+    ) // cfiType None
   }
 
   // ---- ExceptionOut and the head transfer ---------------------------------------------------------
 
   private val retireExcValid = retireGo && redirecting && rcOk && scOk && fqOk
   exc.valid       := takeAsync || syncGo || retireExcValid
-  exc.bits.source := Mux(takeAsync, asyncSource, Mux(syncGo, ExceptionSource.Sync, ExceptionSource.SysOp))
-  exc.bits.cause  := Mux(takeAsync, asyncCause, Mux(syncGo, head.exception.cause, 0.U))
+  exc.bits.source := Mux(
+    takeAsync,
+    asyncSource,
+    Mux(syncGo, ExceptionSource.Sync, ExceptionSource.SysOp)
+  )
+  exc.bits.cause  := Mux(
+    takeAsync,
+    asyncCause,
+    Mux(syncGo, head.exception.cause, 0.U)
+  )
   exc.bits.tval   := Mux(!takeAsync && syncGo, head.exception.tval, 0.U)
   exc.bits.pc     := head.pc
   exc.bits.robTag := tag
   exc.bits.ftqIdx := head.ftqIdx
-  exc.bits.sysOp  := Mux(!takeAsync && !syncGo && intrinsicRedirect, op, SysOp.None)
+  exc.bits.sysOp  := Mux(
+    !takeAsync && !syncGo && intrinsicRedirect,
+    op,
+    SysOp.None
+  )
 
   when(exc.valid && exc.bits.source === ExceptionSource.SysOp) {
-    assert(exc.bits.sysOp === SysOp.None || intrinsicRedirect,
-      "SystemOpSequencing: ExceptionOut{SysOp} carries a non-redirect sysOp")
+    assert(
+      exc.bits.sysOp === SysOp.None || intrinsicRedirect,
+      "SystemOpSequencing: ExceptionOut{SysOp} carries a non-redirect sysOp"
+    )
   }
 
   // The head leaves on a retirement, or is locked in the ROB by the trap hand-off.
@@ -281,7 +348,9 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
       pendingTag  := tag
     }
     // Only the ArchRedirect naming the hand-off robTag releases the hold.
-    when(trapPending && archEv && ev.robTag.asUInt === pendingTag.asUInt) { trapPending := false.B }
+    when(trapPending && archEv && ev.robTag.asUInt === pendingTag.asUInt) {
+      trapPending := false.B
+    }
   }
 
   // ---- funcRetireStreamEmit (usingRvvi only; ADR-010 D-10.3, ADR-019B E-3/E-4/E-5) ---------------
@@ -295,12 +364,12 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
     val req  = io.commitPrfReadReqOut.get
     val resp = io.commitPrfReadRespIn.get
     val wen  = tokRetire && head.hasDest && head.archRd =/= 0.U
-    req.valid     := wen
-    req.bits.prd  := head.newPrd
-    resp.ready    := true.B
+    req.valid    := wen
+    req.bits.prd := head.newPrd
+    resp.ready   := true.B
     val retireOrder = RegInit(0.U(64.W))
     when(tok.valid) { retireOrder := retireOrder + 1.U }
-    tok.valid       := tokRetire || tokTrap
+    tok.valid := tokRetire || tokTrap
     tok.bits.order  := retireOrder
     tok.bits.pc     := head.pc
     tok.bits.insn   := head.insn
@@ -316,19 +385,29 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
 
   // ---- Properties (simulation assertions) ------------------------------------------------------------
 
-  private val views = io.renameCommitOut.valid || io.storeCommitOut.valid || io.ftqCommitOut.valid ||
-    io.commitGrantOut.valid
+  private val views =
+    io.renameCommitOut.valid || io.storeCommitOut.valid || io.ftqCommitOut.valid ||
+      io.commitGrantOut.valid
 
   @LocalSpec(propCommitInOrder)
   val commitInOrder: Unit = {
-    val viewFires = io.renameCommitOut.fire || io.storeCommitOut.fire || io.ftqCommitOut.fire || io.commitGrantOut.valid
-    assert(!viewFires || (io.robHeadIn.fire && !isExc), "CommitInOrder: a commit view fires without a retirement")
-    assert(!(io.renameCommitOut.fire && head.isStore) || io.storeCommitOut.fire,
-      "CommitInOrder: a store retired without its StoreCommit")
+    val viewFires =
+      io.renameCommitOut.fire || io.storeCommitOut.fire || io.ftqCommitOut.fire || io.commitGrantOut.valid
+    assert(
+      !viewFires || (io.robHeadIn.fire && !isExc),
+      "CommitInOrder: a commit view fires without a retirement"
+    )
+    assert(
+      !(io.renameCommitOut.fire && head.isStore) || io.storeCommitOut.fire,
+      "CommitInOrder: a store retired without its StoreCommit"
+    )
     // Head transfers follow program order; only an ArchRedirect moves the expectation.
     val expectTag = RegInit(0.U.asTypeOf(new RobTag(params)))
     when(io.robHeadIn.fire) {
-      assert(tag.asUInt === expectTag.asUInt, "CommitInOrder: retired robTag is not the next in program order")
+      assert(
+        tag.asUInt === expectTag.asUInt,
+        "CommitInOrder: retired robTag is not the next in program order"
+      )
     }
     when(archEv) {
       expectTag := RobOrder.next(ev.robTag)
@@ -341,25 +420,42 @@ class CommitUnit(val params: BackendParams) extends BackendModule {
   val noCommitPastException: Unit = {
     val syncHeld = RegInit(false.B)
     val syncTag  = Reg(new RobTag(params))
-    when(exc.fire && syncGo && !(archEv && ev.robTag.asUInt === tag.asUInt)) { syncHeld := true.B; syncTag := tag }
-    when(syncHeld && archEv && ev.robTag.asUInt === syncTag.asUInt) { syncHeld := false.B }
-    assert(!(syncGo && views), "NoCommitPastException: a commit view offered with a trapping head")
-    assert(!(syncHeld && (views || io.robHeadIn.fire)), "NoCommitPastException: commit after an exception hand-off")
+    when(exc.fire && syncGo && !(archEv && ev.robTag.asUInt === tag.asUInt)) {
+      syncHeld := true.B; syncTag := tag
+    }
+    when(syncHeld && archEv && ev.robTag.asUInt === syncTag.asUInt) {
+      syncHeld := false.B
+    }
+    assert(
+      !(syncGo && views),
+      "NoCommitPastException: a commit view offered with a trapping head"
+    )
+    assert(
+      !(syncHeld && (views || io.robHeadIn.fire)),
+      "NoCommitPastException: commit after an exception hand-off"
+    )
   }
 
   @LocalSpec(propTrapHoldUntilRedirect)
   val trapHoldUntilRedirect: Unit =
     when(trapPending) {
-      assert(!io.robHeadIn.fire && !views && !exc.valid && !io.headMemGrantOut.valid,
-        "TrapHoldUntilRedirect: activity during the trap hold")
+      assert(
+        !io.robHeadIn.fire && !views && !exc.valid && !io.headMemGrantOut.valid,
+        "TrapHoldUntilRedirect: activity during the trap hold"
+      )
     }
 
   @LocalSpec(propRetireNonBlocking)
   val retireNonBlocking: Unit = if (params.usingRvvi) {
     val tok = io.retireStreamOut.get
     val req = io.commitPrfReadReqOut.get
-    assert(!tok.valid || tok.ready, "RetireNonBlocking: retire token not accepted")
-    assert(!req.valid || (req.ready && io.commitPrfReadRespIn.get.valid),
-      "RetireNonBlocking: commit PRF read not answered in the retire cycle")
+    assert(
+      !tok.valid || tok.ready,
+      "RetireNonBlocking: retire token not accepted"
+    )
+    assert(
+      !req.valid || (req.ready && io.commitPrfReadRespIn.get.valid),
+      "RetireNonBlocking: commit PRF read not answered in the retire cycle"
+    )
   }
 }

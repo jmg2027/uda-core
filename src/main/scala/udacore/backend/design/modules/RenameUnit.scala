@@ -6,7 +6,9 @@ import framework.macros.LocalSpec
 import udacore.backend.design.shared._
 import udacore.backend.spec.modules.RenameUnitSpecs._
 
-/** Free-list pointer: {wrap, idx} over the free-list slots, ordered like a RobTag. */
+/** Free-list pointer: {wrap, idx} over the free-list slots, ordered like a
+  * RobTag.
+  */
 class FreeListPtr(slots: Int) extends Bundle {
   val wrap = Bool()
   val idx  = UInt(log2Ceil(slots).max(1).W)
@@ -15,27 +17,29 @@ class FreeListPtr(slots: Int) extends Bundle {
 /** RenameUnit (spec: RenameUnitSpecs, ADR-019 D-19.8).
   *
   * State:
-  *  - robTagPtr: the program-order allocation pointer.
-  *  - sRAT / rRAT: speculative and retirement maps (x0 -> p0 is structural).
-  *  - freeBuf: the free-list circular FIFO of FreeSlots = PrfEntries - ArchRegNum
-  *    prds. [archHead, specHead) holds the destinations of live uncommitted uops,
-  *    [specHead, tail) the free prds, and tail = archHead + FreeSlots is implicit:
-  *    because the rRAT always names 31 prds besides p0, the FIFO always holds
-  *    exactly FreeSlots entries, so a commit writes its oldPrd into the slot its
-  *    newPrd leaves (the tail slot equals the archHead slot).
-  *  - checkpoints: a free-bitmask pool of {owner robTag, sRAT, specHead}.
-  *  - ready: the busy table, one ready bit per prd.
-  *  - serBlock: set when a serializing uop renames, cleared by RobStatus.empty.
+  *   - robTagPtr: the program-order allocation pointer.
+  *   - sRAT / rRAT: speculative and retirement maps (x0 -> p0 is structural).
+  *   - freeBuf: the free-list circular FIFO of FreeSlots = PrfEntries -
+  *     ArchRegNum prds. [archHead, specHead) holds the destinations of live
+  *     uncommitted uops, [specHead, tail) the free prds, and tail = archHead +
+  *     FreeSlots is implicit: because the rRAT always names 31 prds besides p0,
+  *     the FIFO always holds exactly FreeSlots entries, so a commit writes its
+  *     oldPrd into the slot its newPrd leaves (the tail slot equals the
+  *     archHead slot).
+  *   - checkpoints: a free-bitmask pool of {owner robTag, sRAT, specHead}.
+  *   - ready: the busy table, one ready bit per prd.
+  *   - serBlock: set when a serializing uop renames, cleared by
+  *     RobStatus.empty.
   *
   * Recovery stance (rawSpeculativeHolder): the recover rules are
   * funcBranchRecoveryRestore and funcArchRecoveryRestore below; rRAT, archHead,
   * and the tail are committed state and survive every RecoveryEvent.
   *
-  * Fork (funcAllocateAtomic, ADR-019A E-1): the required set is the ROB always, the RS
-  * when needsRs, the LSQ when needsLsq. Each required output's valid is the conjunction
-  * of the rename condition and the OTHER required outputs' ready, never its own, so all
-  * required tokens fire in the same cycle; an output that is not required never raises
-  * valid and its ready is ignored.
+  * Fork (funcAllocateAtomic, ADR-019A E-1): the required set is the ROB always,
+  * the RS when needsRs, the LSQ when needsLsq. Each required output's valid is
+  * the conjunction of the rename condition and the OTHER required outputs'
+  * ready, never its own, so all required tokens fire in the same cycle; an
+  * output that is not required never raises valid and its ready is ignored.
   */
 @LocalSpec(contRenameUnit)
 class RenameUnit(val params: BackendParams) extends BackendModule {
@@ -72,7 +76,10 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   private val freeSlots = params.prfEntries - regNum
   private val ckCount   = params.checkpointCount
   private val lanes     = params.decodeWidth
-  require(freeSlots >= 1, "the PRF must hold at least one prd beyond the architectural map")
+  require(
+    freeSlots >= 1,
+    "the PRF must hold at least one prd beyond the architectural map"
+  )
 
   private def nextPtr(p: FreeListPtr): FreeListPtr = {
     val n    = Wire(new FreeListPtr(freeSlots))
@@ -81,7 +88,7 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
     n.wrap := p.wrap ^ last
     n
   }
-  private def identityMap = VecInit(Seq.tabulate(regNum)(i => i.U(prdW.W)))
+  private def identityMap                          = VecInit(Seq.tabulate(regNum)(i => i.U(prdW.W)))
 
   // ---- State -----------------------------------------------------------------
 
@@ -89,7 +96,9 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   val laneIdx   = RegInit(0.U(log2Ceil(lanes).max(1).W))
   val srat      = RegInit(identityMap)
   val rrat      = RegInit(identityMap)
-  val freeBuf   = RegInit(VecInit(Seq.tabulate(freeSlots)(i => (regNum + i).U(prdW.W))))
+  val freeBuf   = RegInit(
+    VecInit(Seq.tabulate(freeSlots)(i => (regNum + i).U(prdW.W)))
+  )
   val specHead  = RegInit(0.U.asTypeOf(new FreeListPtr(freeSlots)))
   val archHead  = RegInit(0.U.asTypeOf(new FreeListPtr(freeSlots)))
   val ckValid   = RegInit(VecInit(Seq.fill(ckCount)(false.B)))
@@ -104,7 +113,8 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   private val pkt       = io.decodedPacketIn
   private val cur       = pkt.bits.lanes(laneIdx)
   private val uop       = cur.uop
-  private val nextValid = VecInit(pkt.bits.lanes.map(_.valid).tail :+ false.B)(laneIdx)
+  private val nextValid =
+    VecInit(pkt.bits.lanes.map(_.valid).tail :+ false.B)(laneIdx)
   private val laneValid = pkt.valid && cur.valid
   private val isLast    = !nextValid
 
@@ -115,14 +125,15 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   private val hasDest = uop.rd =/= 0.U
   private val isMem   = uop.isLoad || uop.isStore
 
-  private val cm      = io.renameCommitIn
-  private val cmFire  = cm.valid && cm.bits.hasDest
-  private val rel     = io.checkpointReleaseIn
-  private val relEff  = rel.valid && !RobOrder.recoveryKills(ev, rel.bits.robTag)
+  private val cm     = io.renameCommitIn
+  private val cmFire = cm.valid && cm.bits.hasDest
+  private val rel    = io.checkpointReleaseIn
+  private val relEff = rel.valid && !RobOrder.recoveryKills(ev, rel.bits.robTag)
 
   // ---- funcFreeListAllocate: pop at the speculative head, push at the tail ------
 
-  private val freeEmpty = specHead.idx === archHead.idx && specHead.wrap =/= archHead.wrap
+  private val freeEmpty =
+    specHead.idx === archHead.idx && specHead.wrap =/= archHead.wrap
   private val ckFree    = VecInit(ckValid.map(!_))
   private val ckAvail   = ckFree.asUInt.orR
   private val ckAllocId = PriorityEncoder(ckFree)
@@ -152,7 +163,7 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
     io.lsqAllocOut.valid := canGo && needsLsq && io.robAllocOut.ready && rsOk
     canGo && io.robAllocOut.ready && rsOk && lsqOk
   }
-  private val fire = allocateAtomic
+  private val fire         = allocateAtomic
 
   // Packet consumption: the transfer completes when its last valid lane renames. A
   // packet whose current lane is empty carries nothing and is taken as is. Nothing
@@ -176,7 +187,7 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
 
   // ---- funcRenameMap ----------------------------------------------------------------
 
-  private val newPrd = freeBuf(specHead.idx)
+  private val newPrd                = freeBuf(specHead.idx)
   private def mapSrc(r: UInt): UInt = Mux(r === 0.U, 0.U, srat(r))
 
   /** The sRAT and speculative head as they stand after renaming this lane. */
@@ -186,29 +197,28 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   @LocalSpec(funcRenameMap)
   val renameMap: RenameAllocation = {
     val a = Wire(new RenameAllocation(params))
-    a.robTag            := robTagPtr
-    a.uop               := uop
-    a.prs1              := mapSrc(uop.rs1)
-    a.prs2              := mapSrc(uop.rs2)
-    a.prs1Ready         := DontCare
-    a.prs2Ready         := DontCare
-    a.hasDest           := hasDest
-    a.newPrd            := Mux(hasDest, newPrd, 0.U)
-    a.oldPrd            := Mux(hasDest, srat(uop.rd), 0.U)
-    a.checkpointId.id   := Mux(uop.isCfi, ckAllocId, 0.U)
+    a.robTag          := robTagPtr
+    a.uop             := uop
+    a.prs1            := mapSrc(uop.rs1)
+    a.prs2            := mapSrc(uop.rs2)
+    a.hasDest         := hasDest
+    a.newPrd          := Mux(hasDest, newPrd, 0.U)
+    a.oldPrd          := Mux(hasDest, srat(uop.rd), 0.U)
+    a.checkpointId.id := Mux(uop.isCfi, ckAllocId, 0.U)
     when(fire && hasDest) {
       sratAfter(uop.rd) := newPrd
       specHeadAfter     := nextPtr(specHead)
     }
-    srat     := sratAfter
-    specHead := specHeadAfter
+    srat              := sratAfter
+    specHead          := specHeadAfter
     a
   }
 
   // ---- funcBusyTable -----------------------------------------------------------------
 
-  private val wk = io.wakeupBroadcastIn
-  private def readyNow(prd: UInt): Bool = ready(prd) || (wk.valid && wk.prd === prd)
+  private val wk                        = io.wakeupBroadcastIn
+  private def readyNow(prd: UInt): Bool =
+    ready(prd) || (wk.valid && wk.prd === prd)
 
   @LocalSpec(funcBusyTable)
   val busyTable: Unit = {
@@ -220,8 +230,8 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
     when(fire && hasDest) { ready(newPrd) := false.B }
   }
 
-  io.robAllocOut.bits := renameMap
-  io.rsAllocOut.bits  := renameMap
+  io.robAllocOut.bits         := renameMap
+  io.rsAllocOut.bits          := renameMap
   io.lsqAllocOut.bits.robTag  := robTagPtr
   io.lsqAllocOut.bits.isLoad  := uop.isLoad
   io.lsqAllocOut.bits.isStore := uop.isStore
@@ -237,7 +247,9 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
 
   // ---- funcRetirementMapUpdate -------------------------------------------------------
 
-  /** rRAT and architectural head including this cycle's commit (the ArchRedirect source). */
+  /** rRAT and architectural head including this cycle's commit (the
+    * ArchRedirect source).
+    */
   private val rratNext     = WireDefault(rrat)
   private val archHeadNext = WireDefault(archHead)
 
@@ -245,9 +257,9 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   val retirementMapUpdate: Unit = {
     cm.ready := true.B
     when(cmFire) {
-      rratNext(cm.bits.archRd)  := cm.bits.newPrd
-      freeBuf(archHead.idx)     := cm.bits.oldPrd
-      archHeadNext              := nextPtr(archHead)
+      rratNext(cm.bits.archRd) := cm.bits.newPrd
+      freeBuf(archHead.idx)    := cm.bits.oldPrd
+      archHeadNext             := nextPtr(archHead)
     }
     rrat     := rratNext
     archHead := archHeadNext
@@ -255,19 +267,21 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
 
   // ---- funcBranchCheckpoint ----------------------------------------------------------
 
-  /** Checkpoints freed this cycle (release, own mispredict, kill, ArchRedirect). */
+  /** Checkpoints freed this cycle (release, own mispredict, kill,
+    * ArchRedirect).
+    */
   private val ckFreeMask = Wire(Vec(ckCount, Bool()))
 
   @LocalSpec(funcBranchCheckpoint)
   val branchCheckpoint: Unit = {
     rel.ready := true.B
     for (i <- 0 until ckCount) {
-      val relHit    = relEff && rel.bits.checkpointId.id === i.U
-      val ownEvent  = branchEv && ev.checkpointId.id === i.U
-      val killed    = ckValid(i) && RobOrder.recoveryKills(ev, ckOwner(i))
+      val relHit   = relEff && rel.bits.checkpointId.id === i.U
+      val ownEvent = branchEv && ev.checkpointId.id === i.U
+      val killed   = ckValid(i) && RobOrder.recoveryKills(ev, ckOwner(i))
       ckFreeMask(i) := relHit || ownEvent || killed
-      val alloc     = fire && uop.isCfi && ckAllocId === i.U
-      ckValid(i)    := (ckValid(i) && !ckFreeMask(i)) || alloc
+      val alloc = fire && uop.isCfi && ckAllocId === i.U
+      ckValid(i) := (ckValid(i) && !ckFreeMask(i)) || alloc
       when(alloc) {
         ckOwner(i) := robTagPtr
         ckSrat(i)  := sratAfter
@@ -305,13 +319,25 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
     val members = Seq(0.U(prdW.W)) ++ rrat.drop(1) ++ freeBuf
     val cover   = members.map(m => UIntToOH(m, params.prfEntries)).reduce(_ | _)
     assert(cover.andR, "PhysRegConservation: a prd is leaked or doubly mapped")
-    assert(rrat(0) === 0.U && srat(0) === 0.U, "PhysRegConservation: x0 must map to p0")
+    assert(
+      rrat(0) === 0.U && srat(0) === 0.U,
+      "PhysRegConservation: x0 must map to p0"
+    )
     // A committing destination is the oldest live allocation, and the prd it frees is
     // its rRAT predecessor.
     when(cmFire) {
-      assert(archHead.asUInt =/= specHead.asUInt, "PhysRegConservation: commit with no live destination")
-      assert(cm.bits.newPrd === freeBuf(archHead.idx), "PhysRegConservation: commit newPrd is not the oldest allocation")
-      assert(cm.bits.oldPrd === rrat(cm.bits.archRd), "PhysRegConservation: commit oldPrd is not the rRAT mapping")
+      assert(
+        archHead.asUInt =/= specHead.asUInt,
+        "PhysRegConservation: commit with no live destination"
+      )
+      assert(
+        cm.bits.newPrd === freeBuf(archHead.idx),
+        "PhysRegConservation: commit newPrd is not the oldest allocation"
+      )
+      assert(
+        cm.bits.oldPrd === rrat(cm.bits.archRd),
+        "PhysRegConservation: commit oldPrd is not the rRAT mapping"
+      )
     }
   }
 
@@ -319,14 +345,28 @@ class RenameUnit(val params: BackendParams) extends BackendModule {
   val checkpointReleasedOnce: Unit = {
     val relId = rel.bits.checkpointId.id
     when(relEff) {
-      assert(ckValid(relId), "CheckpointReleasedOnce: release of a free checkpoint")
-      assert(ckOwner(relId).asUInt === rel.bits.robTag.asUInt, "CheckpointReleasedOnce: release by a non-owner")
+      assert(
+        ckValid(relId),
+        "CheckpointReleasedOnce: release of a free checkpoint"
+      )
+      assert(
+        ckOwner(relId).asUInt === rel.bits.robTag.asUInt,
+        "CheckpointReleasedOnce: release by a non-owner"
+      )
     }
     when(branchEv) {
-      assert(ckValid(ev.checkpointId.id), "CheckpointReleasedOnce: BranchMispredict names a free checkpoint")
-      assert(ckOwner(ev.checkpointId.id).asUInt === ev.robTag.asUInt,
-        "CheckpointReleasedOnce: BranchMispredict robTag is not the checkpoint owner")
-      assert(!(relEff && relId === ev.checkpointId.id), "CheckpointReleasedOnce: released and recovered in one cycle")
+      assert(
+        ckValid(ev.checkpointId.id),
+        "CheckpointReleasedOnce: BranchMispredict names a free checkpoint"
+      )
+      assert(
+        ckOwner(ev.checkpointId.id).asUInt === ev.robTag.asUInt,
+        "CheckpointReleasedOnce: BranchMispredict robTag is not the checkpoint owner"
+      )
+      assert(
+        !(relEff && relId === ev.checkpointId.id),
+        "CheckpointReleasedOnce: released and recovered in one cycle"
+      )
     }
   }
 }

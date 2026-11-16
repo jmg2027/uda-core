@@ -4,8 +4,14 @@ import chisel3._
 import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.backend.spec.shared.BackendBundlesSpecs._
-import udacore.backend.spec.shared.BackendParamsSpecs.{funcRecoveryKills, funcRobOlder}
-import udacore.core.spec.shared.CoreBundlesSpecs.{bndExceptionInfo, bndInterrupt}
+import udacore.backend.spec.shared.BackendParamsSpecs.{
+  funcRecoveryKills,
+  funcRobOlder
+}
+import udacore.core.spec.shared.CoreBundlesSpecs.{
+  bndExceptionInfo,
+  bndInterrupt
+}
 
 /** Backend bundle implementations.
   *
@@ -57,7 +63,10 @@ object CfiType {
   val Jalr   = 3.U(width.W)
   val Call   = 4.U(width.W)
   val Ret    = 5.U(width.W)
-  /** JALR with rd and rs1 both link registers and rd != rs1: pop then push (ADR-019H E-2). */
+
+  /** JALR with rd and rs1 both link registers and rd != rs1: pop then push
+    * (ADR-019H E-2).
+    */
   val CallRet = 6.U(width.W)
 }
 
@@ -74,14 +83,17 @@ object FuType {
 
 /** Unit-local operation code carried opaquely from DecodeUnit to the unit named
   * by fuType; RenameUnit and the ROB never interpret it, and it never carries
-  * commit-time semantics (ADR-019A E-2). The per-unit layouts are fixed by the unit
-  * wrappers (AluOp, MulDivOp, BranchOp, MemOp). */
+  * commit-time semantics (ADR-019A E-2). The per-unit layouts are fixed by the
+  * unit wrappers (AluOp, MulDivOp, BranchOp, MemOp).
+  */
 object UopOp {
   val width = 8
 }
 
-/** Commit-time system semantics (bndDecodedUop.sysOp / bndRobEntry.sysOp, ADR-019A E-2),
-  * classified by DecodeUnit (SystemOpDecode) and carried unchanged to the ROB entry. */
+/** Commit-time system semantics (bndDecodedUop.sysOp / bndRobEntry.sysOp,
+  * ADR-019A E-2), classified by DecodeUnit (SystemOpDecode) and carried
+  * unchanged to the ROB entry.
+  */
 object SysOp {
   val width     = 4 // ADR-019E E-3: widened for Dret (no aliasing)
   val None      = 0.U(width.W)
@@ -154,7 +166,8 @@ class ArchRedirect(val params: BackendParams) extends BackendBundle {
 }
 
 /** The single program-order function and the common kill predicate (ADR-019
-  * D-19.9). Every speculative holder evaluates recovery only through these. */
+  * D-19.9). Every speculative holder evaluates recovery only through these.
+  */
 object RobOrder {
   @LocalSpec(funcRobOlder)
   def robOlder(a: RobTag, b: RobTag): Bool =
@@ -184,7 +197,9 @@ class ExceptionInfo(val params: BackendParams) extends BackendBundle {
   val tval  = UInt(xLen.W)
 }
 
-/** The DecodedUop prediction field (PredictionView): the frontend's per-slot prediction. */
+/** The DecodedUop prediction field (PredictionView): the frontend's per-slot
+  * prediction.
+  */
 class PredictionView(val params: BackendParams) extends BackendBundle {
   val predictedTaken  = Bool()
   val predictedTarget = UInt(vAddrWidth.W)
@@ -213,8 +228,9 @@ class DecodedUop(val params: BackendParams) extends BackendBundle {
   val exception       = new ExceptionInfo(params)
 }
 
-/** A decode packet: up to DecodeWidth DecodedUops, oldest first; the valid lanes
-  * form a prefix (intfDecodedPacketOut). */
+/** A decode packet: up to DecodeWidth DecodedUops, oldest first; the valid
+  * lanes form a prefix (intfDecodedPacketOut).
+  */
 class DecodedPacket(val params: BackendParams) extends BackendBundle {
   val lanes = Vec(params.decodeWidth, new DecodedLane(params))
 }
@@ -335,8 +351,8 @@ class IssuedUop(val params: BackendParams) extends BackendBundle {
   val hasDest      = Bool()
   val checkpointId = new BranchCheckpointId(params)
   val prediction   = new PredictionView(params)
-  val insn         = UInt(iLen.W)             // ADR-019D E-2
-  val sysOp        = UInt(SysOp.width.W)      // ADR-019D E-2
+  val insn         = UInt(iLen.W)        // ADR-019D E-2
+  val sysOp        = UInt(SysOp.width.W) // ADR-019D E-2
 }
 
 @LocalSpec(bndFuAvailability)
@@ -350,9 +366,16 @@ class FuAvailability(val params: BackendParams) extends BackendBundle {
   val bitAlu = if (params.enableBitAlu) Some(Bool()) else None
 
   /** The bit of a class (false for System, which never enters the RS). */
-  def of(fuType: UInt): Bool = MuxLookup(fuType, false.B)(Seq(
-    FuType.Alu -> alu, FuType.Mul -> mul, FuType.Div -> div, FuType.Branch -> branch,
-    FuType.Mem -> mem, FuType.Csr -> csr))
+  def of(fuType: UInt): Bool = MuxLookup(fuType, false.B)(
+    Seq(
+      FuType.Alu    -> alu,
+      FuType.Mul    -> mul,
+      FuType.Div    -> div,
+      FuType.Branch -> branch,
+      FuType.Mem    -> mem,
+      FuType.Csr    -> csr
+    )
+  )
 }
 
 /** StoreCommit view of the commit broadcast. */
@@ -443,7 +466,9 @@ class HeadMemGrant(val params: BackendParams) extends BackendBundle {
   val robTag = new RobTag(params)
 }
 
-/** Payload-free handshake token (StoreBufferDrainReq/Resp carry no fields in the spec). */
+/** Payload-free handshake token (StoreBufferDrainReq/Resp carry no fields in
+  * the spec).
+  */
 class HandshakeToken extends Bundle
 
 @LocalSpec(bndRobStatus)

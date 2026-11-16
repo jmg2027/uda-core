@@ -29,7 +29,9 @@ object AluSpecs {
           List("result", "ALU result", "Output", "UInt(dataWidth.W)")
         )
       )
-      .note("Interface does not carry metadata; wrapper modules must manage ready/valid handshakes.")
+      .note(
+        "Interface does not carry metadata; wrapper modules must manage ready/valid handshakes."
+      )
       .build()
   }
 

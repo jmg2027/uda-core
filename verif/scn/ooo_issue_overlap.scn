@@ -1,0 +1,18 @@
+# Fence boundaries isolate ALU publication to the two ADD instructions.
+# The older ADD needs the outstanding DIV; the younger ADD is independent.
+@name whole-core-ooo-issue-overlap
+@maxcycles 2000
+@verifies funcSelectOldestReady propRsIssueOnlyReady funcCommitHead propCommitInOrder
+li x5 0x7fffffff
+li x6 3
+li x10 11
+li x11 31
+fence
+div x7, x5, x6
+add x8, x7, x10
+add x9, x10, x11
+fence
+check x7 == 0x2aaaaaaa
+check x8 == 0x2aaaaab5
+check x9 == 42
+expect done

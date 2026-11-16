@@ -17,7 +17,9 @@ object BackendBundlesSpecs {
 
   val bndRobTag = spec {
     BUNDLE("RobTag")
-      .desc("Canonical program-order identity of an in-flight uop, compared only through funcRobOlder.")
+      .desc(
+        "Canonical program-order identity of an in-flight uop, compared only through funcRobOlder."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -31,7 +33,9 @@ object BackendBundlesSpecs {
 
   val bndBranchCheckpointId = spec {
     BUNDLE("BranchCheckpointId")
-      .desc("Rename checkpoint allocated to a control-flow uop at rename; names the sRAT/free-list snapshot taken immediately after renaming that uop.")
+      .desc(
+        "Rename checkpoint allocated to a control-flow uop at rename; names the sRAT/free-list snapshot taken immediately after renaming that uop."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(List("id", "UInt(CheckpointIdWidth)", "Checkpoint slot."))
@@ -42,12 +46,18 @@ object BackendBundlesSpecs {
 
   val bndCheckpointRelease = spec {
     BUNDLE("CheckpointRelease")
-      .desc("BranchUnit to RenameUnit: a control-flow uop completed without requesting recovery, so its rename checkpoint is no longer needed.")
+      .desc(
+        "BranchUnit to RenameUnit: a control-flow uop completed without requesting recovery, so its rename checkpoint is no longer needed."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("checkpointId", "BranchCheckpointId", "Checkpoint to free."),
-          List("robTag", "RobTag", "Owner uop (cross-check against the checkpoint's recorded owner).")
+          List(
+            "robTag",
+            "RobTag",
+            "Owner uop (cross-check against the checkpoint's recorded owner)."
+          )
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId)
@@ -58,40 +68,82 @@ object BackendBundlesSpecs {
     BUNDLE("RecoveryEvent")
       .desc(
         "The single selective-recovery fact (ADR-019 D-19.9). Produced only by the " +
-        "RecoveryController, broadcast rawNoDecoupled to every speculative holder in the " +
-        "frontend and backend, observed by all of them in the same cycle."
+          "RecoveryController, broadcast rawNoDecoupled to every speculative holder in the " +
+          "frontend and backend, observed by all of them in the same cycle."
       )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("valid", "Bool", "An event is published this cycle (at most one per cycle)."),
-          List("kind", "RecoveryKind", "BranchMispredict (execute-time, selective) | ArchRedirect (commit-head, whole window)."),
-          List("robTag", "RobTag", "Recovery point. BranchMispredict: the recovering branch, which survives. ArchRedirect: the commit-head uop that caused it."),
-          List("checkpointId", "BranchCheckpointId", "Checkpoint of the recovering branch (BranchMispredict only)."),
-          List("target", "UInt(vAddrWidth)", "Redirect target PC, 4-byte aligned."),
-          List("ftqIdx", "FtqIdx", "FTQ entry of the recovering instruction (frontend history restore and truncation)."),
-          List("cfiOutcome", "CfiOutcome", "Resolved type/direction/pc-slot of the recovering control-flow instruction, applied to GHR/RAS after restore (BranchMispredict only)."),
-          List("cause", "RecoveryCause", "DirectionMispredict | TargetMispredict | UnpredictedCfi | Trap | Interrupt | XRet | Refetch | Debug (ADR-019B E-1).")
+          List(
+            "valid",
+            "Bool",
+            "An event is published this cycle (at most one per cycle)."
+          ),
+          List(
+            "kind",
+            "RecoveryKind",
+            "BranchMispredict (execute-time, selective) | ArchRedirect (commit-head, whole window)."
+          ),
+          List(
+            "robTag",
+            "RobTag",
+            "Recovery point. BranchMispredict: the recovering branch, which survives. ArchRedirect: the commit-head uop that caused it."
+          ),
+          List(
+            "checkpointId",
+            "BranchCheckpointId",
+            "Checkpoint of the recovering branch (BranchMispredict only)."
+          ),
+          List(
+            "target",
+            "UInt(vAddrWidth)",
+            "Redirect target PC, 4-byte aligned."
+          ),
+          List(
+            "ftqIdx",
+            "FtqIdx",
+            "FTQ entry of the recovering instruction (frontend history restore and truncation)."
+          ),
+          List(
+            "cfiOutcome",
+            "CfiOutcome",
+            "Resolved type/direction/pc-slot of the recovering control-flow instruction, applied to GHR/RAS after restore (BranchMispredict only)."
+          ),
+          List(
+            "cause",
+            "RecoveryCause",
+            "DirectionMispredict | TargetMispredict | UnpredictedCfi | Trap | Interrupt | XRet | Refetch | Debug (ADR-019B E-1)."
+          )
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId, funcRecoveryKills)
       .note(
         "There is no separate redirect edge: the frontend consumes the same event (bndFetchRedirect " +
-        "is its field projection). Refetch covers every commit-head serialization that resumes " +
-        "at pc+4 (fence.i, sfence.vma, CSR writes with translation or privilege effect, " +
-        "prediction-fault correction)."
+          "is its field projection). Refetch covers every commit-head serialization that resumes " +
+          "at pc+4 (fence.i, sfence.vma, CSR writes with translation or privilege effect, " +
+          "prediction-fault correction)."
       )
       .build()
   }
 
   val bndCfiOutcome = spec {
     BUNDLE("CfiOutcome")
-      .desc("Resolved control-flow facts of one instruction, used for recovery repair and predictor training.")
+      .desc(
+        "Resolved control-flow facts of one instruction, used for recovery repair and predictor training."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("cfiType", "CfiType", "None | Branch | Jal | Jalr | Call | Ret | CallRet (Call/Ret/CallRet per the RISC-V link-register hint rules on x1/x5; CallRet = 6 is the JALR pop-then-push hint, rd and rs1 both link, rd != rs1, ADR-019H E-2)."),
-          List("slot", "UInt(log2(FetchWidth))", "Instruction slot within its fetch block."),
+          List(
+            "cfiType",
+            "CfiType",
+            "None | Branch | Jal | Jalr | Call | Ret | CallRet (Call/Ret/CallRet per the RISC-V link-register hint rules on x1/x5; CallRet = 6 is the JALR pop-then-push hint, rd and rs1 both link, rd != rs1, ADR-019H E-2)."
+          ),
+          List(
+            "slot",
+            "UInt(log2(FetchWidth))",
+            "Instruction slot within its fetch block."
+          ),
           List("taken", "Bool", "Resolved direction (always true for jumps)."),
           List("target", "UInt(vAddrWidth)", "Resolved target when taken.")
         )
@@ -103,23 +155,65 @@ object BackendBundlesSpecs {
 
   val bndDecodedUop = spec {
     BUNDLE("DecodedUop")
-      .desc("One decoded RV32IM_Zicsr_Zifencei uop leaving DecodeUnit (a decode packet carries up to DecodeWidth of these).")
+      .desc(
+        "One decoded RV32IM_Zicsr_Zifencei uop leaving DecodeUnit (a decode packet carries up to DecodeWidth of these)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("pc", "UInt(vAddrWidth)", "Instruction PC (4-byte aligned)."),
           List("insn", "UInt(32)", "Instruction word (retire stream / tval)."),
-          List("fuType", "FuType", "Alu | Mul | Div | Branch | Mem | Csr | System."),
-          List("op", "UopOp", "Unit-local operation (ALU/MUL/DIV/branch/load/store/CSR control); never carries commit-time semantics (sysOp does, ADR-019A E-2)."),
-          List("rd, rs1, rs2", "UInt(5)", "Architectural registers; rd==x0 means no destination."),
+          List(
+            "fuType",
+            "FuType",
+            "Alu | Mul | Div | Branch | Mem | Csr | System."
+          ),
+          List(
+            "op",
+            "UopOp",
+            "Unit-local operation (ALU/MUL/DIV/branch/load/store/CSR control); never carries commit-time semantics (sysOp does, ADR-019A E-2)."
+          ),
+          List(
+            "rd, rs1, rs2",
+            "UInt(5)",
+            "Architectural registers; rd==x0 means no destination."
+          ),
           List("imm", "UInt(XLen)", "Sign-extended immediate."),
-          List("isCfi", "Bool", "Control-flow uop: allocates a branch checkpoint at rename."),
-          List("isLoad, isStore", "Bool", "Allocates an LQ or SQ entry at rename."),
-          List("serialize", "Bool", "CSR/system uop: renamed only into an empty ROB, blocks younger rename until it retires (ADR-004 D-4.2 re-based)."),
-          List("sysOp", "SysOp", "Commit-time system semantics (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (Dret per ADR-019E E-3; SysOp is 4 bits). None for a uop with a fetch/decode exception and for a read-only CSR instruction."),
-          List("prediction", "PredictionView", "Frontend prediction for this slot: predictedTaken, predictedTarget, ftqIdx, slot, blockEnd."),
-          List("predictionFault", "Bool", "The frontend predicted a taken CFI at this slot but it decodes as a non-CFI."),
-          List("exception", "ExceptionInfo", "Fetch-time fault (instruction page/access fault) or illegal instruction, raised precisely at commit.")
+          List(
+            "isCfi",
+            "Bool",
+            "Control-flow uop: allocates a branch checkpoint at rename."
+          ),
+          List(
+            "isLoad, isStore",
+            "Bool",
+            "Allocates an LQ or SQ entry at rename."
+          ),
+          List(
+            "serialize",
+            "Bool",
+            "CSR/system uop: renamed only into an empty ROB, blocks younger rename until it retires (ADR-004 D-4.2 re-based)."
+          ),
+          List(
+            "sysOp",
+            "SysOp",
+            "Commit-time system semantics (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (Dret per ADR-019E E-3; SysOp is 4 bits). None for a uop with a fetch/decode exception and for a read-only CSR instruction."
+          ),
+          List(
+            "prediction",
+            "PredictionView",
+            "Frontend prediction for this slot: predictedTaken, predictedTarget, ftqIdx, slot, blockEnd."
+          ),
+          List(
+            "predictionFault",
+            "Bool",
+            "The frontend predicted a taken CFI at this slot but it decodes as a non-CFI."
+          ),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "Fetch-time fault (instruction page/access fault) or illegal instruction, raised precisely at commit."
+          )
         )
       )
       .build()
@@ -127,18 +221,44 @@ object BackendBundlesSpecs {
 
   val bndRenameAllocation = spec {
     BUNDLE("RenameAllocation")
-      .desc("The in-order allocation token RenameUnit forks to ROB, RS, and (for memory uops) LSQ in one atomic transfer.")
+      .desc(
+        "The in-order allocation token RenameUnit forks to ROB, RS, and (for memory uops) LSQ in one atomic transfer."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("robTag", "RobTag", "Allocated by RenameUnit's program-order allocation pointer."),
+          List(
+            "robTag",
+            "RobTag",
+            "Allocated by RenameUnit's program-order allocation pointer."
+          ),
           List("uop", "DecodedUop", "Decoded payload."),
-          List("prs1, prs2", "UInt(PhysRegIdWidth)", "Source mappings read from the sRAT."),
-          List("prs1Ready, prs2Ready", "Bool", "Busy-table state at rename (with same-cycle wakeup bypass)."),
+          List(
+            "prs1, prs2",
+            "UInt(PhysRegIdWidth)",
+            "Source mappings read from the sRAT."
+          ),
+          List(
+            "prs1Ready, prs2Ready",
+            "Bool",
+            "Busy-table state at rename (with same-cycle wakeup bypass)."
+          ),
           List("hasDest", "Bool", "rd != x0."),
-          List("newPrd", "UInt(PhysRegIdWidth)", "Destination allocated from the free list."),
-          List("oldPrd", "UInt(PhysRegIdWidth)", "Previous sRAT mapping of rd, freed when this uop commits."),
-          List("checkpointId", "BranchCheckpointId", "Valid for control-flow uops.")
+          List(
+            "newPrd",
+            "UInt(PhysRegIdWidth)",
+            "Destination allocated from the free list."
+          ),
+          List(
+            "oldPrd",
+            "UInt(PhysRegIdWidth)",
+            "Previous sRAT mapping of rd, freed when this uop commits."
+          ),
+          List(
+            "checkpointId",
+            "BranchCheckpointId",
+            "Valid for control-flow uops."
+          )
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId, bndDecodedUop)
@@ -147,23 +267,73 @@ object BackendBundlesSpecs {
 
   val bndRobEntry = spec {
     BUNDLE("RobEntry")
-      .desc("Data-less ROB entry (ADR-019 D-19.7): ordering and precise-state metadata only; values live in the PRF.")
+      .desc(
+        "Data-less ROB entry (ADR-019 D-19.7): ordering and precise-state metadata only; values live in the PRF."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("valid", "Bool", "Allocated and not killed."),
-          List("done", "Bool", "Completion observed (result published, or memory uop resolved)."),
-          List("pc, insn", "UInt", "Identity for traps, tval, and the retire stream."),
-          List("archRd, hasDest", "UInt(5), Bool", "Architectural destination."),
-          List("newPrd, oldPrd", "UInt(PhysRegIdWidth)", "Physical destination and the mapping it replaces."),
-          List("exception", "ExceptionInfo", "valid/cause/tval recorded at completion or allocation; raised only at the head."),
-          List("isCfi, checkpointId", "Bool, BranchCheckpointId", "Branch recovery metadata (the checkpoint itself is freed at resolution, not at commit)."),
-          List("cfiOutcome", "CfiOutcome", "Resolved outcome recorded at branch completion (predictor training at commit)."),
-          List("ftqIdx, blockEnd", "FtqIdx, Bool", "FTQ reference; blockEnd marks the last committed instruction of its fetch block."),
-          List("isLoad, isStore", "Bool", "Memory ordering metadata (SQ commit handoff for stores)."),
-          List("headExecute", "Bool", "Uncacheable load/store reported by the LSQ: not done until CommitUnit grants its execution at the head (HeadMemGrant) and the LSQ completes it."),
-          List("serialize, sysOp", "Bool, SysOp", "Commit-head system behavior, copied from uop.sysOp (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (ADR-019E E-3)."),
-          List("predictionFault", "Bool", "Commit triggers an ArchRedirect(Refetch) to pc+4.")
+          List(
+            "done",
+            "Bool",
+            "Completion observed (result published, or memory uop resolved)."
+          ),
+          List(
+            "pc, insn",
+            "UInt",
+            "Identity for traps, tval, and the retire stream."
+          ),
+          List(
+            "archRd, hasDest",
+            "UInt(5), Bool",
+            "Architectural destination."
+          ),
+          List(
+            "newPrd, oldPrd",
+            "UInt(PhysRegIdWidth)",
+            "Physical destination and the mapping it replaces."
+          ),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "valid/cause/tval recorded at completion or allocation; raised only at the head."
+          ),
+          List(
+            "isCfi, checkpointId",
+            "Bool, BranchCheckpointId",
+            "Branch recovery metadata (the checkpoint itself is freed at resolution, not at commit)."
+          ),
+          List(
+            "cfiOutcome",
+            "CfiOutcome",
+            "Resolved outcome recorded at branch completion (predictor training at commit)."
+          ),
+          List(
+            "ftqIdx, blockEnd",
+            "FtqIdx, Bool",
+            "FTQ reference; blockEnd marks the last committed instruction of its fetch block."
+          ),
+          List(
+            "isLoad, isStore",
+            "Bool",
+            "Memory ordering metadata (SQ commit handoff for stores)."
+          ),
+          List(
+            "headExecute",
+            "Bool",
+            "Uncacheable load/store reported by the LSQ: not done until CommitUnit grants its execution at the head (HeadMemGrant) and the LSQ completes it."
+          ),
+          List(
+            "serialize, sysOp",
+            "Bool, SysOp",
+            "Commit-head system behavior, copied from uop.sysOp (ADR-019A E-2): None | Fence | FenceI | SfenceVma | Wfi | Mret | Sret | CsrWrite | Dret (ADR-019E E-3)."
+          ),
+          List(
+            "predictionFault",
+            "Bool",
+            "Commit triggers an ArchRedirect(Refetch) to pc+4."
+          )
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId, bndCfiOutcome)
@@ -172,14 +342,24 @@ object BackendBundlesSpecs {
 
   val bndRobCompletion = spec {
     BUNDLE("RobCompletion")
-      .desc("Out-of-order completion notice from PublishMux to the ROB, keyed by robTag.")
+      .desc(
+        "Out-of-order completion notice from PublishMux to the ROB, keyed by robTag."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "Completing uop."),
-          List("exception", "ExceptionInfo", "Execution-detected exception (misaligned, page/access fault, illegal CSR access)."),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "Execution-detected exception (misaligned, page/access fault, illegal CSR access)."
+          ),
           List("cfiOutcome", "CfiOutcome", "Present for control-flow uops."),
-          List("headExecute", "Bool", "Memory uops only: the uop is NOT done - it must be granted execution at the ROB head (uncacheable access). The completion that follows the grant has headExecute = 0.")
+          List(
+            "headExecute",
+            "Bool",
+            "Memory uops only: the uop is NOT done - it must be granted execution at the ROB head (uncacheable access). The completion that follows the grant has headExecute = 0."
+          )
         )
       )
       .uses(bndRobTag, bndCfiOutcome)
@@ -188,13 +368,19 @@ object BackendBundlesSpecs {
 
   val bndRobHead = spec {
     BUNDLE("RobHead")
-      .desc("The ROB head entry offered to CommitUnit; the transfer fires exactly when the entry retires or is taken as a trap.")
+      .desc(
+        "The ROB head entry offered to CommitUnit; the transfer fires exactly when the entry retires or is taken as a trap."
+      )
       .has(bndRobEntry)
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "Head tag."),
-          List("entry", "RobEntry", "Head entry; presented when done or headExecute (valid = head.valid && (done || headExecute)); a headExecute && !done head is observed, never transferred.")
+          List(
+            "entry",
+            "RobEntry",
+            "Head entry; presented when done or headExecute (valid = head.valid && (done || headExecute)); a headExecute && !done head is observed, never transferred."
+          )
         )
       )
       .build()
@@ -202,13 +388,25 @@ object BackendBundlesSpecs {
 
   val bndRobStatus = spec {
     BUNDLE("RobStatus")
-      .desc("Committed-state view of the ROB published every cycle (rawNoDecoupled class 4).")
-      .note("ADR-019A E-3: the current-cycle registered occupancy - an allocation or retirement in cycle t is reflected from cycle t + 1, with no same-cycle lookahead; the one-cycle bubble at a serialization boundary is accepted in v0.")
+      .desc(
+        "Committed-state view of the ROB published every cycle (rawNoDecoupled class 4)."
+      )
+      .note(
+        "ADR-019A E-3: the current-cycle registered occupancy - an allocation or retirement in cycle t is reflected from cycle t + 1, with no same-cycle lookahead; the one-cycle bubble at a serialization boundary is accepted in v0."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("empty", "Bool", "No live entry (serialization gate in RenameUnit)."),
-          List("headTag", "RobTag", "Tag of the oldest live entry (LQ release in the LSQ).")
+          List(
+            "empty",
+            "Bool",
+            "No live entry (serialization gate in RenameUnit)."
+          ),
+          List(
+            "headTag",
+            "RobTag",
+            "Tag of the oldest live entry (LQ release in the LSQ)."
+          )
         )
       )
       .uses(bndRobTag)
@@ -219,18 +417,40 @@ object BackendBundlesSpecs {
 
   val bndIssuedUop = spec {
     BUNDLE("IssuedUop")
-      .desc("A uop selected from the RS with operands read from the PRF, routed by DispatchUnit to one FU.")
+      .desc(
+        "A uop selected from the RS with operands read from the PRF, routed by DispatchUnit to one FU."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("robTag", "RobTag", "Order/recovery identity (every FU pipeline stage holds it)."),
+          List(
+            "robTag",
+            "RobTag",
+            "Order/recovery identity (every FU pipeline stage holds it)."
+          ),
           List("fuType, op", "FuType, UopOp", "Routing and operation."),
           List("src1, src2", "UInt(XLen)", "Operand values."),
-          List("imm, pc", "UInt", "Immediate and PC (branches, AUIPC, JAL/JALR link value)."),
+          List(
+            "imm, pc",
+            "UInt",
+            "Immediate and PC (branches, AUIPC, JAL/JALR link value)."
+          ),
           List("prd, hasDest", "UInt(PhysRegIdWidth), Bool", "Destination."),
-          List("checkpointId, prediction", "BranchCheckpointId, PredictionView", "Branch resolution inputs."),
-          List("insn", "UInt(ILen)", "Instruction word (ADR-019D E-2): the CSR address insn[31:20], uimm = zext(insn[19:15]), and the illegal-instruction tval."),
-          List("sysOp", "SysOp", "Copied from the DecodedUop (ADR-019D E-2): for a CSR uop, CsrWrite means write semantics and None a read-only access; write intent is never inferred from an operand value.")
+          List(
+            "checkpointId, prediction",
+            "BranchCheckpointId, PredictionView",
+            "Branch resolution inputs."
+          ),
+          List(
+            "insn",
+            "UInt(ILen)",
+            "Instruction word (ADR-019D E-2): the CSR address insn[31:20], uimm = zext(insn[19:15]), and the illegal-instruction tval."
+          ),
+          List(
+            "sysOp",
+            "SysOp",
+            "Copied from the DecodedUop (ADR-019D E-2): for a CSR uop, CsrWrite means write semantics and None a read-only access; write intent is never inferred from an operand value."
+          )
         )
       )
       .uses(bndRobTag)
@@ -239,21 +459,35 @@ object BackendBundlesSpecs {
 
   val bndFuAvailability = spec {
     BUNDLE("BackendBundlesSpecs.bndFuAvailability")
-      .desc("DispatchUnit to ReservationStation (ADR-019C E-1): per FU class, whether an IssuedUop of that class presented this cycle would be accepted by DispatchUnit and its execution wrapper.")
+      .desc(
+        "DispatchUnit to ReservationStation (ADR-019C E-1): per FU class, whether an IssuedUop of that class presented this cycle would be accepted by DispatchUnit and its execution wrapper."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("alu, mul, div, branch, mem, csr", "Bool", "One bit per FU class (mem = the AGU path of loads and stores)."),
-          List("bitAlu", "Bool", "Only when the BitAluUnit extension is elaborated.")
+          List(
+            "alu, mul, div, branch, mem, csr",
+            "Bool",
+            "One bit per FU class (mem = the AGU path of loads and stores)."
+          ),
+          List(
+            "bitAlu",
+            "Bool",
+            "Only when the BitAluUnit extension is elaborated."
+          )
         )
       )
-      .note("System uops never enter the RS (ADR-019A E-1) and have no bit. rawNoDecoupled class 7: derived only from registered state and the drain of already-held tokens (ADR-019C E-2).")
+      .note(
+        "System uops never enter the RS (ADR-019A E-1) and have no bit. rawNoDecoupled class 7: derived only from registered state and the drain of already-held tokens (ADR-019C E-2)."
+      )
       .build()
   }
 
   val bndFuResult = spec {
     BUNDLE("FuResult")
-      .desc("Result of any execution unit toward PublishMux: register value (optional) plus the ROB completion payload.")
+      .desc(
+        "Result of any execution unit toward PublishMux: register value (optional) plus the ROB completion payload."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -270,7 +504,9 @@ object BackendBundlesSpecs {
 
   val bndBranchResolution = spec {
     BUNDLE("BranchResolution")
-      .desc("A mispredicted control-flow resolution from BranchUnit to RecoveryController (correct predictions complete through PublishMux only).")
+      .desc(
+        "A mispredicted control-flow resolution from BranchUnit to RecoveryController (correct predictions complete through PublishMux only)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -279,8 +515,16 @@ object BackendBundlesSpecs {
           List("ftqIdx", "FtqIdx", "Its FTQ entry."),
           List("pc", "UInt(vAddrWidth)", "Branch PC."),
           List("outcome", "CfiOutcome", "Resolved type/direction/target."),
-          List("redirectTarget", "UInt(vAddrWidth)", "taken ? target : pc + 4."),
-          List("cause", "RecoveryCause", "DirectionMispredict | TargetMispredict | UnpredictedCfi.")
+          List(
+            "redirectTarget",
+            "UInt(vAddrWidth)",
+            "taken ? target : pc + 4."
+          ),
+          List(
+            "cause",
+            "RecoveryCause",
+            "DirectionMispredict | TargetMispredict | UnpredictedCfi."
+          )
         )
       )
       .uses(bndRobTag, bndBranchCheckpointId, bndCfiOutcome)
@@ -289,14 +533,28 @@ object BackendBundlesSpecs {
 
   val bndArchRedirect = spec {
     BUNDLE("ArchRedirect")
-      .desc("A commit-head architectural redirect request from TrapController to RecoveryController.")
+      .desc(
+        "A commit-head architectural redirect request from TrapController to RecoveryController."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "The commit-head uop that caused it."),
-          List("ftqIdx", "FtqIdx", "Its FTQ entry (history restore choice for the frontend)."),
-          List("target", "UInt(vAddrWidth)", "Trap vector, xEPC, or pc+4 (Refetch)."),
-          List("cause", "RecoveryCause", "Trap | Interrupt | Debug | XRet | Refetch (Debug per ADR-019B E-1, never aliased to Trap).")
+          List(
+            "ftqIdx",
+            "FtqIdx",
+            "Its FTQ entry (history restore choice for the frontend)."
+          ),
+          List(
+            "target",
+            "UInt(vAddrWidth)",
+            "Trap vector, xEPC, or pc+4 (Refetch)."
+          ),
+          List(
+            "cause",
+            "RecoveryCause",
+            "Trap | Interrupt | Debug | XRet | Refetch (Debug per ADR-019B E-1, never aliased to Trap)."
+          )
         )
       )
       .uses(bndRobTag)
@@ -319,7 +577,9 @@ object BackendBundlesSpecs {
 
   val bndWakeupBroadcast = spec {
     BUNDLE("WakeupBroadcast")
-      .desc("Result-publication fact: physical register prd holds its value from the next cycle on.")
+      .desc(
+        "Result-publication fact: physical register prd holds its value from the next cycle on."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -327,7 +587,9 @@ object BackendBundlesSpecs {
           List("prd", "UInt(PhysRegIdWidth)", "Woken physical register.")
         )
       )
-      .note("Carries no epoch: a wakeup for a killed producer's prd is harmless because that prd is either still busy-unallocated or reallocated only after its old consumers are killed by the same RecoveryEvent.")
+      .note(
+        "Carries no epoch: a wakeup for a killed producer's prd is harmless because that prd is either still busy-unallocated or reallocated only after its old consumers are killed by the same RecoveryEvent."
+      )
       .uses(paramPhysRegIdWidth)
       .build()
   }
@@ -337,7 +599,13 @@ object BackendBundlesSpecs {
       .desc("Operand read at RS select.")
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("prs1, prs2", "UInt(PhysRegIdWidth)", "Source physical registers."))
+        List(
+          List(
+            "prs1, prs2",
+            "UInt(PhysRegIdWidth)",
+            "Source physical registers."
+          )
+        )
       )
       .build()
   }
@@ -356,13 +624,19 @@ object BackendBundlesSpecs {
 
   val bndLsqAllocation = spec {
     BUNDLE("LsqAllocation")
-      .desc("Program-order LQ/SQ allocation, one projection of bndRenameAllocation.")
+      .desc(
+        "Program-order LQ/SQ allocation, one projection of bndRenameAllocation."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "Owner uop."),
           List("isLoad, isStore", "Bool", "Queue selection."),
-          List("size, signed", "UInt(2), Bool", "Access size (byte/half/word) and load sign extension."),
+          List(
+            "size, signed",
+            "UInt(2), Bool",
+            "Access size (byte/half/word) and load sign extension."
+          ),
           List("prd", "UInt(PhysRegIdWidth)", "Load destination.")
         )
       )
@@ -372,14 +646,24 @@ object BackendBundlesSpecs {
 
   val bndMemAddress = spec {
     BUNDLE("MemAddress")
-      .desc("AGU result: effective virtual address (and store data) for the LSQ entry owned by robTag.")
+      .desc(
+        "AGU result: effective virtual address (and store data) for the LSQ entry owned by robTag."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("robTag", "RobTag", "Owner uop; the LSQ matches its entry by robTag."),
+          List(
+            "robTag",
+            "RobTag",
+            "Owner uop; the LSQ matches its entry by robTag."
+          ),
           List("vaddr", "UInt(vAddrWidth)", "rs1 + imm."),
           List("storeData", "UInt(XLen)", "rs2 value for stores."),
-          List("misaligned", "Bool", "Natural-alignment violation (raised as an address-misaligned exception).")
+          List(
+            "misaligned",
+            "Bool",
+            "Natural-alignment violation (raised as an address-misaligned exception)."
+          )
         )
       )
       .uses(bndRobTag)
@@ -392,13 +676,33 @@ object BackendBundlesSpecs {
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("valid, gen", "Bool, UInt", "Live; per-entry allocation generation (transaction tag for D-cache responses, propGenerationTagScope)."),
+          List(
+            "valid, gen",
+            "Bool, UInt",
+            "Live; per-entry allocation generation (transaction tag for D-cache responses, propGenerationTagScope)."
+          ),
           List("robTag", "RobTag", "Order and recovery identity."),
-          List("state", "LoadState", "AddrPending | TranslationPending | Ready | Issued | WaitStoreData | WaitStoreDrain | Done | Faulted."),
-          List("vaddr, paddr", "UInt", "Virtual address from the AGU; physical address from translation (authoritative for ordering)."),
+          List(
+            "state",
+            "LoadState",
+            "AddrPending | TranslationPending | Ready | Issued | WaitStoreData | WaitStoreDrain | Done | Faulted."
+          ),
+          List(
+            "vaddr, paddr",
+            "UInt",
+            "Virtual address from the AGU; physical address from translation (authoritative for ordering)."
+          ),
           List("size, signed, prd", "", "Access shape and destination."),
-          List("uncacheable", "Bool", "PMA attribute; executes only at the ROB head."),
-          List("exception", "ExceptionInfo", "Misaligned / load page fault / load access fault.")
+          List(
+            "uncacheable",
+            "Bool",
+            "PMA attribute; executes only at the ROB head."
+          ),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "Misaligned / load page fault / load access fault."
+          )
         )
       )
       .uses(bndRobTag)
@@ -407,17 +711,39 @@ object BackendBundlesSpecs {
 
   val bndStoreQueueEntry = spec {
     BUNDLE("StoreQueueEntry")
-      .desc("Store queue entry (speculative until commit hands it to the StoreBuffer).")
+      .desc(
+        "Store queue entry (speculative until commit hands it to the StoreBuffer)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("valid", "Bool", "Live."),
           List("robTag", "RobTag", "Order and recovery identity."),
-          List("state", "StoreState", "AddrPending | TranslationPending | Ready | Faulted."),
-          List("vaddr, paddr", "UInt", "Addresses; paddr is authoritative for forwarding and ordering."),
-          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Store data and byte mask."),
-          List("addrKnown, dataKnown", "Bool", "Resolution flags consulted by younger loads."),
-          List("exception", "ExceptionInfo", "Misaligned / store page fault / store access fault.")
+          List(
+            "state",
+            "StoreState",
+            "AddrPending | TranslationPending | Ready | Faulted."
+          ),
+          List(
+            "vaddr, paddr",
+            "UInt",
+            "Addresses; paddr is authoritative for forwarding and ordering."
+          ),
+          List(
+            "data, mask",
+            "UInt(XLen), UInt(XLen/8)",
+            "Store data and byte mask."
+          ),
+          List(
+            "addrKnown, dataKnown",
+            "Bool",
+            "Resolution flags consulted by younger loads."
+          ),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "Misaligned / store page fault / store access fault."
+          )
         )
       )
       .uses(bndRobTag)
@@ -426,12 +752,14 @@ object BackendBundlesSpecs {
 
   val bndCommittedStore = spec {
     BUNDLE("CommittedStore")
-      .desc("A committed cacheable store handed from the SQ head to the StoreBuffer; irrevocable from this transfer on. Uncacheable stores never take this path (they are performed at the head through the LSQ uncached port).")
+      .desc(
+        "A committed cacheable store handed from the SQ head to the StoreBuffer; irrevocable from this transfer on. Uncacheable stores never take this path (they are performed at the head through the LSQ uncached port)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("paddr", "UInt(pAddrWidth)", "Physical address."),
-          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes to write."),
+          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes to write.")
         )
       )
       .build()
@@ -441,8 +769,8 @@ object BackendBundlesSpecs {
     BUNDLE("BackendBundlesSpecs.bndHeadMemGrant")
       .desc(
         "CommitUnit to LSQ: the ROB head is an uncacheable memory uop and may now perform its " +
-        "single bus access. Issued at most once per robTag; from the grant until that head " +
-        "retires or traps, no interrupt or debug request is taken in front of it."
+          "single bus access. Issued at most once per robTag; from the grant until that head " +
+          "retires or traps, no interrupt or debug request is taken in front of it."
       )
       .markdownTable(
         List("Name", "Type", "Description"),
@@ -454,7 +782,9 @@ object BackendBundlesSpecs {
 
   val bndStoreForwardQuery = spec {
     BUNDLE("StoreForwardQuery")
-      .desc("Physical-address forwarding probe from the LSQ into the StoreBuffer for one load.")
+      .desc(
+        "Physical-address forwarding probe from the LSQ into the StoreBuffer for one load."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -467,13 +797,23 @@ object BackendBundlesSpecs {
 
   val bndStoreForwardData = spec {
     BUNDLE("StoreForwardData")
-      .desc("StoreBuffer forwarding answer: youngest committed bytes per load byte.")
+      .desc(
+        "StoreBuffer forwarding answer: youngest committed bytes per load byte."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("data", "UInt(XLen)", "Forwarded bytes."),
-          List("hitMask", "UInt(XLen/8)", "Bytes supplied by committed stores."),
-          List("partial", "Bool", "Some load bytes overlap a committed store that cannot be forwarded exactly; the load waits for drain.")
+          List(
+            "hitMask",
+            "UInt(XLen/8)",
+            "Bytes supplied by committed stores."
+          ),
+          List(
+            "partial",
+            "Bool",
+            "Some load bytes overlap a committed store that cannot be forwarded exactly; the load waits for drain."
+          )
         )
       )
       .build()
@@ -481,14 +821,28 @@ object BackendBundlesSpecs {
 
   val bndMemResult = spec {
     BUNDLE("MemResult")
-      .desc("LSQ completion toward PublishMux: load value (with destination) or store/load resolution with exception.")
+      .desc(
+        "LSQ completion toward PublishMux: load value (with destination) or store/load resolution with exception."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("robTag", "RobTag", "Completing memory uop."),
-          List("prd, wen, data", "", "Load writeback (wen false for stores and faulting loads)."),
-          List("headExecute", "Bool", "Not a completion: the uncacheable uop waits for HeadMemGrant (the ROB records it, done stays 0)."),
-          List("exception", "ExceptionInfo", "Misaligned / page fault / access fault of the right access type.")
+          List(
+            "prd, wen, data",
+            "",
+            "Load writeback (wen false for stores and faulting loads)."
+          ),
+          List(
+            "headExecute",
+            "Bool",
+            "Not a completion: the uncacheable uop waits for HeadMemGrant (the ROB records it, done stays 0)."
+          ),
+          List(
+            "exception",
+            "ExceptionInfo",
+            "Misaligned / page fault / access fault of the right access type."
+          )
         )
       )
       .uses(bndRobTag)
@@ -501,34 +855,65 @@ object BackendBundlesSpecs {
     BUNDLE("CommitBroadcast")
       .desc(
         "The single in-order commit event, owned and driven by CommitUnit and keyed by robTag " +
-        "(ADR-012 D-12.4 concept, re-based on the ROB). Consumers take field-projected views."
+          "(ADR-012 D-12.4 concept, re-based on the ROB). Consumers take field-projected views."
       )
       .markdownTable(
         List("Projected view", "Fields", "Consumer", "Protocol"),
         List(
-          List("RenameCommit", "archRd, newPrd, oldPrd, hasDest", "RenameUnit (rRAT update, oldPrd free)", "ready/valid"),
-          List("StoreCommit", "robTag", "LoadStoreQueue (SQ head -> StoreBuffer)", "ready/valid"),
-          List("FtqCommit", "ftqIdx, cfiOutcome of the block exit", "FetchTargetQueue (entry release, predictor training)", "ready/valid"),
-          List("CommitGrant", "robTag, valid", "CsrController (commit-gated CSR write)", "rawNoDecoupled class 4"),
-          List("RetireToken", "see bndRetireToken", "verification retire stream", "ready/valid, observation-only")
+          List(
+            "RenameCommit",
+            "archRd, newPrd, oldPrd, hasDest",
+            "RenameUnit (rRAT update, oldPrd free)",
+            "ready/valid"
+          ),
+          List(
+            "StoreCommit",
+            "robTag",
+            "LoadStoreQueue (SQ head -> StoreBuffer)",
+            "ready/valid"
+          ),
+          List(
+            "FtqCommit",
+            "ftqIdx, cfiOutcome of the block exit",
+            "FetchTargetQueue (entry release, predictor training)",
+            "ready/valid"
+          ),
+          List(
+            "CommitGrant",
+            "robTag, valid",
+            "CsrController (commit-gated CSR write)",
+            "rawNoDecoupled class 4"
+          ),
+          List(
+            "RetireToken",
+            "see bndRetireToken",
+            "verification retire stream",
+            "ready/valid, observation-only"
+          )
         )
       )
       .uses(bndRobTag)
       .note(
         "A uop commits only when every ready/valid view it needs is accepted in the same cycle, " +
-        "so the store, rename, and FTQ consumers can never disagree about which uop retired."
+          "so the store, rename, and FTQ consumers can never disagree about which uop retired."
       )
       .build()
   }
 
   val bndFtqCommit = spec {
     BUNDLE("FtqCommit")
-      .desc("Commit notice for a fetch block whose last instruction (blockEnd) retired.")
+      .desc(
+        "Commit notice for a fetch block whose last instruction (blockEnd) retired."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("ftqIdx", "FtqIdx", "Retiring FTQ entry."),
-          List("exit", "CfiOutcome", "Committed block exit: the taken control-flow instruction, or cfiType None for fall-through.")
+          List(
+            "exit",
+            "CfiOutcome",
+            "Committed block exit: the taken control-flow instruction, or cfiType None for fall-through."
+          )
         )
       )
       .uses(bndCfiOutcome)
@@ -537,37 +922,61 @@ object BackendBundlesSpecs {
 
   val bndRetireToken = spec {
     BUNDLE("RetireToken")
-      .desc("Verification observation event emitted by CommitUnit (ADR-010 D-10.1 as amended by ADR-019B E-5): one per retirement or precise trap entry.")
+      .desc(
+        "Verification observation event emitted by CommitUnit (ADR-010 D-10.1 as amended by ADR-019B E-5): one per retirement or precise trap entry."
+      )
       .markdownTable(
         List("field", "meaning"),
         List(
-          List("order", "64b sequence, +1 per stream event (retirement or trap entry; verif-only, gated by usingRvvi)"),
+          List(
+            "order",
+            "64b sequence, +1 per stream event (retirement or trap entry; verif-only, gated by usingRvvi)"
+          ),
           List("pc", "architectural PC of the retiring instruction"),
           List("insn", "32-bit instruction word"),
           List("rd", "architectural destination register"),
-          List("wdata", "value of the retiring head's newPrd read through CommitPrfReadReq/Resp in the retire cycle; 0 when wen = 0 (ADR-019B E-3)"),
-          List("wen", "register-write-enable: hasDest && rd != x0 on a retirement, 0 on a trap entry"),
-          List("trap", "1 for a precise trap-entry event (ADR-010 D-10.4); such an event is not a retirement (ADR-019B E-5)"),
-          List("source", "Sync | Interrupt | Debug for a trap-entry event; Sync (don't care) on a retirement"),
+          List(
+            "wdata",
+            "value of the retiring head's newPrd read through CommitPrfReadReq/Resp in the retire cycle; 0 when wen = 0 (ADR-019B E-3)"
+          ),
+          List(
+            "wen",
+            "register-write-enable: hasDest && rd != x0 on a retirement, 0 on a trap entry"
+          ),
+          List(
+            "trap",
+            "1 for a precise trap-entry event (ADR-010 D-10.4); such an event is not a retirement (ADR-019B E-5)"
+          ),
+          List(
+            "source",
+            "Sync | Interrupt | Debug for a trap-entry event; Sync (don't care) on a retirement"
+          ),
           List("cause, tval", "trap cause and value"),
-          List("priv", "privilege the instruction executed in, before any transition it causes (ADR-019B E-4), from InterruptCtrl.priv")
+          List(
+            "priv",
+            "privilege the instruction executed in, before any transition it causes (ADR-019B E-4), from InterruptCtrl.priv"
+          )
         )
       )
       .note(
         "Emitted for every program-order observation event - a normal retirement or a precise " +
-        "trap entry (ADR-019B E-5); a trap-entry event fires no commit-broadcast view. " +
-        "Observation-only, ready tied high (ADR-010 D-10.2). The whole path including the order " +
-        "counter and the commit PRF read folds away at usingRvvi=false (ADR-010 D-10.3)."
+          "trap entry (ADR-019B E-5); a trap-entry event fires no commit-broadcast view. " +
+          "Observation-only, ready tied high (ADR-010 D-10.2). The whole path including the order " +
+          "counter and the commit PRF read folds away at usingRvvi=false (ADR-010 D-10.3)."
       )
       .build()
   }
 
   val bndCommitPrfReadReq = spec {
     BUNDLE("CommitPrfReadReq")
-      .desc("Verification-only commit-time PRF read request (ADR-019B E-3), elaborated only when usingRvvi.")
+      .desc(
+        "Verification-only commit-time PRF read request (ADR-019B E-3), elaborated only when usingRvvi."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("prd", "UInt(PhysRegIdWidth)", "newPrd of the retiring head."))
+        List(
+          List("prd", "UInt(PhysRegIdWidth)", "newPrd of the retiring head.")
+        )
       )
       .uses(paramPhysRegIdWidth)
       .build()
@@ -575,7 +984,9 @@ object BackendBundlesSpecs {
 
   val bndCommitPrfReadResp = spec {
     BUNDLE("CommitPrfReadResp")
-      .desc("Same-cycle answer to CommitPrfReadReq (ADR-019B E-3); a same-cycle write of that prd is bypassed.")
+      .desc(
+        "Same-cycle answer to CommitPrfReadReq (ADR-019B E-3); a same-cycle write of that prd is bypassed."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(List("data", "UInt(XLen)", "Value of the requested prd."))
@@ -589,17 +1000,37 @@ object BackendBundlesSpecs {
 
   val bndInterruptCtrl = spec {
     BUNDLE("InterruptCtrl")
-      .desc("Pending-and-enabled interrupt view (mip & mie, mideleg, mstatus.MIE/SIE, priv) consumed by CommitUnit at a retire boundary.")
+      .desc(
+        "Pending-and-enabled interrupt view (mip & mie, mideleg, mstatus.MIE/SIE, priv) consumed by CommitUnit at a retire boundary."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("interruptPending", "Bool", "An interrupt is pending, enabled, and takeable at the current privilege."),
-          List("interruptCause", "UInt(5)", "Highest-priority pending interrupt cause code."),
-          List("debugMode", "Bool", "The hart is in debug mode (debug requests and interrupts are not sampled)."),
-          List("priv", "UInt(2)", "Committed privilege: the privilege the current head executes in (ADR-019B E-4).")
+          List(
+            "interruptPending",
+            "Bool",
+            "An interrupt is pending, enabled, and takeable at the current privilege."
+          ),
+          List(
+            "interruptCause",
+            "UInt(5)",
+            "Highest-priority pending interrupt cause code."
+          ),
+          List(
+            "debugMode",
+            "Bool",
+            "The hart is in debug mode (debug requests and interrupts are not sampled)."
+          ),
+          List(
+            "priv",
+            "UInt(2)",
+            "Committed privilege: the privilege the current head executes in (ADR-019B E-4)."
+          )
         )
       )
-      .note("ADR-019B E-4: this is the committed privilege view the CommitUnit stamps into RetireToken.priv.")
+      .note(
+        "ADR-019B E-4: this is the committed privilege view the CommitUnit stamps into RetireToken.priv."
+      )
       .build()
   }
 
@@ -610,9 +1041,15 @@ object BackendBundlesSpecs {
         List("field", "meaning"),
         List(
           List("source", "Sync | Interrupt | Debug | SysOp"),
-          List("cause, tval", "RISC-V cause code and trap value (faulting VA for page faults); Debug uses cause 3 (haltreq, ADR-019B E-5)"),
+          List(
+            "cause, tval",
+            "RISC-V cause code and trap value (faulting VA for page faults); Debug uses cause 3 (haltreq, ADR-019B E-5)"
+          ),
           List("pc, robTag, ftqIdx", "identity of the head uop"),
-          List("sysOp", "source SysOp only: the retiring head's SysOp - Mret/Sret/Dret request XRet (Dret per ADR-019E E-3); FenceI, SfenceVma, CsrWrite, and None (predictionFault) request Refetch (ADR-019B E-6)")
+          List(
+            "sysOp",
+            "source SysOp only: the retiring head's SysOp - Mret/Sret/Dret request XRet (Dret per ADR-019E E-3); FenceI, SfenceVma, CsrWrite, and None (predictionFault) request Refetch (ADR-019B E-6)"
+          )
         )
       )
       .build()
@@ -620,15 +1057,33 @@ object BackendBundlesSpecs {
 
   val bndCsrTrapRead = spec {
     BUNDLE("CSRTrapRead")
-      .desc("Live trap-CSR snapshot read by TrapController at the commit head: a combinational view of the CsrController's committed state (ADR-019D E-6/E-7).")
+      .desc(
+        "Live trap-CSR snapshot read by TrapController at the commit head: a combinational view of the CsrController's committed state (ADR-019D E-6/E-7)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("mstatus", "UInt(XLen)", "Full mstatus (sstatus is its restricted view)."),
-          List("mepc, mcause, mtval, mtvec", "UInt(XLen)", "Machine trap registers."),
+          List(
+            "mstatus",
+            "UInt(XLen)",
+            "Full mstatus (sstatus is its restricted view)."
+          ),
+          List(
+            "mepc, mcause, mtval, mtvec",
+            "UInt(XLen)",
+            "Machine trap registers."
+          ),
           List("medeleg, mideleg", "UInt(XLen)", "Delegation masks."),
-          List("mie, mip", "UInt(XLen)", "Enables and pending bits (mip includes the raw lines)."),
-          List("sepc, scause, stval, stvec", "UInt(XLen)", "Supervisor trap registers."),
+          List(
+            "mie, mip",
+            "UInt(XLen)",
+            "Enables and pending bits (mip includes the raw lines)."
+          ),
+          List(
+            "sepc, scause, stval, stvec",
+            "UInt(XLen)",
+            "Supervisor trap registers."
+          ),
           List("priv", "Priv", "Committed privilege."),
           List("dpc, dcsr", "UInt(XLen)", "Debug registers.")
         )
@@ -638,15 +1093,29 @@ object BackendBundlesSpecs {
 
   val bndCsrTrapWrite = spec {
     BUNDLE("CSRTrapWrite")
-      .desc("Single trap/return application packet driven only by TrapController (ADR-004 D-4.3) and applied only by the CsrController (ADR-019D E-6/E-7).")
+      .desc(
+        "Single trap/return application packet driven only by TrapController (ADR-004 D-4.3) and applied only by the CsrController (ADR-019D E-6/E-7)."
+      )
       .markdownTable(
         List("field", "meaning"),
         List(
-          List("kind", "TrapEntryM | TrapEntryS | MRet | SRet | DRet | DebugEntry; selects the registers written"),
-          List("xepc, xcause, xtval", "TrapEntryM: mepc/mcause/mtval; TrapEntryS: sepc/scause/stval; ignored otherwise"),
-          List("mstatusNext", "mstatus after the MIE/SIE/MPIE/SPIE/MPP/SPP/MPRV push or pop (TrapEntryM/S, MRet, SRet)"),
+          List(
+            "kind",
+            "TrapEntryM | TrapEntryS | MRet | SRet | DRet | DebugEntry; selects the registers written"
+          ),
+          List(
+            "xepc, xcause, xtval",
+            "TrapEntryM: mepc/mcause/mtval; TrapEntryS: sepc/scause/stval; ignored otherwise"
+          ),
+          List(
+            "mstatusNext",
+            "mstatus after the MIE/SIE/MPIE/SPIE/MPP/SPP/MPRV push or pop (TrapEntryM/S, MRet, SRet)"
+          ),
           List("privNext", "privilege after the transition (every kind)"),
-          List("dpc, dcsrNext", "DebugEntry: dpc and dcsr written, debug mode entered; DRet leaves debug mode")
+          List(
+            "dpc, dcsrNext",
+            "DebugEntry: dpc and dcsr written, debug mode entered; DRet leaves debug mode"
+          )
         )
       )
       .build()
@@ -654,22 +1123,36 @@ object BackendBundlesSpecs {
 
   val bndDecodePrivView = spec {
     BUNDLE("DecodePrivView")
-      .desc("Committed privilege state the DecodeUnit needs for privileged-instruction legality, published by the CsrController (ADR-019E E-4).")
+      .desc(
+        "Committed privilege state the DecodeUnit needs for privileged-instruction legality, published by the CsrController (ADR-019E E-4)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("priv", "Priv", "Committed privilege."),
-          List("debugMode", "Bool", "The hart is in Debug Mode (privilege checks use M, except ECALL/MRET/SRET are illegal here per ADR-019F E-5; DRET is legal only here)."),
-          List("tvm, tw, tsr", "Bool", "mstatus.TVM (SFENCE.VMA / satp from S), mstatus.TW (WFI below M), mstatus.TSR (SRET from S).")
+          List(
+            "debugMode",
+            "Bool",
+            "The hart is in Debug Mode (privilege checks use M, except ECALL/MRET/SRET are illegal here per ADR-019F E-5; DRET is legal only here)."
+          ),
+          List(
+            "tvm, tw, tsr",
+            "Bool",
+            "mstatus.TVM (SFENCE.VMA / satp from S), mstatus.TW (WFI below M), mstatus.TSR (SRET from S)."
+          )
         )
       )
-      .note("rawNoDecoupled class 4: a committed-state view; it never depends on the instruction being decoded.")
+      .note(
+        "rawNoDecoupled class 4: a committed-state view; it never depends on the instruction being decoded."
+      )
       .build()
   }
 
   val bndTranslationContext = spec {
     BUNDLE("TranslationContext")
-      .desc("Committed CSR state that governs translation and permission checks, published by CsrController to the ITLB, DTLB, and PTW.")
+      .desc(
+        "Committed CSR state that governs translation and permission checks, published by CsrController to the ITLB, DTLB, and PTW."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -677,13 +1160,17 @@ object BackendBundlesSpecs {
           List("asid", "UInt(9)", "satp.ASID."),
           List("rootPpn", "UInt(22)", "satp.PPN."),
           List("priv", "Priv", "Current privilege (instruction side)."),
-          List("dataPriv", "Priv", "Effective data privilege (mstatus.MPRV ? MPP : priv)."),
+          List(
+            "dataPriv",
+            "Priv",
+            "Effective data privilege (mstatus.MPRV ? MPP : priv)."
+          ),
           List("sum, mxr", "Bool", "mstatus.SUM and mstatus.MXR.")
         )
       )
       .note(
         "Changes only when a serializing CSR write or trap/xRET commits, and every such " +
-        "change is followed by an ArchRedirect, so no younger uop ever observed the old context."
+          "change is followed by an ArchRedirect, so no younger uop ever observed the old context."
       )
       .build()
   }

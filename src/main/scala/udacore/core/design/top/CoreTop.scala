@@ -4,7 +4,12 @@ import chisel3._
 import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.backend.design.top.BackendTop
-import udacore.backend.design.shared.{BackendContractParams, BackendParams, Interrupt, RetireToken}
+import udacore.backend.design.shared.{
+  BackendContractParams,
+  BackendParams,
+  Interrupt,
+  RetireToken
+}
 import udacore.common.tilelink.TLBundle
 import udacore.core.design.modules._
 import udacore.core.design.shared._
@@ -15,20 +20,26 @@ import udacore.frontend.design.top.FrontendTop
 /** CoreTop rawTop wiring (spec: CoreTopSpecs; ADR-019). */
 @LocalSpec(contCoreTop)
 class CoreTop(val params: CoreParams) extends CoreModule {
-  val backendParams = BackendParams(
-    contract = BackendContractParams(xLen = params.dataWidth, hartId = params.hartId),
+  val backendParams  = BackendParams(
+    contract =
+      BackendContractParams(xLen = params.dataWidth, hartId = params.hartId),
     usingRvvi = params.usingRvvi,
-    debugEntryAddr = params.debugEntryAddr)
+    debugEntryAddr = params.debugEntryAddr
+  )
   val frontendParams = FrontendParams(backend = backendParams)
-  require(params.fetch.fetchBytes == frontendParams.fetchBytes &&
-    params.fetch.fetchGenWidth == frontendParams.fetchGenWidth &&
-    params.vAddrWidth == frontendParams.vAddrWidth,
-    "CoreFetchView must equal the FrontendParams fetch geometry")
-  require(params.lsq.loadQueueDepth == backendParams.tuning.loadQueueDepth &&
-    params.lsq.storeQueueDepth == backendParams.tuning.storeQueueDepth &&
-    params.lsq.generationWidth == backendParams.lsqGenWidth,
-    "CoreLsqView must equal the BackendParams LSQ geometry")
-  val io = IO(new Bundle {
+  require(
+    params.fetch.fetchBytes == frontendParams.fetchBytes &&
+      params.fetch.fetchGenWidth == frontendParams.fetchGenWidth &&
+      params.vAddrWidth == frontendParams.vAddrWidth,
+    "CoreFetchView must equal the FrontendParams fetch geometry"
+  )
+  require(
+    params.lsq.loadQueueDepth == backendParams.tuning.loadQueueDepth &&
+      params.lsq.storeQueueDepth == backendParams.tuning.storeQueueDepth &&
+      params.lsq.generationWidth == backendParams.lsqGenWidth,
+    "CoreLsqView must equal the BackendParams LSQ geometry"
+  )
+  val io             = IO(new Bundle {
     @LocalSpec(intfBootAddrIn)
     val bootAddrIn = Input(UInt(params.vAddrWidth.W))
 
@@ -48,28 +59,30 @@ class CoreTop(val params: CoreParams) extends CoreModule {
     val dataBus = new TLBundle(params.dataBusParams)
 
     @LocalSpec(intfRetireStreamOut)
-    val retireStreamOut = if (params.usingRvvi) Some(Decoupled(new RetireToken(backendParams))) else None
+    val retireStreamOut =
+      if (params.usingRvvi) Some(Decoupled(new RetireToken(backendParams)))
+      else None
   })
 
-  val boot = Module(new BootSequencer(params.priv.bootCycles, params))
-  val frontend = Module(new FrontendTop(frontendParams))
-  val backend = Module(new BackendTop(backendParams))
-  val itlb = Module(new InstructionTlb(params))
-  val icache = Module(new InstructionCache(params))
-  val dtlb = Module(new DataTlb(params))
-  val dcache = Module(new DataCache(params))
-  val ptw = Module(new PageTableWalker(params))
+  val boot        = Module(new BootSequencer(params.priv.bootCycles, params))
+  val frontend    = Module(new FrontendTop(frontendParams))
+  val backend     = Module(new BackendTop(backendParams))
+  val itlb        = Module(new InstructionTlb(params))
+  val icache      = Module(new InstructionCache(params))
+  val dtlb        = Module(new DataTlb(params))
+  val dcache      = Module(new DataCache(params))
+  val ptw         = Module(new PageTableWalker(params))
   val instAdapter = Module(new InstBusAdapter(params))
   val dataAdapter = Module(new DataBusAdapter(params))
 
-  boot.io.bootAddrIn := io.bootAddrIn
-  boot.io.hartEnIn := io.hartEnIn
+  boot.io.bootAddrIn          := io.bootAddrIn
+  boot.io.hartEnIn            := io.hartEnIn
   frontend.io.bootAddrIn :<>= boot.io.bootOut
   backend.io.fetchPacketIn :<>= frontend.io.fetchPacketOut
   frontend.io.ftqCommitIn :<>= backend.io.ftqCommitOut
   frontend.io.recoveryEventIn := backend.io.recoveryEventOut
-  backend.io.interruptIn := io.interruptIn
-  backend.io.debugReqIn := io.debugReqIn
+  backend.io.interruptIn      := io.interruptIn
+  backend.io.debugReqIn       := io.debugReqIn
 
   itlb.io.iTlbReqIn :<>= frontend.io.iTlbReqOut
   icache.io.iCacheReqIn :<>= frontend.io.iCacheReqOut
@@ -110,5 +123,6 @@ class CoreTop(val params: CoreParams) extends CoreModule {
   dcache.io.dataMemRespIn :<>= dataAdapter.io.dataMemRespOut
   io.instBus :<>= instAdapter.io.instBus
   io.dataBus :<>= dataAdapter.io.dataBus
-  if (params.usingRvvi) io.retireStreamOut.get :<>= backend.io.retireStreamOut.get
+  if (params.usingRvvi)
+    io.retireStreamOut.get :<>= backend.io.retireStreamOut.get
 }

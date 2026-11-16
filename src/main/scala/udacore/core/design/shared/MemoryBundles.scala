@@ -5,11 +5,12 @@ import framework.macros.LocalSpec
 import udacore.core.spec.shared.CoreBundlesSpecs.bndDebugReq
 import udacore.core.spec.shared.MemoryBundlesSpecs._
 
-/** Core-shared memory, maintenance, and debug bundles consumed by the backend. */
+/** Core-shared memory, maintenance, and debug bundles consumed by the backend.
+  */
 
 /** bndCacheMaintenance.op codes. */
 object MaintOp {
-  val width             = 1
+  val width               = 1
   val ICacheInvalidateAll = 0.U(width.W)
   val DCacheCleanAll      = 1.U(width.W)
 }
@@ -100,35 +101,41 @@ class PmaAttr extends Bundle {
 
 @LocalSpec(bndTlbEntry)
 class TlbEntry extends Bundle {
-  val valid     = Bool()
-  val vpn       = UInt(20.W)
-  val superpage = Bool()
-  val ppn       = UInt(22.W)
-  val asid      = UInt(9.W)
-  val global    = Bool()
+  val valid            = Bool()
+  val vpn              = UInt(20.W)
+  val superpage        = Bool()
+  val ppn              = UInt(22.W)
+  val asid             = UInt(9.W)
+  val global           = Bool()
   val r, w, x, u, a, d = Bool()
-  val pma       = new PmaAttr
+  val pma              = new PmaAttr
 }
 
-/** TLB -> PTW miss handoff: the page to walk and the committed TranslationContext captured at the
-  * miss (satp root and ASID; the PTW walks with this snapshot, not the live CSRs). */
+/** TLB -> PTW miss handoff: the page to walk and the committed
+  * TranslationContext captured at the miss (satp root and ASID; the PTW walks
+  * with this snapshot, not the live CSRs).
+  */
 @LocalSpec(bndWalkReq)
 class WalkReq extends Bundle {
   val vpn     = UInt(20.W)
   val context = new udacore.backend.design.shared.TranslationContext
 }
 
-/** Sv32 page-table entry in memory order (field order = bits 31..0, so asUInt is the raw PTE). */
+/** Sv32 page-table entry in memory order (field order = bits 31..0, so asUInt
+  * is the raw PTE).
+  */
 @LocalSpec(bndSv32Pte)
 class Sv32Pte extends Bundle {
-  val ppn1 = UInt(12.W)
-  val ppn0 = UInt(10.W)
-  val rsw  = UInt(2.W)
+  val ppn1                   = UInt(12.W)
+  val ppn0                   = UInt(10.W)
+  val rsw                    = UInt(2.W)
   val d, a, g, u, x, w, r, v = Bool()
-  def ppn: UInt = chisel3.util.Cat(ppn1, ppn0)
+  def ppn: UInt              = chisel3.util.Cat(ppn1, ppn0)
 }
 
-/** A physical PTE read from the PageTableWalker to the DataCache: no virtual address, no translation metadata. */
+/** A physical PTE read from the PageTableWalker to the DataCache: no virtual
+  * address, no translation metadata.
+  */
 @LocalSpec(bndPtwMemReq)
 class PtwMemReq(pAddrWidth: Int) extends Bundle {
   val paddr = UInt(pAddrWidth.W)
@@ -148,7 +155,8 @@ class WalkResp extends Bundle {
 }
 
 @LocalSpec(bndDCacheLoadReq)
-class DCacheLoadReq(lqIdxWidth: Int, lqGenWidth: Int, vAddrWidth: Int) extends Bundle {
+class DCacheLoadReq(lqIdxWidth: Int, lqGenWidth: Int, vAddrWidth: Int)
+    extends Bundle {
   val lqIdx = UInt(lqIdxWidth.W)
   val lqGen = UInt(lqGenWidth.W)
   val vaddr = UInt(vAddrWidth.W)
@@ -156,7 +164,12 @@ class DCacheLoadReq(lqIdxWidth: Int, lqGenWidth: Int, vAddrWidth: Int) extends B
 }
 
 @LocalSpec(bndDCacheLoadResp)
-class DCacheLoadResp(lqIdxWidth: Int, lqGenWidth: Int, pAddrWidth: Int, dataWidth: Int) extends Bundle {
+class DCacheLoadResp(
+    lqIdxWidth: Int,
+    lqGenWidth: Int,
+    pAddrWidth: Int,
+    dataWidth: Int
+) extends Bundle {
   val lqIdx  = UInt(lqIdxWidth.W)
   val lqGen  = UInt(lqGenWidth.W)
   val status = UInt(LoadStatus.width.W)
@@ -165,7 +178,8 @@ class DCacheLoadResp(lqIdxWidth: Int, lqGenWidth: Int, pAddrWidth: Int, dataWidt
 }
 
 @LocalSpec(bndUncachedLoadReq)
-class UncachedLoadReq(lqIdxWidth: Int, lqGenWidth: Int, pAddrWidth: Int) extends Bundle {
+class UncachedLoadReq(lqIdxWidth: Int, lqGenWidth: Int, pAddrWidth: Int)
+    extends Bundle {
   val lqIdx = UInt(lqIdxWidth.W)
   val lqGen = UInt(lqGenWidth.W)
   val paddr = UInt(pAddrWidth.W)
@@ -173,7 +187,8 @@ class UncachedLoadReq(lqIdxWidth: Int, lqGenWidth: Int, pAddrWidth: Int) extends
 }
 
 @LocalSpec(bndUncachedLoadResp)
-class UncachedLoadResp(lqIdxWidth: Int, lqGenWidth: Int, dataWidth: Int) extends Bundle {
+class UncachedLoadResp(lqIdxWidth: Int, lqGenWidth: Int, dataWidth: Int)
+    extends Bundle {
   val lqIdx       = UInt(lqIdxWidth.W)
   val lqGen       = UInt(lqGenWidth.W)
   val data        = UInt(dataWidth.W)
@@ -181,7 +196,8 @@ class UncachedLoadResp(lqIdxWidth: Int, lqGenWidth: Int, dataWidth: Int) extends
 }
 
 @LocalSpec(bndUncachedStoreReq)
-class UncachedStoreReq(sqIdxWidth: Int, pAddrWidth: Int, dataWidth: Int) extends Bundle {
+class UncachedStoreReq(sqIdxWidth: Int, pAddrWidth: Int, dataWidth: Int)
+    extends Bundle {
   val sqIdx = UInt(sqIdxWidth.W)
   val paddr = UInt(pAddrWidth.W)
   val data  = UInt(dataWidth.W)
@@ -201,7 +217,8 @@ class StoreDrainReq(pAddrWidth: Int, dataWidth: Int) extends Bundle {
   val mask  = UInt((dataWidth / 8).W)
 }
 
-/** bndStoreDrainResp carries no fields: the handshake itself is the completion. */
+/** bndStoreDrainResp carries no fields: the handshake itself is the completion.
+  */
 @LocalSpec(bndStoreDrainResp)
 class StoreDrainResp extends Bundle
 
@@ -213,15 +230,19 @@ class ICacheReq(reqIdWidth: Int, vAddrWidth: Int) extends Bundle {
   val reqId = UInt(reqIdWidth.W)
 }
 
-/** I-cache to InstBusAdapter: one Get of 2^size bytes at paddr (a 64-byte line fill or a 16-byte
-  * uncached block, v0). sizeBits is the instruction link's TileLink size width. */
+/** I-cache to InstBusAdapter: one Get of 2^size bytes at paddr (a 64-byte line
+  * fill or a 16-byte uncached block, v0). sizeBits is the instruction link's
+  * TileLink size width.
+  */
 @LocalSpec(bndInstMemReq)
 class InstMemReq(pAddrWidth: Int, sizeBits: Int) extends Bundle {
   val paddr = UInt(pAddrWidth.W)
   val size  = UInt(sizeBits.W)
 }
 
-/** InstBusAdapter to I-cache: one AccessAckData beat; denied = TileLink denied or corrupt. */
+/** InstBusAdapter to I-cache: one AccessAckData beat; denied = TileLink denied
+  * or corrupt.
+  */
 @LocalSpec(bndInstMemResp)
 class InstMemResp(dataWidth: Int) extends Bundle {
   val data   = UInt(dataWidth.W)
@@ -229,7 +250,9 @@ class InstMemResp(dataWidth: Int) extends Bundle {
   val denied = Bool()
 }
 
-/** fault uses the FetchFault codes (None 0, InstPageFault 1, InstAccessFault 2). */
+/** fault uses the FetchFault codes (None 0, InstPageFault 1, InstAccessFault
+  * 2).
+  */
 @LocalSpec(bndICacheResp)
 class ICacheResp(reqIdWidth: Int, fetchWidth: Int) extends Bundle {
   val reqId = UInt(reqIdWidth.W)
@@ -247,7 +270,12 @@ object DataMemOp {
 }
 
 @LocalSpec(bndDataMemReq)
-class DataMemReq(pAddrWidth: Int, dataWidth: Int, sourceBits: Int, sizeBits: Int) extends Bundle {
+class DataMemReq(
+    pAddrWidth: Int,
+    dataWidth: Int,
+    sourceBits: Int,
+    sizeBits: Int
+) extends Bundle {
   val op     = UInt(DataMemOp.width.W)
   val source = UInt(sourceBits.W)
   val paddr  = UInt(pAddrWidth.W)

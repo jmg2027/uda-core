@@ -8,9 +8,9 @@ import udacore.external.alu.spec.AluSpecs._
 
 @LocalSpec(intfAluIO)
 class AluIO(dataWidth: Int) extends Bundle {
-  val srcA  = Input(UInt(dataWidth.W))
-  val srcB  = Input(UInt(dataWidth.W))
-  val ctrl  = Input(AluControl())
+  val srcA   = Input(UInt(dataWidth.W))
+  val srcB   = Input(UInt(dataWidth.W))
+  val ctrl   = Input(AluControl())
   val result = Output(UInt(dataWidth.W))
 }
 
@@ -47,15 +47,16 @@ class Alu(params: AluParams) extends Module {
 
   val compareFlagRaw =
     isCompareInversed ^ Mux(isCompareEqual, aXorB === 0.U, lt)
-  val compareFlag  = Mux(isCompareOp, compareFlagRaw, false.B)
-  val compareValue = Mux(compareFlag, 1.U(width.W), 0.U(width.W))
+  val compareFlag    = Mux(isCompareOp, compareFlagRaw, false.B)
+  val compareValue   = Mux(compareFlag, 1.U(width.W), 0.U(width.W))
 
-  val shamt   = io.srcB(4, 0)
-  val shinRaw = io.srcA
-  val shin = Mux(io.ctrl === SRL || io.ctrl === SRA, shinRaw, Reverse(shinRaw))
-  val shoutRight = (Cat(isSub & shin(width - 1), shin).asSInt >> shamt)(width - 1, 0)
+  val shamt      = io.srcB(4, 0)
+  val shinRaw    = io.srcA
+  val shin       = Mux(io.ctrl === SRL || io.ctrl === SRA, shinRaw, Reverse(shinRaw))
+  val shoutRight =
+    (Cat(isSub & shin(width - 1), shin).asSInt >> shamt)(width - 1, 0)
   val shoutLeft  = Reverse(shoutRight)
-  val shout =
+  val shout      =
     Mux(io.ctrl === SRL || io.ctrl === SRA, shoutRight, 0.U(width.W)) |
       Mux(io.ctrl === SLL, shoutLeft, 0.U(width.W))
 

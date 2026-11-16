@@ -6,7 +6,10 @@ import udacore.common.spec.DesignRuleSpecs._
 
 import udacore.backend.spec.shared.BackendBundlesSpecs._
 import udacore.backend.spec.shared.BackendParamsSpecs.paramStoreBufferDepth
-import udacore.core.spec.shared.MemoryBundlesSpecs.{bndStoreDrainReq, bndStoreDrainResp}
+import udacore.core.spec.shared.MemoryBundlesSpecs.{
+  bndStoreDrainReq,
+  bndStoreDrainResp
+}
 
 /** StoreBuffer: committed store-drain buffer below the SQ (ADR-003 as amended
   * by ADR-019 D-19.12).
@@ -19,9 +22,9 @@ object StoreBufferSpecs {
     CONTRACT("StoreBuffer")
       .desc(
         "A FIFO of StoreBufferDepth committed cacheable stores (uncacheable stores are performed at the ROB head by the LSQ and never enter it). Each entry is irrevocable from the cycle " +
-        "it is accepted; the head drains to the D-cache in commit order, one at a time. It answers " +
-        "physical-address forwarding queries from the LSQ and completes drain requests from " +
-        "the CommitUnit when empty."
+          "it is accepted; the head drains to the D-cache in commit order, one at a time. It answers " +
+          "physical-address forwarding queries from the LSQ and completes drain requests from " +
+          "the CommitUnit when empty."
       )
       .has(
         intfCommittedStoreIn,
@@ -42,14 +45,16 @@ object StoreBufferSpecs {
       .uses(paramStoreBufferDepth)
       .note(
         "Recovery stance: recovery-exempt. Every entry is committed architectural state; no " +
-        "RecoveryEvent of either kind changes it, and the vertex has no RecoveryEvent input."
+          "RecoveryEvent of either kind changes it, and the vertex has no RecoveryEvent input."
       )
       .build()
   }
 
   val intfCommittedStoreIn = spec {
     INTERFACE("CommittedStoreIn")
-      .desc("Committed stores from the LSQ SQ head; ready is low when full (backpressuring store commit).")
+      .desc(
+        "Committed stores from the LSQ SQ head; ready is low when full (backpressuring store commit)."
+      )
       .uses(bndCommittedStore)
       .is(rawReadyValidIntf)
       .build()
@@ -57,7 +62,9 @@ object StoreBufferSpecs {
 
   val intfStoreDrainReqOut = spec {
     INTERFACE("StoreBufferSpecs.intfStoreDrainReqOut")
-      .desc("Head store write into the CoreTop-level DataCache (physical address).")
+      .desc(
+        "Head store write into the CoreTop-level DataCache (physical address)."
+      )
       .uses(bndStoreDrainReq)
       .is(rawReadyValidIntf)
       .build()
@@ -103,7 +110,9 @@ object StoreBufferSpecs {
 
   val intfStoreBufferEmptyOut = spec {
     INTERFACE("StoreBufferEmptyOut")
-      .desc("True when no committed store is buffered or draining; consumed by the LSQ uncacheable-access gate.")
+      .desc(
+        "True when no committed store is buffered or draining; consumed by the LSQ uncacheable-access gate."
+      )
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 4 (committed-state view).")
       .build()
@@ -113,7 +122,7 @@ object StoreBufferSpecs {
     FUNCTION("CommitOrderDrain")
       .desc(
         "Offer the head entry as StoreDrainReq; free it only on its StoreDrainResp. Entries " +
-        "leave strictly in acceptance (commit) order, one outstanding drain at a time in v0."
+          "leave strictly in acceptance (commit) order, one outstanding drain at a time in v0."
       )
       .uses(intfStoreDrainReqOut, intfStoreDrainRespIn)
       .build()
@@ -123,16 +132,16 @@ object StoreBufferSpecs {
     FUNCTION("CommittedForward")
       .desc(
         "For a query {paddr, mask}, return per byte the data of the youngest entry that writes " +
-        "that byte (hitMask), and partial = true when some queried byte is covered by an " +
-        "entry whose other bytes make an exact merge impossible for the v0 forwarding network " +
-        "(e.g. a different aligned word overlapping the access)."
+          "that byte (hitMask), and partial = true when some queried byte is covered by an " +
+          "entry whose other bytes make an exact merge impossible for the v0 forwarding network " +
+          "(e.g. a different aligned word overlapping the access)."
       )
       .uses(intfStoreForwardQueryIn, intfStoreForwardDataOut)
       .note(
         "Every StoreBuffer entry is older than every live load, so no age compare is needed; " +
-        "only buffer order matters. ADR-019F E-1: the answer is a same-cycle lookup - " +
-        "StoreForwardData is valid in the cycle the query is presented and reflects the " +
-        "buffer contents of that cycle (a v0 timing choice, not an ISA requirement)."
+          "only buffer order matters. ADR-019F E-1: the answer is a same-cycle lookup - " +
+          "StoreForwardData is valid in the cycle the query is presented and reflects the " +
+          "buffer contents of that cycle (a v0 timing choice, not an ISA requirement)."
       )
       .build()
   }
@@ -141,7 +150,7 @@ object StoreBufferSpecs {
     FUNCTION("DrainFence")
       .desc(
         "Accept a StoreBufferDrainReq and answer StoreBufferDrainResp once every entry present " +
-        "at acceptance has drained (no new store can arrive meanwhile: commit is waiting)."
+          "at acceptance has drained (no new store can arrive meanwhile: commit is waiting)."
       )
       .uses(intfStoreBufferDrainReqIn, intfStoreBufferDrainRespOut)
       .build()
@@ -149,7 +158,9 @@ object StoreBufferSpecs {
 
   val propInOrderDrain = spec {
     PROPERTY("InOrderDrain")
-      .desc("Committed stores reach the D-cache or bus in exactly the order they were committed, with no duplication or omission.")
+      .desc(
+        "Committed stores reach the D-cache or bus in exactly the order they were committed, with no duplication or omission."
+      )
       .uses(funcCommitOrderDrain)
       .note("Simulation assert.")
       .build()
@@ -157,14 +168,20 @@ object StoreBufferSpecs {
 
   val propCommittedSurvivesRecovery = spec {
     PROPERTY("CommittedSurvivesRecovery")
-      .desc("No RecoveryEvent (BranchMispredict or ArchRedirect) removes or alters a StoreBuffer entry.")
-      .note("Structural: the vertex has no RecoveryEvent input; simulation assert on occupancy across events.")
+      .desc(
+        "No RecoveryEvent (BranchMispredict or ArchRedirect) removes or alters a StoreBuffer entry."
+      )
+      .note(
+        "Structural: the vertex has no RecoveryEvent input; simulation assert on occupancy across events."
+      )
       .build()
   }
 
   val propStoreBufferLiveness = spec {
     PROPERTY("StoreBufferLiveness")
-      .desc("If the D-cache eventually accepts every drain, a full buffer always drains, so store commit always progresses.")
+      .desc(
+        "If the D-cache eventually accepts every drain, a full buffer always drains, so store commit always progresses."
+      )
       .uses(funcCommitOrderDrain)
       .note("Directed backpressure test: full buffer plus slow bus.")
       .build()
