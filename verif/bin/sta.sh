@@ -18,7 +18,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; VERIF="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$VERIF/.." && pwd)"
 source "$HERE/env.sh"
 KIND="${1:-unit}"; CFG="${2:-}"
-STA="${VERIF_STA_HOME:-/tmp/verif-sta}"
+STA="${VERIF_STA_HOME:-$REPO/../.uda-toolchain/sta}"
 LIB="$STA/sky130_fd_sc_hd__tt_025C_1v80.lib"
 MAXFO="${STA_MAXFO:-16}"
 WORK_ROOT="${STA_WORK_ROOT:-$VERIF/out/sta}"

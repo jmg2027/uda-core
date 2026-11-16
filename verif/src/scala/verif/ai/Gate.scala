@@ -136,7 +136,7 @@ object Gate {
     val scn                      = scala.io.Source.fromFile(files(0)).mkString
     val ctl                      = files.lift(1).map(f => scala.io.Source.fromFile(f).mkString)
     try {
-      val out = evaluate(scn, ctl)
+      val out = Diagnostics.toStderr { evaluate(scn, ctl) }
       if (json) println(out.render)
       else {
         val o = out.asInstanceOf[Js.Obj].fields.toMap

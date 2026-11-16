@@ -12,5 +12,4 @@ if [ ! -f "$VERIF/out/.ready" ]; then
   exit 1
 fi
 MAIN="$1"; shift || true
-java -cp "$VERIF_CHISEL_CP:$OUT" "$MAIN" "$@" 2>&1 \
-  | grep -vE "Verilator|%Warning|verilator|Wcaller|^-|espresso|\[warn\]|^Picked up JAVA_TOOL_OPTIONS"
+exec java -cp "$VERIF_CHISEL_CP:$OUT" "$MAIN" "$@"

@@ -22,8 +22,9 @@ object RunBatch {
       "usage: RunBatch <a.scn> <b.scn> ... [--json] [--config=<name>]"
     )
     try {
-      val results =
+      val results = Diagnostics.toStderr {
         RunSpec.runBatch(files.map(f => scala.io.Source.fromFile(f).mkString))
+      }
       if (json) println("[" + results.map(_.json.render).mkString(",") + "]")
       else results.foreach(r => print(r.human))
       if (results.exists(!_.allPass)) sys.exit(1)

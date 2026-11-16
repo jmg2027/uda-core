@@ -8,7 +8,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ "$(uname -s)" = "Darwin" ] && [ -f "$HERE/../.toolchain.env" ]; then
   source "$HERE/../.toolchain.env"
 fi
-STA="${VERIF_STA_HOME:-/tmp/verif-sta}"
+REPO="$(cd "$HERE/../.." && pwd)"
+STA="${VERIF_STA_HOME:-$REPO/../.uda-toolchain/sta}"
 mkdir -p "$STA"
 log(){ echo "[setup-sta] $*"; }
 

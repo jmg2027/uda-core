@@ -5,7 +5,7 @@
 #   -> OpenSTA constrained worst-slack + report_power (uniform default activity).
 #
 # Reuses the toolchain installed by verif/bin/setup-sta.sh (yosys + sky130 liberty + OpenSTA).
-# OOC caveat (same as the main line): a plain abc map and no placement/wireload here, so
+# OOC caveat: a plain abc map and no placement/wireload here, so
 # ABSOLUTE ns/power are inflated - use for RELATIVE comparison only. Area and DFF counts are
 # solid; power is a default-activity estimate (relative).
 #
@@ -14,7 +14,7 @@
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; VERIF="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$VERIF/.." && pwd)"
 source "$HERE/env.sh"
-STA="${VERIF_STA_HOME:-/tmp/verif-sta}"
+STA="${VERIF_STA_HOME:-$REPO/../.uda-toolchain/sta}"
 LIB="$STA/sky130_fd_sc_hd__tt_025C_1v80.lib"
 OPENSTA="$STA/OpenSTA/build/sta"
 [ -x "$OPENSTA" ] || { echo "OpenSTA missing - run verif/bin/setup-sta.sh first"; exit 1; }

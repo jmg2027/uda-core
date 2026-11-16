@@ -106,8 +106,9 @@ object Trace {
       val irq  = spec.irq.map { case (kind, at, dur) =>
         verif.harness.CoreHarness.IrqPulse(kind, at, dur)
       }
-      val rows =
+      val rows = Diagnostics.toStderr {
         Probe.trace(MemModel.fromWords(words, spec.iLat, spec.dLat), cyc, irq)
+      }
       if (json) {
         val out = Js.of(
           "name"          -> Js.S(spec.name),

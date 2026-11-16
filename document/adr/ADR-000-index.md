@@ -1,7 +1,6 @@
 # ADR-000: Architecture Decision Record Index
 
-UDACore rebuild core, branch `claude/rebuild-architecture-review-jg0grl`.
-These ADRs are the chief architect's binding rulings synthesized from the six
+These ADRs contain UDACore's binding architecture decisions. The initial rulings were synthesized from the six
 position papers (`document/architecture-team/01..06-*.md`) and the three
 adversarial critiques (`critique-correctness.md`, `critique-ppa-scaling.md`,
 `critique-verifiability.md`).

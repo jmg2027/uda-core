@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
     verif = Path(__file__).resolve().parents[1]
     manifest = json.loads((verif / "sta/sram/manifest.json").read_text())
-    sta = Path(os.environ.get("VERIF_STA_HOME", "/tmp/verif-sta"))
+    sta = Path(os.environ.get("VERIF_STA_HOME", str(verif.parent.parent / ".uda-toolchain/sta")))
     root = Path(os.environ.get("VERIF_SRAM_HOME", str(sta / "sram")))
     target = root / manifest["macro"]
     target.mkdir(parents=True, exist_ok=True)

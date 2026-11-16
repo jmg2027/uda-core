@@ -136,7 +136,7 @@ object RunSpec {
       .map(f => scala.io.Source.fromFile(f).mkString)
       .getOrElse(scala.io.Source.stdin.mkString)
     try {
-      val r = run(text)
+      val r = Diagnostics.toStderr { run(text) }
       if (json) println(r.json.render) else print(r.human)
       if (!r.allPass) sys.exit(1)
     } catch {
