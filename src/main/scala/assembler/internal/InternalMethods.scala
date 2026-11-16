@@ -363,10 +363,11 @@ protected object FillInstruction {
       ci.format match {
         case CI =>
           val rd   = data("rd").toBinaryString.padZero(5)
-          val imm  = data("imm").toBinaryString.padZero(6)
+          val imm  = (data("imm") & 0x3f).toBinaryString.padZero(6)
           val imm5 = imm.take(1)
           val rest = imm.drop(1)
-          ci.funct3 + imm5 + rd + rest + ci.opcode
+          ci.funct3.toBinaryString.padZero(3) + imm5 + rd + rest +
+            ci.opcode.toBinaryString.padZero(2)
 
         case CJ =>
           val value       = data("imm") & 0xfff
@@ -384,7 +385,8 @@ protected object FillInstruction {
             bit(1),
             bit(5)
           ).mkString("")
-          ci.funct3 + bits + ci.opcode
+          ci.funct3.toBinaryString.padZero(3) + bits +
+            ci.opcode.toBinaryString.padZero(2)
       }
   }
 }
@@ -435,6 +437,7 @@ protected object RegMap {
     }
 }
 
+/** Software-only encoding utilities; the core's v0 ISA remains fixed-width. */
 object CompressedAssembler {
 
   var XLEN: Int = 32
@@ -444,9 +447,12 @@ object CompressedAssembler {
       operands: Seq[String],
       currentAddress: Long,
       symbolTable: Map[String, Long],
-      pass: Int
+      pass: Int,
+      xlen: Int = XLEN
   ): Int = {
     inst.name match {
+      case "c.nop" => inst.opcode
+
       case "c.add" =>
         val rd     = parseRegister(operands(0))
         val rs2    = parseRegister(operands(1))
@@ -456,8 +462,7 @@ object CompressedAssembler {
         )
         val opcode = inst.opcode
         val funct3 = inst.funct3
-        val funct2 = inst.funct2.get
-        (funct3 << 13) | (rd << 7) | (funct2 << 5) | (rs2 << 2) | opcode
+        (funct3 << 13) | (1 << 12) | (rd << 7) | (rs2 << 2) | opcode
 
       case "c.addi" =>
         val rd     = parseRegister(operands(0))
@@ -488,7 +493,7 @@ object CompressedAssembler {
         (funct3 << 13) | (cjImmBits << 2) | opcode
 
       case "c.jal" =>
-        if (inst.rv32Only && XLEN != 32) sys.error(s"${inst.name} is RV32-only")
+        if (inst.rv32Only && xlen != 32) sys.error(s"${inst.name} is RV32-only")
         val targetLabel  = operands(0)
         val branchOffset =
           if (pass == 1) 0
@@ -559,9 +564,11 @@ object CompressedAssembler {
         val funct3      = inst.funct3
         val rdPrimeEnc  = rdPrime - 8
         val rs1PrimeEnc = rs1Prime - 8
-        val imm5        = (offset >> 5) & 0x1
-        val imm4_3      = (offset >> 3) & 0x3
-        (funct3 << 13) | (imm5 << 12) | (rs1PrimeEnc << 9) | (imm4_3 << 7) | (rdPrimeEnc << 4) | opcode
+        val imm5_3      = (offset >> 3) & 0x7
+        val imm2        = (offset >> 2) & 0x1
+        val imm6        = (offset >> 6) & 0x1
+        (funct3 << 13) | (imm5_3 << 10) | (rs1PrimeEnc << 7) |
+          (imm2 << 6) | (imm6 << 5) | (rdPrimeEnc << 2) | opcode
 
       case "c.sw" =>
         val rs2Prime       = parseRegister(operands(0))
@@ -583,9 +590,11 @@ object CompressedAssembler {
         val funct3      = inst.funct3
         val rs2PrimeEnc = rs2Prime - 8
         val rs1PrimeEnc = rs1Prime - 8
-        val imm5        = (offset >> 5) & 0x1
-        val imm4_3      = (offset >> 3) & 0x3
-        (funct3 << 13) | (imm5 << 12) | (rs1PrimeEnc << 9) | (imm4_3 << 7) | (rs2PrimeEnc << 4) | opcode
+        val imm5_3      = (offset >> 3) & 0x7
+        val imm2        = (offset >> 2) & 0x1
+        val imm6        = (offset >> 6) & 0x1
+        (funct3 << 13) | (imm5_3 << 10) | (rs1PrimeEnc << 7) |
+          (imm2 << 6) | (imm6 << 5) | (rs2PrimeEnc << 2) | opcode
 
       case _ =>
         throw new IllegalArgumentException(

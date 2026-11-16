@@ -124,9 +124,15 @@ object RISCVAssembler {
 
     RVCInstructions.get(instSym) match {
       case Some(ci) =>
+        val operands           = tokens.tail
+        val compressedOperands = ci.format match {
+          case CL | CS if operands.size == 3 =>
+            Seq(operands.head, s"${operands(1)}(${operands(2)})")
+          case _                             => operands
+        }
         CompressedAssembler.assembleCompressed(
           ci,
-          tokens.tail,
+          compressedOperands,
           currentAddress,
           symbolTable,
           pass
@@ -151,7 +157,7 @@ object RISCVAssembler {
     val cleanLine = line.split("#")(0).trim
     val formatted =
       cleanLine.replace(",", " ").replace("(", " ").replace(")", " ")
-    formatted.split("\\s+").filter(_.nonEmpty)
+    formatted.split("\\s+").filter(_.nonEmpty).toIndexedSeq
   }
 
   def assembleRegular(

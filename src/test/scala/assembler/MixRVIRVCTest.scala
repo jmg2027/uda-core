@@ -1,5 +1,6 @@
+package assembler
+
 import org.scalatest.funsuite.AnyFunSuite
-import assembler.{RISCVAssembler, RVCInstructions, RVInstructions}
 import scala.collection.mutable
 
 class MixRVIRVCTest extends AnyFunSuite {
@@ -48,6 +49,13 @@ class MixRVIRVCTest extends AnyFunSuite {
       }
     }
 
-    assert(assembled.nonEmpty)
+    // GNU binutils RV32IMC goldens, with compression disabled for RVI lines.
+    assert(symbolTable.toMap == Map("label_target" -> 14L, "label_rvc" -> 18L))
+    assert(pc == 20L)
+    assert(
+      assembled.toSeq == Seq(
+        0x00a00093, 0x0151, 0x0080006f, 0x2021, 0x0001, 0x002081b3, 0x9216
+      )
+    )
   }
 }
