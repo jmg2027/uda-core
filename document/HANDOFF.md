@@ -1,4 +1,4 @@
-# Handoff: runnable OoO core and SRAM caches (2026-11-16)
+# Handoff: Chisel 6 sbt verification migration (2026-11-16)
 
 This is the live implementation summary. Earlier session records are preserved in
 [the handoff archive](archive/HANDOFF-2026-11-16-history.md); their branch names,
@@ -41,19 +41,43 @@ separate current implementation status from methodology and historical records.
 The archived handoff retains the detailed red-first implementation chronology,
 resolved architecture issues, earlier results, and old environment workarounds.
 Unused Debug APIs, redundant defaults, obsolete scratch notes, and non-ASCII
-document text were removed. Protected files and the external framework were
-kept unchanged. The pre-commit hook now checks staged bytes, including renames,
-without relying on GNU grep. CLI results use stdout; elaboration diagnostics
-are preserved on stderr and Java exit codes propagate directly.
-`python3 verif/bin/test-cli.py` preserves these regression controls. Independent
-cold-initialization and exception probes verified output-stream restoration.
+document text were removed. The pre-commit hook checks staged bytes, including
+renames. CLI results use stdout, diagnostics remain on stderr, and Java exit
+codes propagate directly; `python3 verif/bin/test-cli.py` preserves those controls.
+
+The owner authorized legacy test repair or removal on 2026-11-16 and required
+Chisel 6 or newer. The build remains pinned to Chisel 6.2.0. Six obsolete
+cluster/Treadle support files were removed: their EPM/EDM interfaces and global
+configuration no longer exist, and the old positive B-extension core test
+contradicted the v0 ISA. Two ScalaTest bridges now expose all 376 active L1 tests
+and all 23 whole-core scenarios. They reject empty discovery, duplicate names,
+PENDING L1 verdicts, missing results, missing completion, and wrong results.
+Existing runner XFAIL/XPASS semantics are preserved.
+
+All 11 assembler tests remain. Compressed encoding repairs cover memory operand
+tokenization, C.NOP, C.ADD bit 12, C.LW/C.SW fields, and binary CI/CJ serialization.
+Corrected goldens were checked with GNU binutils; the mixed program now checks
+all emitted words, label addresses, and final PC. The software assembler's RVC
+support does not enable RVC in the core. Tests pass XLEN explicitly rather than
+mutating shared state. Only formatting changed in Decoder, TriggerUnit, and
+Multiplier; their executable source tokens are unchanged.
+
+sbt compiles the verification engine/suites in Test scope, forks simulator tests
+with the provisioned JDK 17 and `verif/bin/env.sh` tool environment, and executes
+them serially. The obsolete chiseltest dependency was removed. Formatter scope
+covers this repository's complete main, verification, and Test Scala sources;
+only formatter aggregation into external framework projects is disabled.
+Framework compilation and the compile/test dependency graph remain intact.
+External framework source bytes and formatting debt were not changed.
 
 ## Validation status
 
-Build, spec-check, active L1, scenarios, cache controls, framework controls, and
-SRAM model comparison were rerun during the 2026-11-16 cleanup. The full STA run
-is carried forward with byte-identical synthesis-input verification. Generated
-evidence under `verif/out/` is local and gitignored; reproduce it with the commands in
+The test migration reran direct build, spec-check, all L1 cases, all scenarios,
+and assembler tests through the full sbt gate. Cache, CLI, framework-control,
+and SRAM-model results below were recorded during the earlier 2026-11-16
+cleanup. STA is carried forward with a fresh byte-identical synthesis-input
+comparison. Generated evidence under `verif/out/` is local and gitignored;
+reproduce it with the commands in
 [the verification guide](../verif/README.md).
 
 | Check | Latest recorded result |
@@ -66,16 +90,20 @@ evidence under `verif/out/` is local and gitignored; reproduce it with the comma
 | Simulator cache controls | CacheSafetyCheck 8 PASS; CacheBlackBoxCheck 6 PASS |
 | Framework integration controls | All 4 groups PASS, including compiler-failure propagation |
 | CLI regression | 8 PASS: run, batch, trace, gate, describe, check failure, Java failure, emission |
-| Formatting | 208 existing unprotected Scala/build files and the new diagnostics helper PASS |
+| Formatting | PASS; all repository main, verification, and Test Scala sources |
 | Product synthesis/STA | Completed; exactly 32 SRAM macros retained; setup timing fails |
-| Required sbt gate (cleanup session) | FAIL; formatting and protected historical-test parser errors |
+| Full sbt gate (test migration) | PASS; 410 tests across 5 suites; 0 failed/canceled/ignored/pending |
 
-The cleanup session attempted `sbt scalafmtCheckAll test`; formatting mismatches
-and the invalid `TestCluster(params)` type syntax at protected
-`src/test/scala/cluster/RV32BTest.scala:22` blocked completion. A separate
-`sbt test` reported three parser errors in the same source and ran zero tests.
-Logs: `verif/out/cleanup/sbt-gate-final.log` and `verif/out/cleanup/sbt-test-final.log`.
-No protected test files were changed for those attempts.
+The exact `sbt scalafmtCheckAll test` command passed after migration: 410 tests
+across five completed suites, with zero failed, canceled, ignored, pending, or
+aborted results. This includes all 376 L1 tests, all 23 scenarios, and all
+11 assembler tests. Evidence: `verif/out/sbt-gate/combined.log`. The earlier
+parser/API/formatting failure describes the pre-migration tree. Direct build
+also passed with 699 specs and 610 tags; spec-check reports zero errors and
+four existing coverage warnings. A wrong expected value in the OoO scenario
+was then rejected by sbt with exit 1. The source was restored byte-for-byte and
+all 23 scenarios passed again. See `wrong-result-negative.log`,
+`scenario-restored.log`, and `negative-control.json` in the same evidence directory.
 
 The SRAM checks cover masks, backpressure, page boundaries, collision arbitration,
 and sustained responses. A red-first D-cache test reproduced stale completed-MSHR
@@ -123,8 +151,9 @@ comparison remains in `verif/out/sta/core_default/`. The cleanup re-emitted the
 product with pinned Espresso and ran `sv2v -DSYNTHESIS`: all 46 modules are
 byte-identical to the measured synthesis input (SHA256
 `087c83bb93d97150cef9e97c2162a6dba4793b971061b74655969ab1f7851516`).
-See `verif/out/cleanup/espresso-product-comparison.json`. STA was not rerun
-for formatting or diagnostics changes.
+The test migration repeated this comparison successfully; see
+`verif/out/sbt-gate/product-equivalence.json`. STA was not rerun for these
+formatting or software-test changes.
 
 - Conditions: sky130 HD TT 25 C / 1.80 V, 10 ns clock, Small statistical wire
   load, ideal clock/reset, 6 ns TileLink IO delay, 3 ns other IO delay,
@@ -156,10 +185,10 @@ neither physical Fmax nor final die area, and no PPA acceptance bar was chosen.
   ADR-000: ISA-model equivalence and one-axis configurations without N;
   alternatively, record an ADR amendment.
 - RV64 decode scheduling remains an owner decision; v0 is RV32 only.
-- Protected historical verification: permission to repair the cluster/assembler
-  suites was requested during cleanup and has not been granted. Keep the parser
-  failure visible until the owner authorizes that migration. Local core-logic
-  protection markers, including the multiplier, also remain in force.
+
+The 2026-11-16 owner waiver resolved the legacy test migration permission.
+It covers this migration and necessary assembler repairs; unrelated protected
+infrastructure and core-logic protection markers remain in force.
 
 Standing resolved decisions: OQ-D is single-hart, non-coherent, no DMA.
 OQ-E waived the former CSR.scala protection for the ADR-019 migration.
@@ -169,9 +198,6 @@ Reconfirm that platform assumption when selecting the SoC memory map.
 No architecture contradictions remain open in this handoff.
 
 ## Next steps
-
-Resolve the protected historical sbt test migration after owner authorization;
-do not remove tests or exclude their source directories to obtain a pass.
 
 1. Investigate setup/DRV paths using the SRAM reports. Choose implementation
    changes through the spec-first workflow; a completed STA run is not closure.
@@ -198,11 +224,11 @@ do not remove tests or exclude their source directories to obtain a pass.
 - Historical Coursier downloads failed with GitHub 403/proxy restrictions.
   The archive retains the old `/tmp`/Maven workaround. Reprovision missing
   tools with the platform setup script instead of assuming scratch paths persist.
-- `sbt scalafmtCheckAll test` remains a required pre-commit attempt. Historical
-  runs stopped at formatting/parser or dependency-download failures before
-  the chained tests; active L1 results do not establish a full `sbt test` pass.
-  Owner-protected cluster/assembler tests target older APIs; report failures
-  without changing protected infrastructure or weakening the verification gate.
+- `sbt scalafmtCheckAll test` is the full pre-commit gate. Provision native
+  tools first; Test forks JDK 17 with the same resolved environment as the
+  direct runner. Standalone `verif` success is separate from an sbt gate pass.
+  The historical cluster API was removed under the 2026-11-16 owner waiver;
+  do not reintroduce Treadle or downgrade Chisel to preserve those obsolete APIs.
 - svsim runs its test inside the testbench initial block; unreset registers
   read zero in the recorded L1 setup because RANDOMIZE_REG_INIT runs later.
   Those tests do not establish X-propagation correctness.

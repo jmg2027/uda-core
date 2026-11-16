@@ -95,9 +95,17 @@ The build uses the sibling `../spec-framework` checkout (override with
 `verif/out/spec-report/`. See [framework setup](docs/tooling/spec-framework.md)
 for toolchain settings, sbt usage, and coverage interpretation.
 
-Run `sbt scalafmtCheckAll test` before committing. The protected historical
-`src/test` suites currently have parser/API incompatibilities; the live handoff
-records the exact failures separately from the active L1 and scenario results.
+Run `sbt scalafmtCheckAll test` before committing. The owner authorized the
+2026-11-16 legacy test migration and necessary assembler repairs, with Chisel 6
+as the minimum; the reproducible build remains pinned to 6.2.0. ScalaTest now
+registers the complete active L1/scenario corpus and retains 11 assembler tests.
+Native simulator tests fork with the provisioned JDK 17 and shared tool
+environment. The formatter checks this repository's main, verification, and test
+Scala sources; external framework compilation remains part of the build.
+The combined gate passes all 410 tests: 376 L1, 23 whole-core scenarios,
+and 11 assembler tests, with no failures, cancellations, ignored tests, or
+pending tests. The live handoff records the measured outcome. See the
+[sbt reference](docs/tooling/sbt-commands-reference.md) for details.
 
 ## Documentation
 

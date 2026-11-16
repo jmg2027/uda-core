@@ -2,7 +2,6 @@ package assembler
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import assembler.RISCVAssembler
 
 class RVCAssemblerTest extends AnyFlatSpec with Matchers {
   "RISCVAssembler" should "assemble basic compressed instructions" in {

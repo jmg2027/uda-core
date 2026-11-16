@@ -1,6 +1,6 @@
+package assembler
+
 import org.scalatest.funsuite.AnyFunSuite
-import assembler.RISCVAssembler
-import assembler.CompressedAssembler
 import scala.collection.mutable
 
 class RVCEncodeTest extends AnyFunSuite {
@@ -21,14 +21,14 @@ class RVCEncodeTest extends AnyFunSuite {
     val symbolTable = mutable.Map[String, Long]()
     val hex         =
       RISCVAssembler.parseLine("C.LW x8, 4(x9)", 0, symbolTable.toMap, 2)
-    assert(hex == 0x4204)
+    assert(hex == 0x40c0)
   }
 
   test("C.SW x8, 8(x9) should encode correctly") {
     val symbolTable = mutable.Map[String, Long]()
     val hex         =
       RISCVAssembler.parseLine("C.SW x8, 8(x9)", 0, symbolTable.toMap, 2)
-    assert(hex == 0xc284)
+    assert(hex == 0xc480)
   }
 
   test("C.ADDI x5, -32 should encode correctly (lower boundary)") {
@@ -41,7 +41,7 @@ class RVCEncodeTest extends AnyFunSuite {
   test("C.ADDI x5, 31 should encode correctly (upper boundary)") {
     val symbolTable = mutable.Map[String, Long]()
     val hex         = RISCVAssembler.parseLine("C.ADDI x5, 31", 0, symbolTable.toMap, 2)
-    assert(hex == 0x027d)
+    assert(hex == 0x02fd)
   }
 
   test("C.J with out-of-range offset should throw an error") {
@@ -61,13 +61,17 @@ class RVCEncodeTest extends AnyFunSuite {
   }
 
   test("C.JAL should throw error if XLEN is not 32") {
-    val orig        = CompressedAssembler.XLEN
-    CompressedAssembler.XLEN = 64
     val symbolTable = mutable.Map[String, Long]("target" -> 0)
     val thrown      = intercept[RuntimeException] {
-      RISCVAssembler.parseLine("C.JAL target", 0, symbolTable.toMap, 2)
+      CompressedAssembler.assembleCompressed(
+        RVCInstructions.C_JAL,
+        Seq("target"),
+        0,
+        symbolTable.toMap,
+        2,
+        xlen = 64
+      )
     }
     assert(thrown.getMessage.contains("RV32-only"))
-    CompressedAssembler.XLEN = orig
   }
 }

@@ -67,8 +67,8 @@ class Decoded(val params: BackendParams) extends BackendBundle {
 /** Instruction decoder generating control signals. */
 class DecodeCore(val params: BackendParams) extends BackendModule {
   val io = IO(new Bundle {
-    val inst  = Input(UInt(iLen.W))
-    val out = Output(new Decoded(params))
+    val inst = Input(UInt(iLen.W))
+    val out  = Output(new Decoded(params))
   })
 
   val d = io.out
