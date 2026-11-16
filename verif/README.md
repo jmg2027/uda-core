@@ -31,8 +31,8 @@ Activates with the RTL fill-in (raises `harness-not-ready`, exit 3, until then):
 ## Quick start
 
 ```bash
-bash verif/bin/setup.sh        # once per container: scalac/chisel jars, firtool, verilator,
-                               # espresso, ccache (idempotent, reuse-first)
+bash verif/bin/setup.sh        # Linux: scalac/chisel jars, firtool, verilator, espresso, ccache
+bash verif/bin/setup-macos.sh  # Apple Silicon: pinned persistent compile/simulation toolchain
 bash verif/bin/build.sh        # compile everything -> verif/out/classes
 verif/bin/scn.sh describe      # capability card
 

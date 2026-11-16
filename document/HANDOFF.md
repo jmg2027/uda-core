@@ -1,4 +1,49 @@
-# Handoff: remote implementation integration (2026-10-05)
+# Handoff: remote implementation integration (2026-10-07)
+
+## Apple Silicon reproducible verification setup (2026-10-07)
+
+- Added `verif/bin/setup-macos.sh` as a separate Apple Silicon provisioner; the
+  existing Linux `verif/bin/setup.sh` is unchanged. The macOS path pins JDK 17,
+  Scala 2.13.12, Chisel 6.2.0, firtool 1.62.0 through Rosetta, native arm64
+  Verilator 5.020, and `MacOSX26.5.sdk`. It intentionally does not fall through to
+  Homebrew Verilator 5.052 or the default `MacOSX27.0.sdk`, which are the two known
+  incompatible substitutions on this host.
+- Tool discovery/provisioning now covers the exact SDK, keg-only Homebrew JDK,
+  Rosetta firtool wrapper, native Verilator build, and RISC-V GCC/binutils. Homebrew
+  `riscv64-elf-*` tools are exposed through the `riscv64-unknown-elf-*` names used by
+  the existing harness. The Verilator source build also pins Homebrew flex headers
+  with the Homebrew flex executable; otherwise current CommandLineTools can mix in
+  the older system `FlexLexer.h` and fail the 5.020 build.
+- Persistent inputs and tools live under `~/Library/Caches/uda-core-verif` by default
+  (`VERIF_CACHE_ROOT` overrides it). Generated `verif/.toolchain.env` contains no
+  required `/tmp` toolchain path. Simulator scratch/cache may still be ephemeral, but
+  deleting `/tmp` no longer removes firtool, Verilator, Scala/Chisel dependencies, or
+  their resolved paths; re-running the setup reconstructs the ignored environment.
+- `env.sh` now loads `.toolchain.env` before applying `JAVA_HOME`, so a keg-only JDK
+  selected by either setup path is put on `PATH`. Installed Verilator deliberately
+  leaves `VERILATOR_ROOT` unset: its compiled install root is
+  `share/verilator`; forcing the install prefix makes 5.020 look for
+  `include/verilated_std.sv` in the wrong directory.
+
+Validation for this setup change only:
+- A fresh persistent-cache provision completed, and an immediate second
+  `VERIF_BUILD=0 bash verif/bin/setup-macos.sh` reused the cache successfully. The
+  resolved tools are JDK 17.0.20.1, Rosetta firtool 1.62.0, native arm64 Verilator
+  5.020, RISC-V GCC 16.2.0, and `/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`.
+- `bash verif/bin/build.sh`: PASS; spec artifacts report 688 specs, 594 tags, and all
+  references resolved.
+- `python3 tools/spec-check.py`: PASS with 0 errors and the same 4 existing
+  `localspec-coverage` warnings.
+- Minimal L1 simulator smoke only: `verif/bin/run.sh verif.spectest.RunSpecTests
+  alu.compute` -> **1 PASS, 0 FAIL, 0 PENDING**. This exercises the Chisel/firtool/
+  Verilator/SDK path without replaying the full suite.
+- **The full L1 regression was not rerun for this setup change.** The earlier 326 PASS,
+  0 FAIL, 2 PENDING result below remains historical evidence and is not re-certified
+  by this update. No CoreTop or architectural scenario PASS is claimed.
+- `sbt scalafmtCheckAll test` was attempted as the repository pre-commit gate and
+  stopped in `scalafmtCheckAll` on pre-existing formatting/parser failures across
+  existing Scala/framework sources (including legacy cluster tests). The chained sbt
+  `test` phase therefore did not run; this setup change does not modify those files.
 
 ## Current integration update
 
