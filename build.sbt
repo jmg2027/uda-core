@@ -18,6 +18,51 @@ val udaHome       = file(".").getCanonicalFile
 val specMeta      = udaHome / "target" / "spec-meta"
 val chiselVersion = "6.2.0"
 
+// Native simulator tests use the same provisioned tools as verif/bin/run.sh.
+// Keep resolved machine paths in the ignored environment, not in this build.
+val verificationEnvironment = {
+  val resolved = udaHome / "verif/.toolchain.env"
+  if (resolved.isFile) {
+    val keys = Set(
+      "PATH",
+      "JAVA_HOME",
+      "SDKROOT",
+      "CHISEL_FIRTOOL_PATH",
+      "FIRTOOL_DIR",
+      "OBJCACHE",
+      "CCACHE_DIR",
+      "CCACHE_MAXSIZE",
+      "CCACHE_BASEDIR",
+      "CCACHE_SLOPPINESS",
+      "CCACHE_NOHASHDIR",
+      "MAKEFLAGS",
+      "VERIF_SIMCACHE_DIR",
+      "VERIF_SIMCACHE_KEEP",
+      "VERIF_SIMCACHE"
+    )
+    scala.sys.process
+      .Process(
+        Seq(
+          "bash",
+          "-c",
+          "source \"$1\"; env -0",
+          "uda-test-env",
+          (udaHome / "verif/bin/env.sh").getAbsolutePath
+        ),
+        udaHome
+      )
+      .!!
+      .split("\u0000")
+      .iterator
+      .flatMap { entry =>
+        val pair = entry.split("=", 2)
+        if (pair.length == 2 && keys(pair(0))) Some(pair(0) -> pair(1))
+        else None
+      }
+      .toMap
+  } else Map.empty[String, String]
+}
+
 ThisBuild / initialize := {
   val previous = (ThisBuild / initialize).value
   System.setProperty("spec.meta.dir", specMeta.getAbsolutePath)
@@ -62,11 +107,10 @@ lazy val root = (project in file("."))
   .aggregate(frameworkCore, frameworkMacros, udaSpecs)
   .dependsOn(udaSpecs, frameworkCore, frameworkMacros)
   .settings(
-    name            := "uda-core",
+    name                                            := "uda-core",
     libraryDependencies ++= Seq(
-      "org.chipsalliance" %% "chisel"     % chiselVersion,
-      "org.scalatest"     %% "scalatest"  % "3.2.19" % Test,
-      "edu.berkeley.cs"   %% "chiseltest" % "6.0.0"  % Test
+      "org.chipsalliance" %% "chisel"    % chiselVersion,
+      "org.scalatest"     %% "scalatest" % "3.2.19" % Test
     ),
     addCompilerPlugin(
       "org.chipsalliance" % "chisel-plugin" % chiselVersion cross CrossVersion.full
@@ -81,9 +125,33 @@ lazy val root = (project in file("."))
       "-Xcheckinit",
       "-Ymacro-annotations"
     ),
-    Compile / fork  := true,
+    Compile / fork                                  := true,
+    Test / unmanagedSourceDirectories ++= Seq(
+      udaHome / "verif/src/scala",
+      udaHome / "verif/suites"
+    ),
+    Test / fork                                     := true,
+    Test / parallelExecution                        := false,
+    Test / envVars ++= verificationEnvironment,
+    Test / javaHome                                 := verificationEnvironment.get("JAVA_HOME").map(file),
+    // Formatter ownership is this repository. Dependency compilation and tests
+    // remain aggregated; external framework style belongs to its own build.
+    scalafmtCheckAll / aggregate                    := false,
+    scalafmtAll / aggregate                         := false,
+    Compile / scalafmt / unmanagedSourceDirectories := Seq(
+      udaHome / "src/main/scala",
+      udaHome / "verif/src/scala",
+      udaHome / "verif/suites"
+    ),
+    Compile / scalafmt / unmanagedSources           :=
+      (Compile / scalafmt / unmanagedSourceDirectories).value
+        .flatMap(d => (d ** "*.scala").get)
+        .distinct,
+    Test / scalafmt / unmanagedSources              := (Test / unmanagedSources).value,
+    Test / scalafmt / unmanagedSourceDirectories    :=
+      (Test / unmanagedSourceDirectories).value,
     cleanFiles += specMeta,
-    exportSpecIndex := {
+    exportSpecIndex                                 := {
       val _       = (Compile / compile).value
       val cp      = (Compile / fullClasspath).value.files
         .mkString(java.io.File.pathSeparator)

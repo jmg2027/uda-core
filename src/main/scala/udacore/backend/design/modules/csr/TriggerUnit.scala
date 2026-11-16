@@ -53,12 +53,13 @@ class TriggerUnit(val params: BackendParams) extends BackendModule {
   val trigLdDataEn = Wire(Bool())
 
   if (usingTrigger) {
-    val trigEn = (io.mcontrol6.ctrltype === SystemConstants.DebugType.MControl6) &&
-      (io.mcontrol6.valmatch === 0.U) && (
-        (io.mcontrol6.u && io.priv === SystemConstants.Privilege.UMode) ||
-          (io.mcontrol6.s && io.priv === SystemConstants.Privilege.SMode) ||
-          (io.mcontrol6.m && io.priv === SystemConstants.Privilege.MMode)
-      )
+    val trigEn =
+      (io.mcontrol6.ctrltype === SystemConstants.DebugType.MControl6) &&
+        (io.mcontrol6.valmatch === 0.U) && (
+          (io.mcontrol6.u && io.priv === SystemConstants.Privilege.UMode) ||
+            (io.mcontrol6.s && io.priv === SystemConstants.Privilege.SMode) ||
+            (io.mcontrol6.m && io.priv === SystemConstants.Privilege.MMode)
+        )
 
     val trigExeAddrEn = io.mcontrol6.execute && !io.mcontrol6.select
     val trigExeDataEn = io.mcontrol6.execute && io.mcontrol6.select
