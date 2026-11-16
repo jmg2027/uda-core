@@ -5,11 +5,11 @@ import framework.macros.LocalSpec
 import udacore.backend.design.shared._
 import udacore.backend.spec.modules.BitAluUnitSpecs._
 
-/** BitAluUnit vertex shell (spec: BitAluUnitSpecs).
+/** Unimplemented optional bit-manipulation wrapper (spec: BitAluUnitSpecs).
   *
-  * ADR-019 spec phase: every member is a documented placeholder whose contract is
-  * the named spec val. Elaboration raises NotImplementedError, which the ADR-018
-  * runners report as PENDING (red by construction) until the RTL lands.
+  * Excluded from the RV32IM v0 configuration. Its documented placeholders raise
+  * NotImplementedError if elaborated; the ADR-018 runner reports them as
+  * PENDING.
   */
 @LocalSpec(contBitAluUnit)
 class BitAluUnit(val params: BackendParams) extends BackendModule {

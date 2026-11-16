@@ -15,9 +15,9 @@ object DataBusAdapterSpecs {
     CONTRACT("DataBusAdapter")
       .desc(
         "Translates DataCache fills, writebacks, and uncached accesses into TileLink " +
-        "transactions on the dataBus link and returns channel-D answers by source id. In v0 " +
-        "(DataCoherence = false) the link is TL-UH: GetLine -> Get of a line, PutLine -> " +
-        "PutFullData burst, GetUncached -> Get, PutUncached -> PutPartialData."
+          "transactions on the dataBus link and returns channel-D answers by source id. In v0 " +
+          "(DataCoherence = false) the link is TL-UH: GetLine -> Get of a line, PutLine -> " +
+          "PutFullData burst, GetUncached -> Get, PutUncached -> PutPartialData."
       )
       .has(
         intfDataMemReqIn,
@@ -26,8 +26,15 @@ object DataBusAdapterSpecs {
         funcDataBusTransaction,
         propDataBusCoherenceSeparate
       )
-      .uses(contTileLink, paramTLLinkDerivation, paramDataCoherence, propTLChannelPriority)
-      .note("Recovery stance: every accepted request is an uncancelable bus transaction and completes (propGenerationTagScope).")
+      .uses(
+        contTileLink,
+        paramTLLinkDerivation,
+        paramDataCoherence,
+        propTLChannelPriority
+      )
+      .note(
+        "Recovery stance: every accepted request is an uncancelable bus transaction and completes (propGenerationTagScope)."
+      )
       .build()
   }
 
@@ -49,7 +56,9 @@ object DataBusAdapterSpecs {
 
   val intfDataBus = spec {
     INTERFACE("DataBusAdapterSpecs.intfDataBus")
-      .desc("TileLink master link (A and D in v0; B/C/E only when DataCoherence is enabled).")
+      .desc(
+        "TileLink master link (A and D in v0; B/C/E only when DataCoherence is enabled)."
+      )
       .uses(contTileLink)
       .is(rawReadyValidIntf)
       .build()
@@ -59,8 +68,12 @@ object DataBusAdapterSpecs {
     FUNCTION("DataBusTransaction")
       .desc(
         "Map each DataMemReq op to its TileLink message with a.source = the request's source " +
-        "id (MSHR, writeback, or uncached), forward D beats back with the same source, and " +
-        "convert denied/corrupt to the denied flag. Responses of different sources may interleave."
+          "id (MSHR, writeback, or uncached). GetLine/GetUncached map to one A Get; PutLine " +
+          "maps contiguous DataMemReq beats to one A PutFullData burst; PutUncached maps to " +
+          "one A PutPartialData. The requested size is the total transfer size on every A beat. " +
+          "A source remains occupied until its final D beat transfers. Forward D beats with " +
+          "the same source, derive last from the tracked transfer size, and convert denied or " +
+          "corrupt to the denied flag. Responses of different sources may interleave."
       )
       .uses(intfDataMemReqIn, intfDataMemRespOut, intfDataBus)
       .build()
@@ -70,10 +83,12 @@ object DataBusAdapterSpecs {
     PROPERTY("DataBusCoherenceSeparate")
       .desc(
         "The data link elaborates B/C/E if and only if DataCoherence is true; a configured " +
-        "D-cache alone never does. In v0 no Acquire, Probe, or Release is ever issued."
+          "D-cache alone never does. In v0 no Acquire, Probe, or Release is ever issued."
       )
       .uses(paramDataCoherence)
-      .note("Elaboration require on the derived TLLinkParams (ADR-019 D-19.13).")
+      .note(
+        "Elaboration require on the derived TLLinkParams (ADR-019 D-19.13)."
+      )
       .build()
   }
 }

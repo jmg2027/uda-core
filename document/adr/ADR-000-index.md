@@ -1,7 +1,6 @@
 # ADR-000: Architecture Decision Record Index
 
-UDACore rebuild core, branch `claude/rebuild-architecture-review-jg0grl`.
-These ADRs are the chief architect's binding rulings synthesized from the six
+These ADRs contain UDACore's binding architecture decisions. The initial rulings were synthesized from the six
 position papers (`document/architecture-team/01..06-*.md`) and the three
 adversarial critiques (`critique-correctness.md`, `critique-ppa-scaling.md`,
 `critique-verifiability.md`).
@@ -89,6 +88,7 @@ trains TAGE with the prediction-time provider identity, adds the CallRet corouti
 
 | ADR | Title | Status | Settles (paper / critique) |
 |-----|-------|--------|----------------------------|
+| [020](ADR-020-cache-sram-storage.md) | Clocked SRAM storage for L1 cache data | accepted | owner SRAM replacement request, 2026-11-16; amends ADR-019 cache storage |
 | [001](ADR-001-rename-recovery.md) | Rename recovery on redirect | accepted / **amended by 019** | P01 s1; crit-correctness B1.2 |
 | [002](ADR-002-commit-retirement.md) | Commit and retirement without a ROB | **superseded by 019** | P01 s2; P06 |
 | [003](ADR-003-store-lifecycle-load-ordering.md) | Store lifecycle, load ordering, disambiguation | accepted / **amended by 019** | P02 M1/M2; crit B2, BL-1 |

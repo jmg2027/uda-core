@@ -28,9 +28,12 @@ scheduling require the owner. Record unresolved decisions in
 - No emoji or decorative characters. No TODO comments. Pending design shells use
   documented empty vals or `???`, never fake signal assignments.
 - Consult `README.md` and `document/HANDOFF.md` for current implementation status.
-  Backend, predictor/FTQ/PC generation, FetchBuffer, the I-cache/bus adapter,
-  and ITLB/DTLB/PTW have RTL and L1 tests; whole-core integration remains unfinished. DUT-facing scenario commands report
-  `harness-not-ready` (exit 3) until CoreTop and its harness are implemented.
+  Backend, predictor/FTQ/PC generation, FetchUnit, FetchBuffer, the I-cache/bus adapter,
+  the data-bus adapter, DataCache, and ITLB/DTLB/PTW have RTL and L1 tests.
+  FrontendTop and CoreTop are wired, and CoreHarness runs whole-core `.scn`
+  programs through both TileLink links and the verification retire stream.
+  Bulk cache data uses clocked CacheLineSram vertices and pinned OpenRAM
+  1RW1R macros (ADR-020); tag and control metadata remain registers.
 - The optional SessionStart hook provisions tools and logs to
   `/tmp/verif-session-start.log`. Set `git config core.hooksPath .githooks` to enable
   the staged ASCII and spec-check hook in a new checkout.
@@ -42,13 +45,11 @@ scheduling require the owner. Record unresolved decisions in
 ## Documentation Reading Order
 
 1. **[README.md](README.md)** - Core design philosophy and quick start
-2. **[ADR-019](document/adr/ADR-019-conventional-ooo-root-architecture.md)** - Binding root architecture for OoO v0 work
-3. **[docs/](docs/)** - Detailed design documentation
-   - `foundations/` - Core design principles
-   - `practices/` - Implementation guidelines
-   - `process/` - Development workflow
-   - `tooling/` - Build system
-4. **This document (AGENTS.md)** - Mandatory rules and workflows
+2. **[HANDOFF](document/HANDOFF.md)** - Current results, limitations, owner questions, and next steps
+3. **[ADR index](document/adr/ADR-000-index.md)** and **[ADR-019](document/adr/ADR-019-conventional-ooo-root-architecture.md)** - Binding architecture, followed by ADR-020 for SRAM work
+4. **The relevant spec tree** - Detailed contracts under `src/main/scala/udacore/**/spec`
+5. **This document (AGENTS.md)** - Mandatory rules and workflows
+6. **[docs/](docs/)** - Methodology background and tooling guidance; older architecture examples are superseded where the ADRs say so
 
 ## Binding Rules (mechanically enforced on this branch)
 
@@ -381,7 +382,7 @@ Both build paths use Scala 2.13.12 and Chisel 6.2.0. See
 
 ```bash
 bash verif/bin/setup.sh                     # Linux toolchain provisioning
-bash verif/bin/setup-macos.sh               # Apple Silicon toolchain provisioning
+bash verif/bin/setup-macos.sh               # Apple Silicon macOS provisioning
 bash verif/bin/build.sh                     # compile and spec artifact gate
 python3 tools/spec-check.py                 # ADR-015/018 gate
 bash verif/bin/test-spec-framework.sh       # macro integration regressions

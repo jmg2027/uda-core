@@ -2,39 +2,42 @@
 # UDACore pre-commit gate. Activated by: git config core.hooksPath .githooks
 # (the .claude session-start hook sets this automatically).
 #
-# Two checks, both scoped to the STAGED files so pre-existing debt in untouched
-# files never blocks an unrelated commit:
-#   1. ASCII-only (style rule: specs/docs/code are English ASCII; Korean lives in
-#      commit MESSAGES, which this hook does not inspect). Known debt files are
-#      listed in .githooks/ascii-allow.txt - touching one means cleaning it.
-#   2. spec-check (ADR-015 interim checker) when any src/main/scala file is
-#      staged - spec/design consistency is a commit gate, not a suggestion.
+# ASCII is checked against staged bytes, including on macOS without GNU grep.
+# spec-check inspects the complete working tree when core Scala sources are staged;
+# stage the validated source snapshot together before committing.
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-staged=$(git diff --cached --name-only --diff-filter=ACM)
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -z "$staged" ] && exit 0
 
-# 1. ASCII check on staged text sources
-allow="$ROOT/.githooks/ascii-allow.txt"
-bad=""
-while IFS= read -r f; do
-  case "$f" in
-    *.scala|*.md|*.sh|*.txt|*.sbt|*.scn|*.tcl|*.sdc|*.awk|*.py) ;;
-    *) continue ;;
-  esac
-  [ -f "$f" ] || continue
-  grep -qxF "$f" "$allow" 2>/dev/null && continue
-  if LC_ALL=C grep -nP '[^\x00-\x7F]' "$f" >/dev/null 2>&1; then
-    bad+="$f"$'\n'
-  fi
-done <<< "$staged"
-if [ -n "$bad" ]; then
-  echo "pre-commit: non-ASCII in staged files (style rule: English ASCII in files):" >&2
-  printf '%s' "$bad" | sed 's/^/  /' >&2
-  echo "  locate:  LC_ALL=C grep -nP '[^\\x00-\\x7F]' <file>" >&2
-  echo "  known pre-existing debt is grandfathered in .githooks/ascii-allow.txt" >&2
+# 1. ASCII check on staged text sources.
+if ! python3 - <<'PY_ASCII'
+import pathlib
+import subprocess
+import sys
+
+suffixes = {".scala", ".md", ".sh", ".txt", ".sbt", ".scn", ".tcl", ".sdc", ".awk", ".py",
+            ".sv", ".v", ".json", ".properties", ".yml", ".yaml", ".conf", ".S", ".c", ".h"}
+paths = subprocess.check_output([
+    "git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"
+]).decode().split("\0")
+bad = []
+for path in filter(None, paths):
+    if pathlib.Path(path).suffix not in suffixes:
+        continue
+    data = subprocess.check_output(["git", "show", ":" + path])
+    if not data.isascii():
+        lines = [str(i) for i, line in enumerate(data.splitlines(), 1) if not line.isascii()]
+        bad.append(path + ":" + ",".join(lines))
+if bad:
+    print("pre-commit: non-ASCII in staged files (files must use English ASCII):", file=sys.stderr)
+    for path in bad:
+        print("  " + path, file=sys.stderr)
+    sys.exit(1)
+PY_ASCII
+then
   exit 1
 fi
 

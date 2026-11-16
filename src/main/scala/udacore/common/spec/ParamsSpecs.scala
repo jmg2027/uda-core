@@ -21,7 +21,9 @@ object ParamsSpecs {
         |- Private: Internal settings accessible only to subsystem owners (experimental toggles, internal guardbands, etc.)
         """.stripMargin)
       .note("Three-tier parameter architecture: Contract -> Tuning -> Private")
-      .code("scala", """
+      .code(
+        "scala",
+        """
         |// Example domain parameter organization:
         |object CoreParamsSpecs {
         |  // Contract Tier - Must be specified by integrators
@@ -48,7 +50,8 @@ object ParamsSpecs {
         |      .build()
         |  }
         |}
-        """.stripMargin)
+        """.stripMargin
+      )
       .build()
   }
 
@@ -60,7 +63,9 @@ object ParamsSpecs {
         |exposed to parent domains through design/api/. Cross-domain access is permitted only through api/ packages.
         """.stripMargin)
       .note("Domain isolation with controlled API exposure")
-      .code("scala", """
+      .code(
+        "scala",
+        """
         |// Domain parameter isolation example:
         |// frontend/spec/shared/FrontendParamsSpecs.scala
         |// backend/spec/shared/BackendParamsSpecs.scala
@@ -69,7 +74,8 @@ object ParamsSpecs {
         |// Cross-domain access only through api/:
         |// frontend/design/api/FrontendApi.scala exports needed contract params
         |// backend uses: import udacore.frontend.design.api.FrontendApi
-        """.stripMargin)
+        """.stripMargin
+      )
       .build()
   }
 

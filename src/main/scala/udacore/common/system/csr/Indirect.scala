@@ -5,20 +5,22 @@ import chisel3.util._
 import framework.macros.LocalSpec
 import udacore.common.system.csr.CsrTemplateSpecs._
 
-/**
-  * Decorator: multiplexes one CSR address across N backing CSRs selected by an
-  * external index (typically another CSR like `tselect`). Models RISC-V indirect
-  * CSRs such as tdata1/2/3 (selected by tselect) or any banked register file on a
-  * single Zicsr address. Reads return the selected bank; writes commit only to it,
-  * each bank legalizing independently; RVVI wb fires on the selected bank's write.
+/** Decorator: multiplexes one CSR address across N backing CSRs selected by an
+  * external index (typically another CSR like `tselect`). Models RISC-V
+  * indirect CSRs such as tdata1/2/3 (selected by tselect) or any banked
+  * register file on a single Zicsr address. Reads return the selected bank;
+  * writes commit only to it, each bank legalizing independently; RVVI wb fires
+  * on the selected bank's write.
   *
-  * @param banks   the N backing CSRs (non-empty; all share the same Bundle type)
-  * @param select  by-name selector index, evaluated once at elaboration on first use
+  * @param banks
+  *   the N backing CSRs (non-empty; all share the same Bundle type)
+  * @param select
+  *   by-name selector index, evaluated once at elaboration on first use
   */
 @LocalSpec(funcCsrIndirect)
 class Indirect[T <: Bundle](
-  val banks:    Seq[Csr[T]],
-  select:       => UInt,
+    val banks: Seq[Csr[T]],
+    select: => UInt
 ) extends Csr[T] {
   require(banks.nonEmpty, "Indirect needs at least one bank.")
 
@@ -42,12 +44,14 @@ class Indirect[T <: Bundle](
   }
 
   // Local proposal pipeline: body mutates regNext, then we forward to the selected bank.
-  override protected[csr] lazy val regNext: T = {
+  override protected[csr] lazy val regNext: T      = {
     val w = WireInit(default.asTypeOf(field))
     w := reg
     w
   }
-  override protected[csr] lazy val regNextLegal: T = WireInit(default.asTypeOf(field))
+  override protected[csr] lazy val regNextLegal: T = WireInit(
+    default.asTypeOf(field)
+  )
 
   override protected[csr] def doWrite(body: => Unit): Unit = {
     body
@@ -65,7 +69,8 @@ class Indirect[T <: Bundle](
   }
 
   override def rvviWb: Bool =
-    banks.zipWithIndex.map { case (b, i) => (selSig === i.U) && b.rvviWb }.reduce(_ || _)
+    banks.zipWithIndex.map { case (b, i) => (selSig === i.U) && b.rvviWb }
+      .reduce(_ || _)
 
   override def rvviWrittenData: T = {
     val v = Wire(field)
@@ -76,7 +81,9 @@ class Indirect[T <: Bundle](
   }
 
   override def named(name: String): this.type = {
-    banks.zipWithIndex.foreach { case (b, i) => b.named(s"${name}_$i") }   // materializes each bank
+    banks.zipWithIndex.foreach { case (b, i) =>
+      b.named(s"${name}_$i")
+    } // materializes each bank
     materializeWires()
     this
   }

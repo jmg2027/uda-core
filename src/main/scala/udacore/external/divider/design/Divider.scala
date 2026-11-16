@@ -15,29 +15,29 @@ import udacore.external.divider.spec.DividerSpecs._
 // Internal core interface, pre-decoded signals
 @LocalSpec(intfDividerCoreIO)
 class DividerCoreIO(dataWidth: Int) extends Bundle {
-  val start = Input(Bool())
-  val kill = Input(Bool())
-  val isSigned = Input(Bool())
+  val start       = Input(Bool())
+  val kill        = Input(Bool())
+  val isSigned    = Input(Bool())
   val isRemainder = Input(Bool())
   val dividendMag = Input(UInt(dataWidth.W))
-  val divisorMag = Input(UInt(dataWidth.W))
+  val divisorMag  = Input(UInt(dataWidth.W))
   val dividendNeg = Input(Bool())
-  val divisorNeg = Input(Bool())
-  val busy = Output(Bool())
-  val done = Output(Bool())
-  val result = Output(UInt(dataWidth.W))
+  val divisorNeg  = Input(Bool())
+  val busy        = Output(Bool())
+  val done        = Output(Bool())
+  val result      = Output(UInt(dataWidth.W))
 }
 
 // Public divider interface (matches spec)
 @LocalSpec(intfDividerIO)
 class DividerIO(dataWidth: Int) extends Bundle {
-  val start = Input(Bool())
-  val kill = Input(Bool())
-  val op = Input(DividerControl())
-  val src1 = Input(UInt(dataWidth.W))
-  val src2 = Input(UInt(dataWidth.W))
-  val busy = Output(Bool())
-  val done = Output(Bool())
+  val start  = Input(Bool())
+  val kill   = Input(Bool())
+  val op     = Input(DividerControl())
+  val src1   = Input(UInt(dataWidth.W))
+  val src2   = Input(UInt(dataWidth.W))
+  val busy   = Output(Bool())
+  val done   = Output(Bool())
   val result = Output(UInt(dataWidth.W))
 }
 
@@ -54,9 +54,9 @@ case class DividerParams(
 // Top-level FU wrapper with same-cycle early-out.
 @LocalSpec(contDivider)
 class Divider(param: DividerParams) extends Module {
-  val dataWidth = param.dataWidth
+  val dataWidth    = param.dataWidth
   val useRestoring = param.useRestoring
-  val useClz = param.useClz
+  val useClz       = param.useClz
 
   val io = IO(new DividerIO(dataWidth))
 
@@ -72,9 +72,9 @@ class Divider(param: DividerParams) extends Module {
   // yields +2^(w-1), so the overflow early-out (and its compliance assert)
   // compared the wrong constant and never fired.
   @LocalSpec(funcDecodeOperation)
-  val decodeOperation = {
-    val isSigned = (io.op === DIV) || (io.op === REM)
-    val isRemainder = (io.op === REM) || (io.op === REMU)
+  val decodeOperation                       = {
+    val isSigned     = (io.op === DIV) || (io.op === REM)
+    val isRemainder  = (io.op === REM) || (io.op === REMU)
     val minIntSigned = (-(BigInt(1) << (dataWidth - 1))).S(dataWidth.W)
     (isSigned, isRemainder, minIntSigned)
   }
@@ -82,41 +82,43 @@ class Divider(param: DividerParams) extends Module {
 
   // Operand magnitudes for signed ops.
   val dividendNeg = io.src1(dataWidth - 1)
-  val divisorNeg = io.src2(dataWidth - 1)
+  val divisorNeg  = io.src2(dataWidth - 1)
   val dividendMag = Mux(isSigned && dividendNeg, (0.U - io.src1), io.src1)
-  val divisorMag = Mux(isSigned && divisorNeg, (0.U - io.src2), io.src2)
+  val divisorMag  = Mux(isSigned && divisorNeg, (0.U - io.src2), io.src2)
 
-  val divideByZero = (io.src2 === 0.U)
-  val overflowCase = isSigned && (io.src1.asSInt === minIntSigned) && (io.src2.asSInt === (-1).S)
+  val divideByZero      = (io.src2 === 0.U)
+  val overflowCase      =
+    isSigned && (io.src1.asSInt === minIntSigned) && (io.src2.asSInt === (-1).S)
   val magnitudeLessThan = dividendMag < divisorMag
 
   // Extensible (condition, result) early-out pairs.
   @LocalSpec(funcEarlyOut)
   val earlyOutTable = Seq(
-    (divideByZero,      Mux(isRemainder, io.src1, Fill(dataWidth, 1.U))),
-    (overflowCase,      Mux(io.op === DIV, io.src1, 0.U)),
+    (divideByZero, Mux(isRemainder, io.src1, Fill(dataWidth, 1.U))),
+    (overflowCase, Mux(io.op === DIV, io.src1, 0.U)),
     (magnitudeLessThan, Mux(isRemainder, io.src1, 0.U))
   )
 
   val earlyOutCondition = earlyOutTable.map(_._1).reduce(_ || _)
-  val earlyResult = PriorityMux(earlyOutTable)
+  val earlyResult       = PriorityMux(earlyOutTable)
 
-  val coreCanAccept = !core.io.busy
-  val killActive = io.kill
-  val sameCycleEarlyOut = io.start && coreCanAccept && earlyOutCondition && !killActive
+  val coreCanAccept     = !core.io.busy
+  val killActive        = io.kill
+  val sameCycleEarlyOut =
+    io.start && coreCanAccept && earlyOutCondition && !killActive
 
   // Core inputs carry the wrapper's pre-decoded signals (no duplicate decode).
-  core.io.start := (io.start && coreCanAccept && !earlyOutCondition && !killActive)
-  core.io.kill := killActive
-  core.io.isSigned := isSigned
+  core.io.start       := (io.start && coreCanAccept && !earlyOutCondition && !killActive)
+  core.io.kill        := killActive
+  core.io.isSigned    := isSigned
   core.io.isRemainder := isRemainder
   core.io.dividendMag := dividendMag
-  core.io.divisorMag := divisorMag
+  core.io.divisorMag  := divisorMag
   core.io.dividendNeg := dividendNeg
-  core.io.divisorNeg := divisorNeg
+  core.io.divisorNeg  := divisorNeg
 
-  io.busy := (core.io.busy || sameCycleEarlyOut) && !killActive
-  io.done := !killActive && (sameCycleEarlyOut || core.io.done)
+  io.busy   := (core.io.busy || sameCycleEarlyOut) && !killActive
+  io.done   := !killActive && (sameCycleEarlyOut || core.io.done)
   io.result := Mux(sameCycleEarlyOut, earlyResult, core.io.result)
 
   // RISC-V M extension compliance checks (reuse the wrapper decode above).
@@ -124,15 +126,24 @@ class Divider(param: DividerParams) extends Module {
   val riscVCompliance = {
     when(io.done && divideByZero) {
       when(isRemainder) {
-        assert(io.result === io.src1, "Divide by zero: remainder should equal dividend")
+        assert(
+          io.result === io.src1,
+          "Divide by zero: remainder should equal dividend"
+        )
       }.otherwise {
-        assert(io.result === Fill(dataWidth, 1.U), "Divide by zero: quotient should be all ones")
+        assert(
+          io.result === Fill(dataWidth, 1.U),
+          "Divide by zero: quotient should be all ones"
+        )
       }
     }
 
     when(io.done && overflowCase) {
       when(io.op === DividerControl.DIV) {
-        assert(io.result === io.src1, "Signed overflow: quotient should equal dividend")
+        assert(
+          io.result === io.src1,
+          "Signed overflow: quotient should equal dividend"
+        )
       }.otherwise {
         assert(io.result === 0.U, "Signed overflow: remainder should be zero")
       }
@@ -148,11 +159,17 @@ class Divider(param: DividerParams) extends Module {
     val donePrev = RegNext(io.done, false.B)
 
     when(donePrev) {
-      assert(!io.done || io.start, "Done signal should not be held for multiple cycles")
+      assert(
+        !io.done || io.start,
+        "Done signal should not be held for multiple cycles"
+      )
     }
 
     when(io.done) {
-      assert(sameCycleEarlyOut || core.io.done, "Done must correspond to either early-out or core completion")
+      assert(
+        sameCycleEarlyOut || core.io.done,
+        "Done must correspond to either early-out or core completion"
+      )
     }
 
     cover(io.done, "Operation completed")
@@ -182,9 +199,9 @@ class Divider(param: DividerParams) extends Module {
 object DividerClz {
   def skip(mag: UInt, dataWidth: Int): (UInt, UInt) = {
     val leadingZeros = PriorityEncoder(Reverse(mag))
-    val skipSteps = Mux(mag.orR, leadingZeros, (dataWidth - 1).U)
-    val steps = (dataWidth.U - skipSteps)(log2Ceil(dataWidth + 1) - 1, 0)
-    val shifted = (mag << skipSteps)(dataWidth - 1, 0)
+    val skipSteps    = Mux(mag.orR, leadingZeros, (dataWidth - 1).U)
+    val steps        = (dataWidth.U - skipSteps)(log2Ceil(dataWidth + 1) - 1, 0)
+    val shifted      = (mag << skipSteps)(dataWidth - 1, 0)
     (steps, shifted)
   }
 }
@@ -192,31 +209,33 @@ object DividerClz {
 // Non-restoring divider core (funcNonRestoringAlgorithm, optional CLZ skip). Emits
 // a 1-cycle valid pulse in sFinish with combinational sign correction.
 @LocalSpec(contNonRestoringDividerCore)
-class NonRestoringDividerCore(param: DividerParams) extends Module with DividerCoreLike {
+class NonRestoringDividerCore(param: DividerParams)
+    extends Module
+    with DividerCoreLike {
 
   val useClzParam = param.useClz
-  val dataWidth = param.dataWidth
+  val dataWidth   = param.dataWidth
 
   val io = IO(new DividerCoreIO(dataWidth))
 
   @inline def negU(x: UInt): UInt = (0.U(dataWidth.W) - x)
 
   val sIdle :: sCompute :: sFinish :: Nil = Enum(3)
-  val state = RegInit(sIdle)
+  val state                               = RegInit(sIdle)
 
   // Operation info and signs, pre-decoded by the wrapper.
-  val signedOpReg = Reg(Bool())
+  val signedOpReg    = Reg(Bool())
   val isRemainderReg = Reg(Bool())
   val dividendNegReg = Reg(Bool())
-  val divisorNegReg = Reg(Bool())
-  val divisorMagReg = Reg(UInt(dataWidth.W))
+  val divisorNegReg  = Reg(Bool())
+  val divisorMagReg  = Reg(UInt(dataWidth.W))
 
   // F-10: the partial remainder leaves [0, divisor) during the iteration, so it
   // needs dataWidth+2 signed bits; a narrower reg loses the sign for unsigned
   // divisors >= 2^(dataWidth-1).
-  val remainder = Reg(SInt((dataWidth + 2).W))
+  val remainder        = Reg(SInt((dataWidth + 2).W))
   val quotientDividend = Reg(UInt(dataWidth.W))
-  val stepsRemaining = Reg(UInt(log2Ceil(dataWidth + 1).W))
+  val stepsRemaining   = Reg(UInt(log2Ceil(dataWidth + 1).W))
 
   val divisorExt = Cat(0.U(2.W), divisorMagReg).asSInt
 
@@ -224,16 +243,17 @@ class NonRestoringDividerCore(param: DividerParams) extends Module with DividerC
   @LocalSpec(funcSignCorrection)
   val signCorrection = {
     val remCorr = Mux(remainder < 0.S, remainder + divisorExt, remainder)
-    val rRaw = remCorr.asUInt(dataWidth - 1, 0)
-    val qRaw = quotientDividend
-    val qAdj = Mux(signedOpReg && (dividendNegReg ^ divisorNegReg), negU(qRaw), qRaw)
-    val rAdj = Mux(signedOpReg && dividendNegReg, negU(rRaw), rRaw)
+    val rRaw    = remCorr.asUInt(dataWidth - 1, 0)
+    val qRaw    = quotientDividend
+    val qAdj    =
+      Mux(signedOpReg && (dividendNegReg ^ divisorNegReg), negU(qRaw), qRaw)
+    val rAdj    = Mux(signedOpReg && dividendNegReg, negU(rRaw), rRaw)
     (qAdj, rAdj)
   }
-  val (qAdj, rAdj) = signCorrection
+  val (qAdj, rAdj)   = signCorrection
 
-  io.busy := (state =/= sIdle)
-  io.done := (state === sFinish)
+  io.busy   := (state =/= sIdle)
+  io.done   := (state === sFinish)
   io.result := Mux(isRemainderReg, rAdj, qAdj)
 
   when(io.kill) {
@@ -242,21 +262,24 @@ class NonRestoringDividerCore(param: DividerParams) extends Module with DividerC
     switch(state) {
       is(sIdle) {
         when(io.start) {
-          assert(io.dividendMag.orR, "core started with zero dividend magnitude")
+          assert(
+            io.dividendMag.orR,
+            "core started with zero dividend magnitude"
+          )
 
-          signedOpReg := io.isSigned
+          signedOpReg    := io.isSigned
           isRemainderReg := io.isRemainder
           dividendNegReg := io.dividendNeg
-          divisorNegReg := io.divisorNeg
-          divisorMagReg := io.divisorMag
+          divisorNegReg  := io.divisorNeg
+          divisorMagReg  := io.divisorMag
 
           remainder := 0.S
           if (useClzParam) {
             val (steps, shifted) = DividerClz.skip(io.dividendMag, dataWidth)
-            stepsRemaining := steps
+            stepsRemaining   := steps
             quotientDividend := shifted
           } else {
-            stepsRemaining := dataWidth.U
+            stepsRemaining   := dataWidth.U
             quotientDividend := io.dividendMag
           }
 
@@ -265,14 +288,14 @@ class NonRestoringDividerCore(param: DividerParams) extends Module with DividerC
       }
 
       is(sCompute) {
-        val nextBit = quotientDividend(dataWidth - 1)
+        val nextBit        = quotientDividend(dataWidth - 1)
         // F-10: 2*rem+bit fits exactly in dataWidth+2 signed bits.
         val remainderShift = Cat(remainder.asUInt(dataWidth, 0), nextBit).asSInt
-        val subPath = (remainderShift >= 0.S)
-        val remNext = remainderShift + Mux(subPath, -divisorExt, divisorExt)
-        val qBit = (~remNext(dataWidth + 1)).asUInt
+        val subPath        = (remainderShift >= 0.S)
+        val remNext        = remainderShift + Mux(subPath, -divisorExt, divisorExt)
+        val qBit           = (~remNext(dataWidth + 1)).asUInt
 
-        remainder := remNext
+        remainder        := remNext
         quotientDividend := Cat(quotientDividend(dataWidth - 2, 0), qBit)
 
         when(stepsRemaining === 1.U) { state := sFinish }
@@ -299,38 +322,46 @@ class NonRestoringDividerCore(param: DividerParams) extends Module with DividerC
       assert(state === sIdle, "Kill should force return to idle state")
     }
     when(state === sCompute && statePrev === sCompute) {
-      assert(stepsRemaining === RegNext(stepsRemaining) - 1.U, "Steps should decrease by 1 each cycle")
+      assert(
+        stepsRemaining === RegNext(stepsRemaining) - 1.U,
+        "Steps should decrease by 1 each cycle"
+      )
     }
 
     cover(state === sFinish, "Non-restoring division completed")
-    cover(state === sCompute && stepsRemaining === 1.U, "Final compute iteration")
+    cover(
+      state === sCompute && stepsRemaining === 1.U,
+      "Final compute iteration"
+    )
   }
 }
 
 // Restoring divider core (funcRestoringAlgorithm). Emits a 1-cycle valid pulse on finish.
 @LocalSpec(contRestoringDivider)
-class RestoringDivider(param: DividerParams) extends Module with DividerCoreLike {
-  val dataWidth = param.dataWidth
+class RestoringDivider(param: DividerParams)
+    extends Module
+    with DividerCoreLike {
+  val dataWidth   = param.dataWidth
   val useClzParam = param.useClz
 
   val io = IO(new DividerCoreIO(dataWidth))
 
   val sIdle :: sCompute :: sFinish :: Nil = Enum(3)
-  val state = RegInit(sIdle)
+  val state                               = RegInit(sIdle)
 
   // Algorithm registers; operation info pre-decoded by wrapper.
-  val dividendSign = Reg(Bool())
-  val divisorSign = Reg(Bool())
+  val dividendSign  = Reg(Bool())
+  val divisorSign   = Reg(Bool())
   // F-11: corrections apply to signed ops only; raw operand MSBs are meaningless for divu/remu.
-  val signedOp = Reg(Bool())
-  val isRemainder = Reg(Bool())
+  val signedOp      = Reg(Bool())
+  val isRemainder   = Reg(Bool())
   val divisorMagReg = Reg(UInt(dataWidth.W))
   // The compare/subtract of 2R+bit (up to 2^(dataWidth+1)) uses dataWidth+1 bits with an
   // explicit borrow - the old packed-P form compared in dataWidth bits and broke for
   // divisors >= 2^(dataWidth-1).
-  val Rreg = Reg(UInt(dataWidth.W))
-  val Qreg = Reg(UInt(dataWidth.W))
-  val cnt = Reg(UInt(log2Ceil(dataWidth + 1).W))
+  val Rreg          = Reg(UInt(dataWidth.W))
+  val Qreg          = Reg(UInt(dataWidth.W))
+  val cnt           = Reg(UInt(log2Ceil(dataWidth + 1).W))
 
   when(io.kill) {
     state := sIdle
@@ -338,35 +369,45 @@ class RestoringDivider(param: DividerParams) extends Module with DividerCoreLike
     switch(state) {
       is(sIdle) {
         when(io.start) {
-          assert(io.dividendMag.orR, "core started with zero dividend magnitude")
+          assert(
+            io.dividendMag.orR,
+            "core started with zero dividend magnitude"
+          )
 
           dividendSign := io.dividendNeg
-          divisorSign := io.divisorNeg
-          signedOp := io.isSigned
-          isRemainder := io.isRemainder
+          divisorSign  := io.divisorNeg
+          signedOp     := io.isSigned
+          isRemainder  := io.isRemainder
 
           divisorMagReg := io.divisorMag
-          Rreg := 0.U
+          Rreg          := 0.U
           if (useClzParam) {
             val (steps, shifted) = DividerClz.skip(io.dividendMag, dataWidth)
-            cnt := steps
+            cnt  := steps
             Qreg := shifted
           } else {
-            cnt := dataWidth.U
+            cnt  := dataWidth.U
             Qreg := io.dividendMag
           }
-          state := sCompute
+          state         := sCompute
         }
       }
 
       is(sCompute) {
-        val Rsh = Cat(Rreg, Qreg(dataWidth - 1))            // 2R + next dividend bit, dataWidth+1 bits
+        val Rsh = Cat(
+          Rreg,
+          Qreg(dataWidth - 1)
+        ) // 2R + next dividend bit, dataWidth+1 bits
         val divisorExt = Cat(0.U(1.W), divisorMagReg)
-        val qBit = Rsh >= divisorExt
-        val Rnext = Mux(qBit, Rsh - divisorExt, Rsh)        // restore if it would go negative
-        Rreg := Rnext(dataWidth - 1, 0)                     // invariant: Rnext < divisor < 2^dataWidth
+        val qBit       = Rsh >= divisorExt
+        val Rnext      =
+          Mux(qBit, Rsh - divisorExt, Rsh) // restore if it would go negative
+        Rreg := Rnext(
+          dataWidth - 1,
+          0
+        ) // invariant: Rnext < divisor < 2^dataWidth
         Qreg := Cat(Qreg(dataWidth - 2, 0), qBit)
-        cnt := cnt - 1.U
+        cnt  := cnt - 1.U
         when(cnt === 1.U) { state := sFinish }
       }
 
@@ -384,10 +425,10 @@ class RestoringDivider(param: DividerParams) extends Module with DividerCoreLike
     val rFin = Mux(signedOp && dividendSign, (0.U - rAbs), rAbs)
     (qFin, rFin)
   }
-  val (qFin, rFin) = signCorrectionOutput
+  val (qFin, rFin)         = signCorrectionOutput
 
-  io.busy := (state =/= sIdle)
-  io.done := (state === sFinish)
+  io.busy   := (state =/= sIdle)
+  io.done   := (state === sFinish)
   io.result := Mux(isRemainder, rFin, qFin)
 
   @LocalSpec(propSingleCycleValid)

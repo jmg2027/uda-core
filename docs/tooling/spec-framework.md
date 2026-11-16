@@ -28,11 +28,13 @@ bash verif/bin/setup.sh        # Linux
 bash verif/bin/setup-macos.sh  # Apple Silicon macOS
 ```
 
-The Linux setup path is unchanged. The Apple Silicon path pins the validated
+The Linux path provisions its system tools, including Icarus for SRAM model
+comparison. The Apple Silicon path pins the validated
 JDK 17 / Scala 2.13.12 / Chisel 6.2.0 / firtool 1.62.0 / Verilator 5.020 tuple.
 `firtool` is the upstream macOS x86_64 release and is invoked through an explicit
 Rosetta wrapper; Verilator 5.020 is built as a native arm64 executable. The script
-finds or installs the RISC-V GCC/binutils tools and exposes the historical
+also builds checksum-pinned native Espresso for decode minimization, installs
+Icarus, and finds or installs the RISC-V GCC/binutils tools. It exposes the historical
 `riscv64-unknown-elf-*` command names expected by the verification harness.
 
 The macOS setup deliberately selects `MacOSX26.5.sdk`. The default

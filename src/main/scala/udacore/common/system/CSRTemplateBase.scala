@@ -28,6 +28,5 @@ object CSRTemplateBase {
     }
   }
 
-  abstract class CoreCSRReg[T <: Bundle]
-      extends CSRRegTemplate[T]
+  abstract class CoreCSRReg[T <: Bundle] extends CSRRegTemplate[T]
 }

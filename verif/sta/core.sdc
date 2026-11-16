@@ -1,27 +1,18 @@
 # Out-of-context STA constraints for the rebuild line (sky130 HD, OpenSTA), shared by the
 # CoreTop and functional-unit targets (STA_TOP selects the linked design in report.tcl).
 #
-# Ported from the main line's klase32.sdc. Three things make the reported ns a defensible
-# pre-layout number instead of an unbuffered-net artifact:
-#   1. fanout buffering happens in synthesis - verif/bin/sta.sh runs abc `buffer`/`upsize`/`dnsize`,
-#      so a high-fanout net is driven by a real buffer tree, not one overloaded gate.
-#   2. a statistical wire-load model (liberty "Small": fanout -> length -> R/C) charges every net a
-#      realistic parasitic cap/res from its fanout, instead of an ideal zero-cap wire.
-#   3. every data IO gets a driving cell + load and an off-chip input/output delay, so input cones
-#      are timed from a realistic source, not an ideal zero-arrival one.
-# What is still missing vs a signed-off flow is real placement (actual wire lengths) and a clock
-# tree; the wire-load model estimates the former statistically and reset/clock are handled below.
+# The estimate combines mapped standard cells, synthesis buffering, a statistical wire-load
+# model (liberty "Small": fanout -> length -> R/C), and explicit data IO budgets/load.
+# It has no placement, extracted parasitics or clock tree. Core runs load a pinned OpenRAM
+# SRAM library whose timing is analytical Elmore, not PEX characterization.
 #
 # Overridable from the environment: STA_PERIOD (clock), STA_MEM_MARGIN (external-memory IO
 # fraction, default 0.6), STA_IO_MARGIN (all other IO fraction, default 0.3), STA_MEM_GLOB
 # (port glob for the memory boundary, default io_*Bus_* = the TileLink links). Sweep STA_PERIOD to find
-# the frequency the design actually closes at.
+# a different modeled clock constraint. OQ-C performance acceptance remains owner-defined.
 #
-# reset is a global net that in silicon gets its own buffer tree (like the clock). In OOC there is
-# no such tree, so it is modelled the way it will be built rather than as one off-chip pin driving
-# the whole design: false path (arrival), ideal network, and (in the IO section below) no off-chip
-# driving cell - so its transition is ideal instead of the huge slew a single driver into a
-# several-thousand-fanout wire-load net would give, which otherwise bleeds into every data gate.
+# Clock and reset distribution are ideal in this setup analysis; their implementation needs
+# physical design and recovery/removal checks outside this flow. Reset is a false path below.
 
 set period [expr {[info exists ::env(STA_PERIOD)] ? $::env(STA_PERIOD) : 10.0}]
 # IO budget as a fraction of the clock period, applied per port. The external memory boundary
@@ -67,13 +58,14 @@ set_max_fanout      16.0 [current_design]
 set_max_transition  0.75 [current_design]
 set_max_capacitance 0.5  [current_design]
 
-# Asynchronous inputs: debugReq is the only async pin by spec on the main line; the rebuild's
-# intfDebugReqIn is speced rawNoDecoupled and lands on the same treatment when CoreTop's io
-# exists. string match keeps this a no-op for unit targets without such a port.
+# Debug requests have no synchronous launch relationship to the core clock. Interrupt pins
+# retain the explicit IO launch budget in this OOC model; synchronizer/CDC implementation is
+# outside this setup analysis. string match keeps this a no-op for unit targets.
 foreach in_port [all_inputs] {
   if {[string match "io_debugReq*" [get_name $in_port]]} { set_false_path -from $in_port }
 }
 if {[llength [get_ports -quiet reset]] > 0} {
+  set_input_delay 0.0 -clock clk [get_ports reset]
   set_false_path -from [get_ports reset]
   set_ideal_network [get_ports reset]
 }

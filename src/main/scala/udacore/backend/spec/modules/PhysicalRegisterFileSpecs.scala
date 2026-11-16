@@ -13,8 +13,8 @@ object PhysicalRegisterFileSpecs {
     CONTRACT("PhysicalRegisterFile")
       .desc(
         "IntegerPrfEntries registers holding every speculative and committed integer value. " +
-        "The ROB is data-less, so the PRF is the only value store: commit changes the rRAT " +
-        "mapping, never copies data. p0 always reads zero and is never written."
+          "The ROB is data-less, so the PRF is the only value store: commit changes the rRAT " +
+          "mapping, never copies data. p0 always reads zero and is never written."
       )
       .has(
         intfPhysicalRegWriteIn,
@@ -28,8 +28,8 @@ object PhysicalRegisterFileSpecs {
       .uses(paramIntegerPrfEntries, paramPublishWidth, paramIssueWidth)
       .note(
         "Recovery stance: recovery-exempt. Values of killed producers become unreachable when " +
-        "rename restores its map, and their prds return through the free list; the PRF itself " +
-        "holds no program-order state and observes no RecoveryEvent."
+          "rename restores its map, and their prds return through the free list; the PRF itself " +
+          "holds no program-order state and observes no RecoveryEvent."
       )
       .build()
   }
@@ -60,7 +60,9 @@ object PhysicalRegisterFileSpecs {
 
   val intfCommitPrfReadReqIn = spec {
     INTERFACE("CommitPrfReadReqIn")
-      .desc("Verification-only commit-time read request from the CommitUnit (ADR-019B E-3); always ready; elaborated only when usingRvvi.")
+      .desc(
+        "Verification-only commit-time read request from the CommitUnit (ADR-019B E-3); always ready; elaborated only when usingRvvi."
+      )
       .uses(bndCommitPrfReadReq)
       .is(rawReadyValidIntf)
       .build()
@@ -68,7 +70,9 @@ object PhysicalRegisterFileSpecs {
 
   val intfCommitPrfReadRespOut = spec {
     INTERFACE("CommitPrfReadRespOut")
-      .desc("Same-cycle answer to CommitPrfReadReqIn (ADR-019B E-3); elaborated only when usingRvvi.")
+      .desc(
+        "Same-cycle answer to CommitPrfReadReqIn (ADR-019B E-3); elaborated only when usingRvvi."
+      )
       .uses(bndCommitPrfReadResp)
       .is(rawReadyValidIntf)
       .build()
@@ -78,18 +82,25 @@ object PhysicalRegisterFileSpecs {
     FUNCTION("ReadAtSelect")
       .desc(
         "Operands are read when the RS selects a uop: 2 x IssueWidth read ports, plus " +
-        "CommitWidth commit-time read ports (CommitPrfReadReqIn/RespOut, always ready, answered " +
-        "in the same cycle) that exist only when usingRvvi elaborates the retire stream " +
-        "(ADR-010 D-10.3, ADR-019B E-3). A read in the same cycle as a write to the same prd " +
-        "returns the new value."
+          "CommitWidth commit-time read ports (CommitPrfReadReqIn/RespOut, always ready, answered " +
+          "in the same cycle) that exist only when usingRvvi elaborates the retire stream " +
+          "(ADR-010 D-10.3, ADR-019B E-3). A read in the same cycle as a write to the same prd " +
+          "returns the new value."
       )
-      .uses(intfRegisterFileReadReqIn, intfRegisterFileReadRespOut, intfCommitPrfReadReqIn, intfCommitPrfReadRespOut)
+      .uses(
+        intfRegisterFileReadReqIn,
+        intfRegisterFileReadRespOut,
+        intfCommitPrfReadReqIn,
+        intfCommitPrfReadRespOut
+      )
       .build()
   }
 
   val propPrfPortsFixed = spec {
     PROPERTY("PrfPortsFixed")
-      .desc("PRF depth is IntegerPrfEntries; read/write port counts depend only on IssueWidth, PublishWidth, and CommitWidth, never on ROB or PRF depth.")
+      .desc(
+        "PRF depth is IntegerPrfEntries; read/write port counts depend only on IssueWidth, PublishWidth, and CommitWidth, never on ROB or PRF depth."
+      )
       .uses(paramIntegerPrfEntries)
       .note("Elaboration require.")
       .build()

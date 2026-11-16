@@ -77,11 +77,12 @@ if [ ! -x "$FIRTOOL_DIR/firtool" ]; then
     && tar -xzf "$CACHE/firtool.tgz" -C /tmp 2>/dev/null && ok "firtool" || log "WARN: firtool download failed"
 else ok "firtool present"; fi
 
-# 6. system packages (verilator, riscv gcc/binutils, ccache). ccache activates the env.sh
+# 6. System packages (Verilator, Icarus, RISC-V GCC/binutils, ccache). ccache activates the env.sh
 # OBJCACHE path: the Verilated C++ of an unchanged DUT is byte-identical across runs, so with it
 # installed a recompile collapses to cache hits (the g++ step is the wall-clock bulk).
 need_apt=""
 command -v verilator >/dev/null 2>&1 || need_apt="$need_apt verilator"
+command -v iverilog >/dev/null 2>&1 || need_apt="$need_apt iverilog"
 command -v ccache >/dev/null 2>&1 || need_apt="$need_apt ccache"
 command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 || need_apt="$need_apt gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf"
 if [ -n "$need_apt" ]; then

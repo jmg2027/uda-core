@@ -73,7 +73,7 @@ object CSR {
       // supervisor + user. No A, F, D, or C (compressed) extension is implemented.
       val isaString =
         "IMSU"
-      val isaMax = (BigInt(log2Ceil(32) - 4) << (32 - 2)) |
+      val isaMax    = (BigInt(log2Ceil(32) - 4) << (32 - 2)) |
         isaString
           .map(x => 1 << (x - 'A'))
           .foldLeft((0))(_ | _)

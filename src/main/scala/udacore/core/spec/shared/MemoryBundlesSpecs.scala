@@ -17,7 +17,9 @@ object MemoryBundlesSpecs {
 
   val bndSv32Pte = spec {
     BUNDLE("Sv32Pte")
-      .desc("Sv32 page-table entry as read by the PTW (RISC-V privileged spec).")
+      .desc(
+        "Sv32 page-table entry as read by the PTW (RISC-V privileged spec)."
+      )
       .markdownTable(
         List("Bits", "Field", "Meaning"),
         List(
@@ -42,13 +44,33 @@ object MemoryBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("valid", "Bool", "Entry holds a translation."),
-          List("vpn", "UInt(20)", "Virtual page number; for a superpage only VPN[1] is compared."),
+          List(
+            "vpn",
+            "UInt(20)",
+            "Virtual page number; for a superpage only VPN[1] is compared."
+          ),
           List("superpage", "Bool", "4 MiB leaf found at level 1."),
-          List("ppn", "UInt(22)", "Physical page number; for a superpage PPN[0] is replaced by VPN[0]."),
-          List("asid", "UInt(9)", "Address-space id of the walk that filled it."),
-          List("global", "Bool", "G of any PTE on the walk (non-leaf or leaf): matches every ASID."),
+          List(
+            "ppn",
+            "UInt(22)",
+            "Physical page number; for a superpage PPN[0] is replaced by VPN[0]."
+          ),
+          List(
+            "asid",
+            "UInt(9)",
+            "Address-space id of the walk that filled it."
+          ),
+          List(
+            "global",
+            "Bool",
+            "G of any PTE on the walk (non-leaf or leaf): matches every ASID."
+          ),
           List("r, w, x, u, a, d", "Bool", "Leaf PTE permission/status bits."),
-          List("pma", "PmaAttr", "Physical attributes of the page from paramPmaMap.")
+          List(
+            "pma",
+            "PmaAttr",
+            "Physical attributes of the page from paramPmaMap."
+          )
         )
       )
       .uses(paramTlbGeometry, paramPmaMap)
@@ -61,9 +83,17 @@ object MemoryBundlesSpecs {
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("reqId", "UInt", "Requester-local id (FetchUnit fetch generation, or LSQ entry id and generation)."),
+          List(
+            "reqId",
+            "UInt",
+            "Requester-local id (FetchUnit fetch generation, or LSQ entry id and generation)."
+          ),
           List("vaddr", "UInt(vAddrWidth)", "Virtual address."),
-          List("access", "AccessType", "Fetch | Load | Store (selects permission check and fault cause).")
+          List(
+            "access",
+            "AccessType",
+            "Fetch | Load | Store (selects permission check and fault cause)."
+          )
         )
       )
       .uses(paramVAddrWidth)
@@ -77,7 +107,11 @@ object MemoryBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("reqId", "UInt", "Echo of the request id."),
-          List("status", "TranslationStatus", "Hit | Miss (walk started or joined) | PageFault | AccessFault."),
+          List(
+            "status",
+            "TranslationStatus",
+            "Hit | Miss (walk started or joined) | PageFault | AccessFault."
+          ),
           List("paddr", "UInt(pAddrWidth)", "Physical address (Hit)."),
           List("cacheable", "Bool", "PMA attribute of paddr (Hit).")
         )
@@ -93,7 +127,11 @@ object MemoryBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("vpn", "UInt(20)", "Virtual page number to walk."),
-          List("context", "TranslationContext", "satp root and ASID captured at the miss.")
+          List(
+            "context",
+            "TranslationContext",
+            "satp root and ASID captured at the miss."
+          )
         )
       )
       .build()
@@ -106,7 +144,11 @@ object MemoryBundlesSpecs {
         List("Name", "Type", "Description"),
         List(
           List("vpn", "UInt(20)", "Walked VPN."),
-          List("status", "WalkStatus", "Leaf | PageFault (invalid, reserved W-without-R, misaligned superpage, no leaf at level 0) | AccessFault (PMA-illegal PTE address or denied PTE read) | Retry (the walk overlapped an SFENCE.VMA; nothing may be installed)."),
+          List(
+            "status",
+            "WalkStatus",
+            "Leaf | PageFault (invalid, reserved W-without-R, misaligned superpage, no leaf at level 0) | AccessFault (PMA-illegal PTE address or denied PTE read) | Retry (the walk overlapped an SFENCE.VMA; nothing may be installed)."
+          ),
           List("entry", "TlbEntry", "Refill contents (Leaf).")
         )
       )
@@ -119,7 +161,13 @@ object MemoryBundlesSpecs {
       .desc("A PTE read issued by the PTW. Physical address; never translated.")
       .markdownTable(
         List("Name", "Type", "Description"),
-        List(List("paddr", "UInt(pAddrWidth)", "Physical address of the 4-byte PTE."))
+        List(
+          List(
+            "paddr",
+            "UInt(pAddrWidth)",
+            "Physical address of the 4-byte PTE."
+          )
+        )
       )
       .uses(paramPAddrWidth)
       .build()
@@ -141,12 +189,22 @@ object MemoryBundlesSpecs {
 
   val bndTlbFlush = spec {
     BUNDLE("TlbFlush")
-      .desc("SFENCE.VMA service token. v0 carries the rs1/rs2 operands but every encoding invalidates all entries.")
+      .desc(
+        "SFENCE.VMA service token. v0 carries the rs1/rs2 operands but every encoding invalidates all entries."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("vaddr, vaddrValid", "UInt(vAddrWidth), Bool", "rs1 operand (ignored in v0)."),
-          List("asid, asidValid", "UInt(9), Bool", "rs2 operand (ignored in v0).")
+          List(
+            "vaddr, vaddrValid",
+            "UInt(vAddrWidth), Bool",
+            "rs1 operand (ignored in v0)."
+          ),
+          List(
+            "asid, asidValid",
+            "UInt(9), Bool",
+            "rs2 operand (ignored in v0)."
+          )
         )
       )
       .build()
@@ -156,12 +214,22 @@ object MemoryBundlesSpecs {
 
   val bndICacheReq = spec {
     BUNDLE("ICacheReq")
-      .desc("Fetch lookup into the VIPT I-cache, issued in the same cycle as the matching ITLB request.")
+      .desc(
+        "Fetch lookup into the VIPT I-cache, issued in the same cycle as the matching ITLB request."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("vaddr", "UInt(vAddrWidth)", "Fetch-block virtual address; set index from untranslated bits."),
-          List("reqId", "UInt", "FetchUnit fetch generation (stale-response filter).")
+          List(
+            "vaddr",
+            "UInt(vAddrWidth)",
+            "Fetch-block virtual address; set index from untranslated bits."
+          ),
+          List(
+            "reqId",
+            "UInt",
+            "FetchUnit fetch generation (stale-response filter)."
+          )
         )
       )
       .build()
@@ -175,7 +243,11 @@ object MemoryBundlesSpecs {
         List(
           List("reqId", "UInt", "Echo."),
           List("data", "Vec(4, UInt(32))", "The aligned 16-byte fetch block."),
-          List("fault", "FetchFault", "None | InstPageFault | InstAccessFault (translation or fill denied).")
+          List(
+            "fault",
+            "FetchFault",
+            "None | InstPageFault | InstAccessFault (translation or fill denied)."
+          )
         )
       )
       .build()
@@ -185,12 +257,22 @@ object MemoryBundlesSpecs {
 
   val bndDCacheLoadReq = spec {
     BUNDLE("DCacheLoadReq")
-      .desc("Speculative cached load lookup into the VIPT D-cache, issued in the same cycle as the matching DTLB request. Uncacheable loads never use this path after their first (Uncacheable-answered) lookup.")
+      .desc(
+        "Speculative cached load lookup into the VIPT D-cache, issued in the same cycle as the matching DTLB request. Uncacheable loads never use this path after their first (Uncacheable-answered) lookup."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("lqIdx, lqGen", "UInt", "LQ entry and its allocation generation."),
-          List("vaddr", "UInt(vAddrWidth)", "Load virtual address; set index from untranslated bits."),
+          List(
+            "lqIdx, lqGen",
+            "UInt",
+            "LQ entry and its allocation generation."
+          ),
+          List(
+            "vaddr",
+            "UInt(vAddrWidth)",
+            "Load virtual address; set index from untranslated bits."
+          ),
           List("size", "UInt(2)", "Access size.")
         )
       )
@@ -199,14 +281,28 @@ object MemoryBundlesSpecs {
 
   val bndDCacheLoadResp = spec {
     BUNDLE("DCacheLoadResp")
-      .desc("Load answer; may return out of order (hit-under-miss) and is reassociated by lqIdx/lqGen.")
+      .desc(
+        "Load answer; may return out of order (hit-under-miss) and is reassociated by lqIdx/lqGen."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("lqIdx, lqGen", "UInt", "Echo."),
-          List("status", "LoadStatus", "Data | TlbMiss | Replay (no MSHR/target free) | PageFault | AccessFault | Uncacheable (must retry at head)."),
-          List("paddr", "UInt(pAddrWidth)", "Translated physical address (every status after a TLB hit)."),
-          List("data", "UInt(XLen)", "Loaded bytes (Data).")
+          List(
+            "status",
+            "LoadStatus",
+            "Data | TlbMiss | Replay (no MSHR/target free) | PageFault | AccessFault | Uncacheable (must retry at head)."
+          ),
+          List(
+            "paddr",
+            "UInt(pAddrWidth)",
+            "Translated physical address (every status after a TLB hit)."
+          ),
+          List(
+            "data",
+            "UInt(XLen)",
+            "Naturally aligned word containing the access, with byte lanes unchanged (Data); the LSQ extracts and extends the requested bytes."
+          )
         )
       )
       .uses(paramPAddrWidth)
@@ -215,7 +311,9 @@ object MemoryBundlesSpecs {
 
   val bndStoreDrainReq = spec {
     BUNDLE("StoreDrainReq")
-      .desc("One committed store from the StoreBuffer head into the D-cache. Physical address.")
+      .desc(
+        "One committed store from the StoreBuffer head into the D-cache. Physical address."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
@@ -228,18 +326,30 @@ object MemoryBundlesSpecs {
 
   val bndStoreDrainResp = spec {
     BUNDLE("StoreDrainResp")
-      .desc("Completion of one committed cacheable store drain (the bytes are in the array). Never faults: cacheable regions are fill/writeback-fault-free by the paramPmaMap contract.")
+      .desc(
+        "Completion of one committed cacheable store drain (the bytes are in the array). Never faults: cacheable regions are fill/writeback-fault-free by the paramPmaMap contract."
+      )
       .build()
   }
 
   val bndUncachedLoadReq = spec {
     BUNDLE("UncachedLoadReq")
-      .desc("LSQ to D-cache uncached port: the single bus read of a granted uncacheable load. Physical address; no TLB pairing.")
+      .desc(
+        "LSQ to D-cache uncached port: the single bus read of a granted uncacheable load. Physical address; no TLB pairing."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("lqIdx, lqGen", "UInt", "LQ entry and allocation generation (response reassociation)."),
-          List("paddr", "UInt(pAddrWidth)", "Physical address recorded from the first lookup's translation."),
+          List(
+            "lqIdx, lqGen",
+            "UInt",
+            "LQ entry and allocation generation (response reassociation)."
+          ),
+          List(
+            "paddr",
+            "UInt(pAddrWidth)",
+            "Physical address recorded from the first lookup's translation."
+          ),
           List("size", "UInt(2)", "Access size (Get of that size).")
         )
       )
@@ -249,13 +359,23 @@ object MemoryBundlesSpecs {
 
   val bndUncachedLoadResp = spec {
     BUNDLE("UncachedLoadResp")
-      .desc("Bus answer of an uncached load, returned only after the TileLink AccessAckData.")
+      .desc(
+        "Bus answer of an uncached load, returned only after the TileLink AccessAckData."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("lqIdx, lqGen", "UInt", "Echo."),
-          List("data", "UInt(XLen)", "Raw loaded bytes (the LSQ sign/zero-extends)."),
-          List("accessFault", "Bool", "TileLink denied/corrupt: precise load access fault, the load is still at the ROB head.")
+          List(
+            "data",
+            "UInt(XLen)",
+            "Raw loaded bytes (the LSQ sign/zero-extends)."
+          ),
+          List(
+            "accessFault",
+            "Bool",
+            "TileLink denied/corrupt: precise load access fault, the load is still at the ROB head."
+          )
         )
       )
       .build()
@@ -263,13 +383,19 @@ object MemoryBundlesSpecs {
 
   val bndUncachedStoreReq = spec {
     BUNDLE("UncachedStoreReq")
-      .desc("LSQ to D-cache uncached port: the single bus write of a granted uncacheable store. Physical address.")
+      .desc(
+        "LSQ to D-cache uncached port: the single bus write of a granted uncacheable store. Physical address."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("sqIdx", "UInt", "SQ entry (response reassociation)."),
           List("paddr", "UInt(pAddrWidth)", "Physical address."),
-          List("data, mask", "UInt(XLen), UInt(XLen/8)", "Bytes (PutPartialData).")
+          List(
+            "data, mask",
+            "UInt(XLen), UInt(XLen/8)",
+            "Bytes (PutPartialData)."
+          )
         )
       )
       .uses(paramPAddrWidth)
@@ -278,12 +404,18 @@ object MemoryBundlesSpecs {
 
   val bndUncachedStoreResp = spec {
     BUNDLE("UncachedStoreResp")
-      .desc("Bus acknowledgement of an uncached store, returned only after the TileLink AccessAck.")
+      .desc(
+        "Bus acknowledgement of an uncached store, returned only after the TileLink AccessAck."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("sqIdx", "UInt", "Echo."),
-          List("accessFault", "Bool", "TileLink denied/corrupt: precise store access fault, the store is still at the ROB head.")
+          List(
+            "accessFault",
+            "Bool",
+            "TileLink denied/corrupt: precise store access fault, the store is still at the ROB head."
+          )
         )
       )
       .build()
@@ -291,7 +423,9 @@ object MemoryBundlesSpecs {
 
   val bndCacheMaintenance = spec {
     BUNDLE("CacheMaintenance")
-      .desc("fence.i maintenance token: I-cache invalidate-all, or D-cache clean-all (write back every dirty line, lines stay valid).")
+      .desc(
+        "fence.i maintenance token: I-cache invalidate-all, or D-cache clean-all (write back every dirty line, lines stay valid)."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(List("op", "MaintOp", "ICacheInvalidateAll | DCacheCleanAll"))
@@ -301,12 +435,22 @@ object MemoryBundlesSpecs {
 
   val bndInstMemReq = spec {
     BUNDLE("InstMemReq")
-      .desc("I-cache to InstBusAdapter: line fill (Get of lineBytes) or uncached fetch Get. Physical address.")
+      .desc(
+        "I-cache to InstBusAdapter: line fill (Get of lineBytes) or uncached fetch Get. Physical address."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("paddr", "UInt(pAddrWidth)", "Line-aligned (fill) or block-aligned (uncached)."),
-          List("size", "UInt", "log2 bytes: lineBytes for a fill, 16 for an uncached block.")
+          List(
+            "paddr",
+            "UInt(pAddrWidth)",
+            "Line-aligned (fill) or block-aligned (uncached)."
+          ),
+          List(
+            "size",
+            "UInt",
+            "log2 bytes: lineBytes for a fill, 16 for an uncached block."
+          )
         )
       )
       .build()
@@ -320,7 +464,11 @@ object MemoryBundlesSpecs {
         List(
           List("data", "UInt(XLen)", "Beat."),
           List("last", "Bool", "Final beat."),
-          List("denied", "Bool", "TileLink denied/corrupt: instruction access fault.")
+          List(
+            "denied",
+            "Bool",
+            "TileLink denied/corrupt: instruction access fault."
+          )
         )
       )
       .build()
@@ -328,14 +476,47 @@ object MemoryBundlesSpecs {
 
   val bndDataMemReq = spec {
     BUNDLE("DataMemReq")
-      .desc("D-cache to DataBusAdapter: line fill, dirty-line writeback, or uncached access. Physical address.")
+      .desc(
+        "D-cache to DataBusAdapter: physical line fill, dirty-line writeback, or uncached " +
+          "access. GetLine, GetUncached, and PutUncached use one request token. PutLine uses " +
+          "one token per line beat with the same source, line address, and total transfer size; " +
+          "last marks only its final beat. PutLine tokens are contiguous on this edge. A source " +
+          "cannot be reused until its final response beat transfers."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("op", "DataMemOp", "GetLine | PutLine | GetUncached | PutUncached"),
-          List("source", "UInt", "MSHR id, writeback id, or uncached id."),
-          List("paddr", "UInt(pAddrWidth)", "Address."),
-          List("data, mask, last", "", "Put beats.")
+          List(
+            "op",
+            "DataMemOp",
+            "GetLine | PutLine | GetUncached | PutUncached"
+          ),
+          List(
+            "source",
+            "UInt(dataBus.sourceBits)",
+            "MSHR id, writeback id, or uncached id."
+          ),
+          List(
+            "paddr",
+            "UInt(pAddrWidth)",
+            "Physical address; line base for GetLine/PutLine."
+          ),
+          List(
+            "size",
+            "UInt(dataBus.sizeBits)",
+            "Log2 total transfer bytes; line size for line operations, access size for uncached operations."
+          ),
+          List("data", "UInt(dataWidth)", "Put beat; zero for Get."),
+          List(
+            "mask",
+            "UInt(dataWidth/8)",
+            "Byte lanes for PutUncached; full beat for PutLine."
+          ),
+          List(
+            "last",
+            "Bool",
+            "Final PutLine beat; true on each single-token operation."
+          )
         )
       )
       .build()
@@ -343,12 +524,22 @@ object MemoryBundlesSpecs {
 
   val bndDataMemResp = spec {
     BUNDLE("DataMemResp")
-      .desc("DataBusAdapter to D-cache: AccessAck/AccessAckData beats reassociated by source.")
+      .desc(
+        "DataBusAdapter to D-cache: AccessAck/AccessAckData beats reassociated by source. For a GetLine, last marks the final D beat; for each other operation its only D beat is last."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("source", "UInt", "Echo."),
-          List("data, last", "UInt(XLen), Bool", "Beat."),
+          List(
+            "source",
+            "UInt(dataBus.sourceBits)",
+            "Echo of the request source."
+          ),
+          List(
+            "data, last",
+            "UInt(dataWidth), Bool",
+            "Response beat and final-beat indicator."
+          ),
           List("denied", "Bool", "Access fault.")
         )
       )

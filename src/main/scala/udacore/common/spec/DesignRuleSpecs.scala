@@ -34,7 +34,7 @@ object DesignRuleSpecs {
       )
       .note(
         "Only the enumerated rawNoDecoupled classes may bypass Decoupled; everything else " +
-        "is a ready/valid edge. A stall is ready backpressure on an edge, never a dedicated wire."
+          "is a ready/valid edge. A stall is ready backpressure on an edge, never a dedicated wire."
       )
       .build()
   }
@@ -51,26 +51,46 @@ object DesignRuleSpecs {
       .markdownTable(
         List("Class", "Sanctioned use", "Example"),
         List(
-          List("1", "local transaction-generation tag of an uncancelable request/response pair (never a program-order kill)", "fetch generation on I-cache responses"),
+          List(
+            "1",
+            "local transaction-generation tag of an uncancelable request/response pair (never a program-order kill)",
+            "fetch generation on I-cache responses"
+          ),
           List("2", "asynchronous system inputs", "interrupt lines, debugReq"),
           List("3", "boot-time statics", "bootAddr, hartEn"),
-          List("4", "commit-time broadcast strobes and committed-state views", "commitGrant, ROB head position, translation context"),
-          List("5", "wakeup broadcast derived from result publication", "WakeupBroadcast"),
-          List("6", "ADR-019 speculative RecoveryEvent broadcast", "RecoveryEvent"),
-          List("7", "execution-capacity views derived only from registered state and the drain of already-held tokens, never from the request they gate (ADR-019C E-1/E-2)", "FuAvailability")
+          List(
+            "4",
+            "commit-time broadcast strobes and committed-state views",
+            "commitGrant, ROB head position, translation context"
+          ),
+          List(
+            "5",
+            "wakeup broadcast derived from result publication",
+            "WakeupBroadcast"
+          ),
+          List(
+            "6",
+            "ADR-019 speculative RecoveryEvent broadcast",
+            "RecoveryEvent"
+          ),
+          List(
+            "7",
+            "execution-capacity views derived only from registered state and the drain of already-held tokens, never from the request they gate (ADR-019C E-1/E-2)",
+            "FuAvailability"
+          )
         )
       )
       .note(
         "Anything else on this classification is a doctrine violation. The RecoveryEvent " +
-        "(class 6) publishes an already-made recovery decision; it is not a queued transfer " +
-        "and cannot be backpressured. It is the ONLY sanctioned program-order squash fact: " +
-        "no other flush/kill/stall side-channel exists, and each speculative holder derives " +
-        "its own younger-than invalidation locally (ADR-019 D-19.9, D-19.14)."
+          "(class 6) publishes an already-made recovery decision; it is not a queued transfer " +
+          "and cannot be backpressured. It is the ONLY sanctioned program-order squash fact: " +
+          "no other flush/kill/stall side-channel exists, and each speculative holder derives " +
+          "its own younger-than invalidation locally (ADR-019 D-19.9, D-19.14)."
       )
       .note(
         "A broadcast FACT differs from a broadcast TRANSFER: projections of the same event " +
-        "that move a queued token (e.g. the committed-store handoff into the StoreBuffer) " +
-        "remain ready/valid edges; only the strobe-like projections ride this class."
+          "that move a queued token (e.g. the committed-store handoff into the StoreBuffer) " +
+          "remain ready/valid edges; only the strobe-like projections ride this class."
       )
       .build()
   }
@@ -79,17 +99,17 @@ object DesignRuleSpecs {
     RAW("ExtensionContribution", "ExtensionContribution")
       .desc(
         "ADR-017: an optional extension contributes ONLY as (a) an optional vertex wired " +
-        "over INTERFACE-spec'd edges in a rawTop, and/or (b) data contributions to the two " +
-        "designated merge points: per-extension decode rows (Seq[InstPattern], gated by the " +
-        "enable at elaboration) and CSR map entries (Map[Int, Csr]) merged into the single " +
-        "CsrAccess.readFromCsr map."
+          "over INTERFACE-spec'd edges in a rawTop, and/or (b) data contributions to the two " +
+          "designated merge points: per-extension decode rows (Seq[InstPattern], gated by the " +
+          "enable at elaboration) and CSR map entries (Map[Int, Csr]) merged into the single " +
+          "CsrAccess.readFromCsr map."
       )
       .note(
         "Forbidden (main-line Feature-pattern mechanisms): connectIo-style functions that " +
-        "reach into another vertex's internal signals; hardware constructed as a side " +
-        "effect of method calls whose call-site position matters; re-instantiating `def` " +
-        "feature handles. A disabled extension is ABSENT from decode so its instructions " +
-        "trap illegal (propDisabledExtensionTraps), never compute silently."
+          "reach into another vertex's internal signals; hardware constructed as a side " +
+          "effect of method calls whose call-site position matters; re-instantiating `def` " +
+          "feature handles. A disabled extension is ABSENT from decode so its instructions " +
+          "trap illegal (propDisabledExtensionTraps), never compute silently."
       )
       .build()
   }
@@ -98,15 +118,15 @@ object DesignRuleSpecs {
     RAW("SpeculativeHolder", "SpeculativeHolder")
       .desc(
         "ADR-019 classification for every vertex that holds program-order speculative " +
-        "state (ROB, rename checkpoints, RS, FU pipelines, LSQ, FTQ, fetch buffer, " +
-        "in-flight fetch). Its CONTRACT MUST state: (1) how entries are ordered; (2) what " +
-        "makes an entry live; (3) how the RecoveryEvent decides younger (funcRecoveryKills " +
-        "over funcRobOlder, or the FTQ-index instance of the same order rule); (4) what " +
-        "state survives recovery; (5) how resources are reclaimed."
+          "state (ROB, rename checkpoints, RS, FU pipelines, LSQ, FTQ, fetch buffer, " +
+          "in-flight fetch). Its CONTRACT MUST state: (1) how entries are ordered; (2) what " +
+          "makes an entry live; (3) how the RecoveryEvent decides younger (funcRecoveryKills " +
+          "over funcRobOlder, or the FTQ-index instance of the same order rule); (4) what " +
+          "state survives recovery; (5) how resources are reclaimed."
       )
       .note(
         "Committed/architectural state (rRAT, committed StoreBuffer entries, cache lines, " +
-        "TLB entries, predictor tables) is recovery-exempt and says so explicitly."
+          "TLB entries, predictor tables) is recovery-exempt and says so explicitly."
       )
       .build()
   }
@@ -134,25 +154,41 @@ object DesignRuleSpecs {
     PROPERTY("GenerationTagScope")
       .desc(
         "A generation tag is permitted only as local bookkeeping for a request/response " +
-        "transaction that cannot be canceled after issue; it never decides whether an " +
-        "older or younger program-order uop lives. Program-order speculative state (ROB, " +
-        "RS, LSQ, FTQ, fetch buffer, rename checkpoints, FU pipelines) is recovered only by " +
-        "the RecoveryEvent younger-than rule and MUST NOT be killed by a generation or " +
-        "global-epoch mismatch."
+          "transaction that cannot be canceled after issue; it never decides whether an " +
+          "older or younger program-order uop lives. Program-order speculative state (ROB, " +
+          "RS, LSQ, FTQ, fetch buffer, rename checkpoints, FU pipelines) is recovered only by " +
+          "the RecoveryEvent younger-than rule and MUST NOT be killed by a generation or " +
+          "global-epoch mismatch."
       )
       .markdownTable(
         List("Transaction", "Tag owner", "Stale-response meaning"),
         List(
-          List("I-cache lookup/fill for a fetch request", "FetchUnit fetch generation", "response for a canceled fetch is dropped; a fill may still install"),
-          List("D-cache load lookup/miss for an LQ entry", "LoadStoreQueue per-entry allocation generation", "response for a killed or reallocated LQ entry is dropped; the fill may still install"),
-          List("PTW walk for a TLB miss", "requesting TLB miss context", "a walk that raced an SFENCE.VMA does not refill; otherwise the refill may install"),
-          List("Committed StoreBuffer drain", "none (exempt)", "committed stores are irrevocable and never canceled")
+          List(
+            "I-cache lookup/fill for a fetch request",
+            "FetchUnit fetch generation",
+            "response for a canceled fetch is dropped; a fill may still install"
+          ),
+          List(
+            "D-cache load lookup/miss for an LQ entry",
+            "LoadStoreQueue per-entry allocation generation",
+            "response for a killed or reallocated LQ entry is dropped; the fill may still install"
+          ),
+          List(
+            "PTW walk for a TLB miss",
+            "requesting TLB miss context",
+            "a walk that raced an SFENCE.VMA does not refill; otherwise the refill may install"
+          ),
+          List(
+            "Committed StoreBuffer drain",
+            "none (exempt)",
+            "committed stores are irrevocable and never canceled"
+          )
         )
       )
       .note(
         "ADR-019 supersedes ADR-005 for program-order speculation. Adding a ROB/RS/LSQ/FTQ " +
-        "entry to this table is an architecture error. There is no global epoch counter " +
-        "and no GlobalEpochUnit in the ADR-019 core."
+          "entry to this table is an architecture error. There is no global epoch counter " +
+          "and no GlobalEpochUnit in the ADR-019 core."
       )
       .build()
   }
@@ -220,8 +256,8 @@ object DesignRuleSpecs {
     PROPERTY("IsaRetireEquivalence")
       .desc(
         "For every program in the deterministic regression corpus (RV32IM_Zicsr_Zifencei, Svade, U/S, Sv32, " +
-        "including page-fault cases) the CommitUnit retire stream is identical " +
-        "token-for-token to the ISA reference model's retire stream; only cycle counts differ."
+          "including page-fault cases) the CommitUnit retire stream is identical " +
+          "token-for-token to the ISA reference model's retire stream; only cycle counts differ."
       )
       .markdownTable(
         List("Field", "In compare set"),
@@ -239,9 +275,9 @@ object DesignRuleSpecs {
       )
       .note(
         "ADR-015 D-15.4 soundness is retained: the equivalence corpus is deterministic and " +
-        "interrupt-free; asynchronous-interrupt precision is tested by a separate directed " +
-        "suite whose injection is keyed to retire order (after the Kth committed " +
-        "instruction). The old N=1-vs-N=8 comparison has no ADR-019 meaning and is removed."
+          "interrupt-free; asynchronous-interrupt precision is tested by a separate directed " +
+          "suite whose injection is keyed to retire order (after the Kth committed " +
+          "instruction). The old N=1-vs-N=8 comparison has no ADR-019 meaning and is removed."
       )
       .build()
   }

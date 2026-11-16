@@ -57,7 +57,7 @@ val contDecoder = spec {
         List("rs1", "[19:15]", "Source register 1")
       )
     )
-    .note("Supports RV32IMC instruction set")
+    .note("Supports the ADR-019 fixed-width RV32IM instruction set")
     .note("Single-cycle decode for all instructions")
     .build()
 }
@@ -511,7 +511,7 @@ val funcDebugInterface = spec {
 // Design placeholder
 @LocalSpec(funcDebugInterface)
 val debugInterface = {
-  // TODO: Implement debug interface
+  // Implementation pending against funcDebugInterface.
 }
 ```
 

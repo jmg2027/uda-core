@@ -11,7 +11,9 @@ import udacore.backend.spec.shared.BackendParamsSpecs.funcRecoveryKills
 object DispatchUnitSpecs {
   val contDispatchUnit = spec {
     CONTRACT("DispatchUnit")
-      .desc("Routes each IssuedUop from the ReservationStation to exactly one execution unit selected by fuType.")
+      .desc(
+        "Routes each IssuedUop from the ReservationStation to exactly one execution unit selected by fuType."
+      )
       .has(
         intfIssuedUopIn,
         intfAluReqOut,
@@ -29,8 +31,8 @@ object DispatchUnitSpecs {
       .is(rawSpeculativeHolder)
       .note(
         "Speculative-holder stance: holds at most one routed token under backpressure; it is " +
-        "dropped in the event cycle if funcRecoveryKills selects it. Serialization is no longer " +
-        "a dispatch gate: it is enforced at rename (funcSerializeGate)."
+          "dropped in the event cycle if funcRecoveryKills selects it. Serialization is no longer " +
+          "a dispatch gate: it is enforced at rename (funcSerializeGate)."
       )
       .build()
   }
@@ -53,7 +55,9 @@ object DispatchUnitSpecs {
 
   val intfBitAluReqOut = spec {
     INTERFACE("BitAluReqOut")
-      .desc("Bit-manipulation operations; elaborated only when the optional BitAluUnit extension is enabled (absent in v0).")
+      .desc(
+        "Bit-manipulation operations; elaborated only when the optional BitAluUnit extension is enabled (absent in v0)."
+      )
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
@@ -93,8 +97,12 @@ object DispatchUnitSpecs {
 
   val intfCsrReqOut = spec {
     INTERFACE("CsrReqOut")
-      .desc("CSR instructions as IssuedUops (always the only live uop, by the rename serialization gate).")
-      .note("ADR-019D E-1: the native CSR edge carries IssuedUop (robTag, prd, hasDest, insn, sysOp, op, src1); no legacy CSRReq.")
+      .desc(
+        "CSR instructions as IssuedUops (always the only live uop, by the rename serialization gate)."
+      )
+      .note(
+        "ADR-019D E-1: the native CSR edge carries IssuedUop (robTag, prd, hasDest, insn, sysOp, op, src1); no legacy CSRReq."
+      )
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
       .build()
@@ -102,7 +110,9 @@ object DispatchUnitSpecs {
 
   val intfFuAvailabilityOut = spec {
     INTERFACE("FuAvailabilityOut")
-      .desc("Per-class FU availability to the ReservationStation (ADR-019C E-1).")
+      .desc(
+        "Per-class FU availability to the ReservationStation (ADR-019C E-1)."
+      )
       .uses(bndFuAvailability)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 7.")
@@ -122,8 +132,8 @@ object DispatchUnitSpecs {
     FUNCTION("FuRoute")
       .desc(
         "Offer the IssuedUop on the one request edge selected by fuType; IssuedUopIn.ready " +
-        "equals the FuAvailability bit of the presented uop's class. The RS only selects uops " +
-        "whose class is available, so routing never reorders, duplicates, or loses uops."
+          "equals the FuAvailability bit of the presented uop's class. The RS only selects uops " +
+          "whose class is available, so routing never reorders, duplicates, or loses uops."
       )
       .note("ADR-019C E-1/E-2.")
       .uses(intfIssuedUopIn, funcRecoveryKills)
@@ -134,14 +144,16 @@ object DispatchUnitSpecs {
     FUNCTION("DispatchUnitSpecs.funcFuAvailability")
       .desc(
         "Drive one availability bit per FU class: set when an IssuedUop of that class " +
-        "presented this cycle would be accepted by DispatchUnit and its execution wrapper. " +
-        "Each bit derives only from the wrapper's request readiness, which depends on its " +
-        "registered state and the drain of its already-held output token and never on the " +
-        "current request's valid or payload; a DispatchUnit holding a routed token drives " +
-        "that class unavailable and never accepts a hidden second token."
+          "presented this cycle would be accepted by DispatchUnit and its execution wrapper. " +
+          "Each bit derives only from the wrapper's request readiness, which depends on its " +
+          "registered state and the drain of its already-held output token and never on the " +
+          "current request's valid or payload; a DispatchUnit holding a routed token drives " +
+          "that class unavailable and never accepts a hidden second token."
       )
       .uses(intfFuAvailabilityOut)
-      .note("ADR-019C E-2: the loop RS selection -> IssuedUop -> FU ready -> FuAvailability -> RS selection is forbidden.")
+      .note(
+        "ADR-019C E-2: the loop RS selection -> IssuedUop -> FU ready -> FuAvailability -> RS selection is forbidden."
+      )
       .build()
   }
 }

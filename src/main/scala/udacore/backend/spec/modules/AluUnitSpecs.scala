@@ -13,7 +13,7 @@ object AluUnitSpecs {
     CONTRACT("AluUnit")
       .desc(
         "AluUnit is the single-cycle integer ALU (RV32I arithmetic, logic, shifts, compares, LUI/AUIPC). It accepts IssuedUop tokens from DispatchUnit and emits " +
-        "FuResult tokens (value, destination, completion) to PublishMux."
+          "FuResult tokens (value, destination, completion) to PublishMux."
       )
       .has(
         intfAluReqIn,
@@ -33,13 +33,17 @@ object AluUnitSpecs {
       .desc("Issued uops routed to this unit by DispatchUnit.")
       .uses(bndIssuedUop)
       .is(rawReadyValidIntf)
-      .note("ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload.")
+      .note(
+        "ADR-019C E-2: ready (canAccept) derives only from registered state and the drain of the already-held output token, never from this request's valid or payload."
+      )
       .build()
   }
 
   val intfAluResultOut = spec {
     INTERFACE("AluResultOut")
-      .desc("Results toward PublishMux; backpressured by the single publish lane.")
+      .desc(
+        "Results toward PublishMux; backpressured by the single publish lane."
+      )
       .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
@@ -58,9 +62,14 @@ object AluUnitSpecs {
     FUNCTION("IntegrateExternalAlu")
       .desc(
         "Drive udacore.external.alu.design.Alu from the IssuedUop operands and operation, and emit " +
-        "one FuResult carrying the uop's robTag and prd when the core produces its result."
+          "one FuResult carrying the uop's robTag and prd when the core produces its result."
       )
-      .uses(intfAluReqIn, intfAluResultOut, intfRecoveryEventIn, funcRecoveryKills)
+      .uses(
+        intfAluReqIn,
+        intfAluResultOut,
+        intfRecoveryEventIn,
+        funcRecoveryKills
+      )
       .build()
   }
 }

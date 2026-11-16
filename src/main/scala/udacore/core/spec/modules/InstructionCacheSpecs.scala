@@ -6,16 +6,18 @@ import udacore.common.spec.DesignRuleSpecs._
 import udacore.core.spec.shared.CoreParamsSpecs._
 import udacore.core.spec.shared.MemoryBundlesSpecs._
 
-/** InstructionCache: VIPT L1 I-cache (ADR-019 D-19.4; amends ADR-016 PIPT base). */
+/** InstructionCache: VIPT L1 I-cache (ADR-019 D-19.4; amends ADR-016 PIPT
+  * base).
+  */
 object InstructionCacheSpecs {
   val contInstructionCache = spec {
     CONTRACT("InstructionCache")
       .desc(
         "A read-only, virtually indexed, physically tagged L1 instruction cache (16 KiB, 4 " +
-        "ways, 64-byte lines, 64 sets, v0). The set is read from the untranslated index bits " +
-        "of the fetch address while the InstructionTlb translates it; the physical tag compare " +
-        "uses the ITLB answer. A hit returns the aligned 16-byte fetch block; a miss fills the " +
-        "whole line through the InstBusAdapter using one miss context."
+          "ways, 64-byte lines, 64 sets, v0). The set is read from the untranslated index bits " +
+          "of the fetch address while the InstructionTlb translates it; the physical tag compare " +
+          "uses the ITLB answer. A hit returns the aligned 16-byte fetch block; a miss fills the " +
+          "whole line through the InstBusAdapter using one miss context."
       )
       .has(
         intfICacheReqIn,
@@ -28,6 +30,7 @@ object InstructionCacheSpecs {
         funcICacheMissFill,
         funcICacheUncachedFetch,
         funcICacheInvalidate,
+        funcICacheSramStorage,
         propICacheReadOnly,
         propICacheResponseOrder,
         propICacheFunctionTransparent
@@ -35,17 +38,19 @@ object InstructionCacheSpecs {
       .uses(paramICacheGeometry, propViptGeometryLegal)
       .note(
         "State classes: lines and replacement state are microarchitectural; a wrong-path fetch " +
-        "may fill and the line stays (ADR-019 D-19.12). Requests are never canceled here; stale " +
-        "answers are dropped by the FetchUnit generation. Addresses: the request is virtual " +
-        "(index only), tags and fills are physical. Faults: translation faults pass through; a " +
-        "denied fill is an instruction access fault and installs nothing."
+          "may fill and the line stays (ADR-019 D-19.12). Requests are never canceled here; stale " +
+          "answers are dropped by the FetchUnit generation. Addresses: the request is virtual " +
+          "(index only), tags and fills are physical. Faults: translation faults pass through; a " +
+          "denied fill is an instruction access fault and installs nothing."
       )
       .build()
   }
 
   val intfICacheReqIn = spec {
     INTERFACE("ICacheReqIn")
-      .desc("Virtually indexed lookups from the FetchUnit, paired in order with ICacheTranslationIn.")
+      .desc(
+        "Virtually indexed lookups from the FetchUnit, paired in order with ICacheTranslationIn."
+      )
       .uses(bndICacheReq)
       .is(rawReadyValidIntf)
       .build()
@@ -69,7 +74,9 @@ object InstructionCacheSpecs {
 
   val intfICacheInvalidateIn = spec {
     INTERFACE("ICacheInvalidateIn")
-      .desc("FENCE.I invalidate-all tokens from the backend CommitUnit; the transfer completes when every line is invalid.")
+      .desc(
+        "FENCE.I invalidate-all tokens from the backend CommitUnit; the transfer completes when every line is invalid."
+      )
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
       .build()
@@ -94,11 +101,24 @@ object InstructionCacheSpecs {
   val funcICacheViptLookup = spec {
     FUNCTION("ICacheViptLookup")
       .desc(
-        "Read all ways of set va[11:6]; when the paired translation is Hit, compare each valid " +
-        "way's tag with pa[33:12]. A hit answers the 16-byte block at va[5:4]. A translation " +
-        "fault answers that fault without a memory access."
+        "Read all tag ways of set va[11:6]; when the paired translation is Hit, compare each valid " +
+          "way's tag with pa[33:12]. A hit reads the selected data row synchronously and answers the 16-byte block at va[5:4]. A translation " +
+          "fault answers that fault without a memory access."
       )
-      .uses(intfICacheReqIn, intfICacheTranslationIn, intfICacheRespOut, propViptGeometryLegal)
+      .uses(
+        intfICacheReqIn,
+        intfICacheTranslationIn,
+        intfICacheRespOut,
+        propViptGeometryLegal
+      )
+      .build()
+  }
+
+  val funcICacheSramStorage = spec {
+    FUNCTION("ICacheSramStorage")
+      .desc(
+        "ADR-020: store bulk line data in CacheLineSram, addressed by way * sets + set. Preserve reqId, block index and response-order identity until the clocked SRAM read completes. Keep tags, valid and replacement metadata in registers. Fill installation is a full-line masked SRAM write. A held response and an in-flight SRAM read must never overwrite each other under backpressure."
+      )
       .build()
   }
 
@@ -106,9 +126,9 @@ object InstructionCacheSpecs {
     FUNCTION("ICacheMissFill")
       .desc(
         "On a cacheable miss, hold the request (one miss context in v0), request the " +
-        "line-aligned physical line, collect its beats, install it in the pseudo-LRU victim " +
-        "way, and answer the held request. A fill that completes after its request was " +
-        "canceled still installs."
+          "line-aligned physical line, collect its beats, install it in the pseudo-LRU victim " +
+          "way, and answer the held request. A fill that completes after its request was " +
+          "canceled still installs."
       )
       .uses(intfInstMemReqOut, intfInstMemRespIn)
       .build()
@@ -116,34 +136,44 @@ object InstructionCacheSpecs {
 
   val funcICacheUncachedFetch = spec {
     FUNCTION("ICacheUncachedFetch")
-      .desc("A Hit translation with cacheable = false fetches only the 16-byte block uncached and installs nothing.")
+      .desc(
+        "A Hit translation with cacheable = false fetches only the 16-byte block uncached and installs nothing."
+      )
       .uses(intfInstMemReqOut)
       .build()
   }
 
   val funcICacheInvalidate = spec {
     FUNCTION("ICacheInvalidate")
-      .desc("On an accepted invalidate token clear every valid bit; a fill in progress completes but does not install.")
+      .desc(
+        "On an accepted invalidate token clear every valid bit; a fill in progress completes but does not install."
+      )
       .uses(intfICacheInvalidateIn)
       .build()
   }
 
   val propICacheReadOnly = spec {
     PROPERTY("ICacheReadOnly")
-      .desc("The instruction cache never holds modified data and never issues a Put: its TileLink footprint is Get/AccessAckData only.")
+      .desc(
+        "The instruction cache never holds modified data and never issues a Put: its TileLink footprint is Get/AccessAckData only."
+      )
       .build()
   }
 
   val propICacheResponseOrder = spec {
     PROPERTY("ICacheResponseOrder")
-      .desc("Answers leave in the order requests were accepted, one answer per request.")
+      .desc(
+        "Answers leave in the order requests were accepted, one answer per request."
+      )
       .uses(intfICacheRespOut)
       .build()
   }
 
   val propICacheFunctionTransparent = spec {
     PROPERTY("ICacheFunctionTransparent")
-      .desc("For any legal I-cache geometry the retire stream of any program is identical; the cache changes only timing.")
+      .desc(
+        "For any legal I-cache geometry the retire stream of any program is identical; the cache changes only timing."
+      )
       .uses(propIsaRetireEquivalence)
       .build()
   }

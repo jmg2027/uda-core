@@ -3,14 +3,17 @@ package udacore.backend.design.shared
 import chisel3._
 import chisel3.util._
 import framework.macros.LocalSpec
-import udacore.backend.spec.modules.DecodeUnitSpecs.{funcSerializingTag, funcSystemPrivLegality}
+import udacore.backend.spec.modules.DecodeUnitSpecs.{
+  funcSerializingTag,
+  funcSystemPrivLegality
+}
 
 /** The system-instruction classification of funcSerializingTag (ADR-019A E-2).
   *
-  * Pinned here, ahead of the DecodeUnit RTL, so the serialize / sysOp / fuType table is
-  * fixed by an L1 test before any decoder uses it. It classifies a legal 32-bit
-  * instruction word only; a uop carrying a fetch or decode exception gets sysOp None
-  * from the DecodeUnit regardless of this result.
+  * Pinned here, ahead of the DecodeUnit RTL, so the serialize / sysOp / fuType
+  * table is fixed by an L1 test before any decoder uses it. It classifies a
+  * legal 32-bit instruction word only; a uop carrying a fetch or decode
+  * exception gets sysOp None from the DecodeUnit regardless of this result.
   */
 class SystemOpClass extends Bundle {
   val isSystem  = Bool() // fuType System: execution-free, ROB-only
@@ -47,37 +50,48 @@ object SystemOpDecode {
     c.isSystem  := fence || fenceI || mret || sret || dret || wfi || sfenceVma
     c.isCsr     := csr
     c.serialize := c.isSystem || csr
-    c.sysOp := MuxCase(SysOp.None, Seq(
-      fence     -> SysOp.Fence,
-      fenceI    -> SysOp.FenceI,
-      sfenceVma -> SysOp.SfenceVma,
-      wfi       -> SysOp.Wfi,
-      mret      -> SysOp.Mret,
-      sret      -> SysOp.Sret,
-      dret      -> SysOp.Dret,
-      csrWrite  -> SysOp.CsrWrite
-    ))
+    c.sysOp     := MuxCase(
+      SysOp.None,
+      Seq(
+        fence     -> SysOp.Fence,
+        fenceI    -> SysOp.FenceI,
+        sfenceVma -> SysOp.SfenceVma,
+        wfi       -> SysOp.Wfi,
+        mret      -> SysOp.Mret,
+        sret      -> SysOp.Sret,
+        dret      -> SysOp.Dret,
+        csrWrite  -> SysOp.CsrWrite
+      )
+    )
     c
   }
 
-  /** Privilege legality of the privileged system instructions over the committed
-    * DecodePrivView (ADR-019E E-4); every other instruction is legal here. Debug Mode checks
-    * as M, except that ECALL, MRET, and SRET are illegal there (ADR-019F E-5). */
+  /** Privilege legality of the privileged system instructions over the
+    * committed DecodePrivView (ADR-019E E-4); every other instruction is legal
+    * here. Debug Mode checks as M, except that ECALL, MRET, and SRET are
+    * illegal there (ADR-019F E-5).
+    */
   @LocalSpec(funcSystemPrivLegality)
   def privLegal(insn: UInt, view: DecodePrivView): Bool = {
-    val p   = Mux(view.debugMode, Priv.M, view.priv)
-    val isM = p === Priv.M
-    val isS = p === Priv.S
+    val p         = Mux(view.debugMode, Priv.M, view.priv)
+    val isM       = p === Priv.M
+    val isS       = p === Priv.S
     val opcode    = insn(6, 0)
-    val sfenceVma = opcode === OpSystem && insn(14, 12) === 0.U && insn(31, 25) === "b0001001".U && insn(11, 7) === 0.U
-    val dm  = view.debugMode
-    MuxCase(true.B, Seq(
-      (insn === "h00000073".U) -> !dm,                                // ECALL
-      (insn === "h30200073".U) -> (!dm && isM),                        // MRET
-      (insn === "h10200073".U) -> (!dm && (isM || (isS && !view.tsr))), // SRET
-      sfenceVma                -> (isM || (isS && !view.tvm)), // SFENCE.VMA
-      (insn === "h10500073".U) -> (isM || (isS && !view.tw)),  // WFI (U-mode WFI is illegal)
-      (insn === "h7b200073".U) -> view.debugMode               // DRET
-    ))
+    val sfenceVma = opcode === OpSystem && insn(14, 12) === 0.U && insn(
+      31,
+      25
+    ) === "b0001001".U && insn(11, 7) === 0.U
+    val dm        = view.debugMode
+    MuxCase(
+      true.B,
+      Seq(
+        (insn === "h00000073".U) -> !dm,                                  // ECALL
+        (insn === "h30200073".U) -> (!dm && isM),                         // MRET
+        (insn === "h10200073".U) -> (!dm && (isM || (isS && !view.tsr))), // SRET
+        sfenceVma                -> (isM || (isS && !view.tvm)),          // SFENCE.VMA
+        (insn === "h10500073".U) -> (isM || (isS && !view.tw)),           // WFI (U-mode WFI is illegal)
+        (insn === "h7b200073".U) -> view.debugMode                        // DRET
+      )
+    )
   }
 }

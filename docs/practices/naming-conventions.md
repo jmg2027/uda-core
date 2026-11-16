@@ -30,8 +30,8 @@ canonical names that appear in diagrams, documentation, and generated artefacts.
 - Use PascalCase without prefixes or suffixes. Use descriptive names that
   clearly identify the vertex's role and responsibility.
 - **Acronym/Abbreviation Rule**: Treat acronyms and abbreviations as words in PascalCase
-  - `ALU` → `Alu`, `CSR` → `Csr`, `GPR` → `Gpr`, `UDACore` → `Klase32`  
-  - `BitALU` → `BitAlu`, `CSRController` → `CsrController`
+  - `ALU` -> `Alu`, `CSR` -> `Csr`, `GPR` -> `Gpr`
+  - `BitALU` -> `BitAlu`, `CSRController` -> `CsrController`
   - Examples: `AddressGenerationUnit`, `VirtualGpr`, `CsrController`
 - Apply the same rule across *every* domain (frontend, backend, memory, core,
   ...). The spec tree is global and should not contain subsystem-specific naming
@@ -60,7 +60,7 @@ canonical names that appear in diagrams, documentation, and generated artefacts.
   The spec DSL already scopes each edge to a single pair of vertices, so
   repeating the vertex name just adds noise without improving traceability. Use
   the edge name alone unless two distinct edges genuinely share the same word
-  in the spec—in that rare case, rename the edges first so the bundles stay
+  in the spec - in that rare case, rename the edges first so the bundles stay
   unique.
 
 ### 3.4 Shared categories

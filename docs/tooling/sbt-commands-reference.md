@@ -1,44 +1,59 @@
 # sbt command reference for UDACore
 
-This guide keeps the most common `sbt` workflows in one place so you can run
-local checks without hunting through the repository. Commands appear in the
-order you should consider them during daily development. All paths are relative
-to the repository root.
+Run commands from the repository root. Both build paths use Scala 2.13.12,
+Chisel 6.2.0, and the sibling spec-framework source checkout. See
+[framework setup](spec-framework.md) for dependencies and export paths.
 
-## 1. Quick syntax checks
-- `sbt compile` - Runs the Scala compiler without generating Verilog. Use it for
-  rapid feedback while editing specs or RTL.
+## Compile and export
 
-## 2. Formatting gate
-- `sbt scalafmtCheckAll` - Verifies that every Scala file is formatted according
-  to the shared configuration. Run this before committing to avoid CI failures.
+```bash
+sbt compile
+sbt specCheck
+```
 
-## 3. Unit test sweep
-- `sbt test` - Executes the full ScalaTest suite. It is the minimum regression
-  gate for any change that touches specs, RTL, or shared bundles.
+`compile` checks Scala specs and RTL without emitting Verilog. `specCheck`
+performs a clean build and exports the real spec/tag indexes to
+`target/spec-report/`; it does not replace the separate ADR-015/018 checker.
 
-## 4. Cluster smoke test
-- `sbt 'testOnly *SingleCoreMulDivClusterTest* -- -z "Store test 0"'` - Runs the
-  most simple cluster-level smoke. Capture the log with `tee` when you need to
-  share results.
-- `sbt 'testOnly *SingleCoreMulDivClusterTest*'` - Runs all cluster-level smoke tests.
+The active local verification path is:
 
-## 5. Targeted reruns
-Use the following patterns when debugging a specific failure:
-- `sbt "testOnly <SuiteName>"` - Limits execution to one ScalaTest suite.
-- `sbt "testOnly <SuiteName> -- -z <keyword>"` - Narrows the run to tests whose
-  names include the given keyword.
+```bash
+bash verif/bin/build.sh
+python3 tools/spec-check.py
+bash verif/bin/test-spec-framework.sh
+verif/bin/run.sh verif.spectest.RunSpecTests
+verif/bin/scn.sh run verif/scn/add.scn --json
+```
 
-## 6. RTL elaboration
-- `sbt runMain UDACoreElab` - Elaborates the configured design into Verilog
-  under `./UDACoreElab`. Run this after major structural changes or when you
-  need waveforms for debugging.
+Use [the verification guide](../../verif/README.md) for scenario options, Trace,
+and product CoreTop synthesis/STA. The former `UDACoreElab` command and old
+cluster smoke tests are not the current CoreTop verification entry points.
 
-## 7. Tips for reliable runs
-- Always start from a clean terminal session. `sbt` caches class loaders, so
-  restarting the shell avoids stale state.
-- Use `sbt --client <command>` only when the server is already running and you
-  need a quick follow-up command. Otherwise, prefer launching a fresh session to
-  inherit the latest build definition.
-- When diagnosing a failure, copy the full `sbt` invocation into your working
-  notes along with the log snippet so reviewers can replay the issue.
+## Required pre-commit attempt
+
+```bash
+sbt scalafmtCheckAll test
+```
+
+Run this command before committing and report its actual outcome.
+`scalafmtCheckAll` validates formatting; `test` compiles and runs the ScalaTest
+sources under `src/test`. A failure in the first command can prevent the tests
+from running. A passing direct L1 regression does not imply this sbt gate passed.
+
+The protected historical cluster/assembler tests target older APIs. The latest
+recorded run stopped at formatting and a source-parser error in protected
+`src/test/scala/cluster/RV32BTest.scala`; a separate `sbt test` also stopped before
+running tests. [The live handoff](../../document/HANDOFF.md) records current
+results and log paths. Report incompatibilities without altering protected
+infrastructure or weakening checks unless the owner explicitly authorizes it.
+
+For an available ScalaTest suite, targeted reruns use:
+
+```bash
+sbt 'testOnly <SuiteName>'
+sbt 'testOnly <SuiteName> -- -z <keyword>'
+```
+
+These still compile the Test source set first, so they do not bypass a parser
+or API error elsewhere in that source set. Keep the complete invocation and
+first relevant error with any reported result.

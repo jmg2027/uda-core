@@ -12,11 +12,12 @@ import udacore.backend.spec.shared.BackendParamsSpecs._
 /** Contract tier. */
 @LocalSpec(paramXLen)
 case class BackendContractParams(
-    xLen: Int = 32,              // RV32 (ADR-019 D-19.1)
-    regNum: Int = 32,            // architectural integer registers
+    xLen: Int = 32,               // RV32 (ADR-019 D-19.1)
+    regNum: Int = 32,             // architectural integer registers
     hartId: Int = 0,
     enableMulDiv: Boolean = true, // M extension (v0: on)
-    enableBitAlu: Boolean = false // bit-manipulation contribution (v0: off, ADR-017)
+    enableBitAlu: Boolean =
+      false                       // bit-manipulation contribution (v0: off, ADR-017)
 ) {
   require(xLen == 32, "v0 is RV32IM: xLen must be 32 (RV64 needs a later ADR)")
   require(regNum == 32, "ArchRegNum must be 32")
@@ -38,12 +39,19 @@ case class BackendTuningParams(
     storeBufferDepth: Int = 4,
     branchCheckpointCount: Int = 4
 ) {
-  require(renameWidth == 1 && commitWidth == 1 && publishWidth == 1,
-    "v0 supports rename/commit/publish width 1 only (ADR-014 single lane)")
+  require(
+    renameWidth == 1 && commitWidth == 1 && publishWidth == 1,
+    "v0 supports rename/commit/publish width 1 only (ADR-014 single lane)"
+  )
   require(issueWidth >= 1, "issue width must be positive")
-  require(integerRsEntries >= 1 && loadQueueDepth >= 1 && storeQueueDepth >= 1 && storeBufferDepth >= 1,
-    "queue depths must be positive")
-  require(branchCheckpointCount >= 1, "at least one branch checkpoint is required")
+  require(
+    integerRsEntries >= 1 && loadQueueDepth >= 1 && storeQueueDepth >= 1 && storeBufferDepth >= 1,
+    "queue depths must be positive"
+  )
+  require(
+    branchCheckpointCount >= 1,
+    "at least one branch checkpoint is required"
+  )
 
   @LocalSpec(propPrfSizingCoversRob)
   val prfSizingCoversRob: Unit = require(
@@ -52,21 +60,32 @@ case class BackendTuningParams(
   )
 }
 
-/** The frontend contract values the backend payloads carry (DecodedUop.prediction,
-  * RecoveryEvent.ftqIdx/target, CfiOutcome.slot). They mirror FrontendContractParams /
-  * FrontendTuningParams (paramDecodeWidth, paramFetchWidth, paramFtqIdxWidth) and must equal
-  * them in any composed core; the backend never derives behavior from them beyond widths
-  * and the decode-packet lane count.
+/** The frontend contract values the backend payloads carry
+  * (DecodedUop.prediction, RecoveryEvent.ftqIdx/target, CfiOutcome.slot). They
+  * mirror FrontendContractParams / FrontendTuningParams (paramDecodeWidth,
+  * paramFetchWidth, paramFtqIdxWidth) and must equal them in any composed core;
+  * the backend never derives behavior from them beyond widths and the
+  * decode-packet lane count.
   */
 case class BackendFrontendView(
-    decodeWidth: Int = 2, // DecodedPacket lanes (FrontendContractParams.decodeWidth)
-    fetchWidth: Int = 4,  // instructions per fetch block (fetchBytes / 4)
-    ftqDepth: Int = 16,   // FrontendTuningParams.ftqDepth
-    vAddrWidth: Int = 32  // Sv32 virtual address width
+    decodeWidth: Int =
+      2,                 // DecodedPacket lanes (FrontendContractParams.decodeWidth)
+    fetchWidth: Int = 4, // instructions per fetch block (fetchBytes / 4)
+    ftqDepth: Int = 16,  // FrontendTuningParams.ftqDepth
+    vAddrWidth: Int = 32 // Sv32 virtual address width
 ) {
-  require(decodeWidth >= 1 && decodeWidth <= fetchWidth, "decodeWidth must be in 1..fetchWidth")
-  require(fetchWidth >= 1 && (fetchWidth & (fetchWidth - 1)) == 0, "fetchWidth must be a power of two")
-  require(ftqDepth >= 2 && (ftqDepth & (ftqDepth - 1)) == 0, "ftqDepth must be a power of two")
+  require(
+    decodeWidth >= 1 && decodeWidth <= fetchWidth,
+    "decodeWidth must be in 1..fetchWidth"
+  )
+  require(
+    fetchWidth >= 1 && (fetchWidth & (fetchWidth - 1)) == 0,
+    "fetchWidth must be a power of two"
+  )
+  require(
+    ftqDepth >= 2 && (ftqDepth & (ftqDepth - 1)) == 0,
+    "ftqDepth must be a power of two"
+  )
 }
 
 /** Complete backend parameter set. */
@@ -74,17 +93,23 @@ case class BackendParams(
     contract: BackendContractParams = BackendContractParams(),
     tuning: BackendTuningParams = BackendTuningParams(),
     frontend: BackendFrontendView = BackendFrontendView(),
-    usingRvvi: Boolean = false, // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
-    /** Mirror of CoreContractParams.debugEntryAddr (paramDebugEntryAddr, ADR-019E E-2), passed
-      * down by CoreTop: the platform-defined Debug Mode entry address the TrapController
-      * redirects to. It is never the resume address (dpc). */
+    usingRvvi: Boolean =
+      false, // CoreParams.tuning.usingRvvi, passed down by CoreTop (ADR-010 D-10.3)
+    /** Mirror of CoreContractParams.debugEntryAddr (paramDebugEntryAddr,
+      * ADR-019E E-2), passed down by CoreTop: the platform-defined Debug Mode
+      * entry address the TrapController redirects to. It is never the resume
+      * address (dpc).
+      */
     debugEntryAddr: Long = 0x800L
 ) {
-  require(debugEntryAddr >= 0 && debugEntryAddr < (1L << frontend.vAddrWidth) && debugEntryAddr % 4 == 0,
-    "debugEntryAddr must be a 4-byte aligned address within the virtual address space")
-  def xLen: Int             = contract.xLen
-  def iLen: Int             = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
-  def pAddrWidth: Int       = 34 // Sv32 physical address (CoreContractParams.pAddrWidth)
+  require(
+    debugEntryAddr >= 0 && debugEntryAddr < (1L << frontend.vAddrWidth) && debugEntryAddr % 4 == 0,
+    "debugEntryAddr must be a 4-byte aligned address within the virtual address space"
+  )
+  def xLen: Int       = contract.xLen
+  def iLen: Int       = 32 // fixed-width instructions, no RVC (ADR-019 D-19.3)
+  def pAddrWidth: Int =
+    34 // Sv32 physical address (CoreContractParams.pAddrWidth)
   def regNum: Int           = contract.regNum
   def hartId: Int           = contract.hartId
   def enableMulDiv: Boolean = contract.enableMulDiv
@@ -105,12 +130,14 @@ case class BackendParams(
 
   // LSQ transaction tags (private tier): per-entry allocation generation for the
   // uncancelable D-cache/DTLB transactions (propGenerationTagScope), never for program order.
-  def lqIdxWidth: Int    = log2Ceil(tuning.loadQueueDepth)
-  def sqIdxWidth: Int    = log2Ceil(tuning.storeQueueDepth)
-  def lsqGenWidth: Int   = 2
+  def lqIdxWidth: Int  = log2Ceil(tuning.loadQueueDepth)
+  def sqIdxWidth: Int  = log2Ceil(tuning.storeQueueDepth)
+  def lsqGenWidth: Int = 2
+
   /** DTLB reqId of an LSQ request: {isStore, entry index, generation}. */
   def lsqReqIdWidth: Int = 1 + math.max(lqIdxWidth, sqIdxWidth) + lsqGenWidth
 
   private def log2(x: Int): Int     = Integer.numberOfTrailingZeros(x)
-  private def log2Ceil(x: Int): Int = if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)
+  private def log2Ceil(x: Int): Int =
+    if (x <= 1) 1 else 32 - Integer.numberOfLeadingZeros(x - 1)
 }

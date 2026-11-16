@@ -36,7 +36,9 @@ object ProductSpecs {
         |single wrap-aware ROB-order rule. There are no ad-hoc flush wires and no global-epoch
         |squash: older correct-path work always survives a younger branch misprediction.
         """.stripMargin)
-      .note("ADR-019 D-19.9/D-19.14 re-base of the UDA method onto selective recovery.")
+      .note(
+        "ADR-019 D-19.9/D-19.14 re-base of the UDA method onto selective recovery."
+      )
       .build()
   }
 
@@ -50,7 +52,9 @@ object ProductSpecs {
         |extensions (bit-manipulation, A, F, RV64) are ADR-017 contributions that later ADRs may
         |enable; none is part of v0.
         """.stripMargin)
-      .note("ADR-019 D-19.1/D-19.3. ADR-019 writes RV32IM; Zicsr and Zifencei are named separately because they are separate ratified extensions, and Svade names the A/D policy of Sv32Specs. XLEN remains a parameter, but only XLEN=32 is a v0 configuration.")
+      .note(
+        "ADR-019 D-19.1/D-19.3. ADR-019 writes RV32IM; Zicsr and Zifencei are named separately because they are separate ratified extensions, and Svade names the A/D policy of Sv32Specs. XLEN remains a parameter, but only XLEN=32 is a v0 configuration."
+      )
       .build()
   }
 
@@ -64,7 +68,7 @@ object ProductSpecs {
         """.stripMargin)
       .note(
         "Widths and depths are tuning parameters; these values define the v0 reference point, " +
-        "not permanent maxima (ADR-019 D-19.1)."
+          "not permanent maxima (ADR-019 D-19.1)."
       )
       .build()
   }
@@ -97,21 +101,33 @@ object ProductSpecs {
     CONTRACT("ConfigRegistry")
       .desc(
         "Single source of named elaboration configurations for the synth/STA/verif instruments; " +
-        "sta.sh/EmitCore/the verif harness consume it by name. Each name differs from the v0 " +
-        "reference in exactly one axis so a measured delta is attributable."
+          "sta.sh/EmitCore/the verif harness consume it by name. Each name differs from the v0 " +
+          "reference in exactly one axis so a measured delta is attributable."
       )
       .markdownTable(
         List("Config name", "Differs from v0 reference in", "Purpose"),
         List(
-          List("default", "nothing (usingRvvi=false)", "v0 reference product point"),
-          List("verif", "usingRvvi=true", "harness build: retire stream elaborated for ISA-model comparison"),
-          List("minimal", "usingRvvi=true, faster boot", "fast directed-test build")
+          List(
+            "default",
+            "nothing (usingRvvi=false)",
+            "v0 reference product point"
+          ),
+          List(
+            "verif",
+            "usingRvvi=true",
+            "harness build: retire stream elaborated for ISA-model comparison"
+          ),
+          List(
+            "minimal",
+            "usingRvvi=true, faster boot",
+            "fast directed-test build"
+          )
         )
       )
       .note(
         "ADR-015 D-15.5 one-axis-per-name discipline, re-based by ADR-019: the old " +
-        "SpeculativeRegNum axis (n1/n8/n32) no longer exists. Future axes (ROB depth, cache " +
-        "geometry, coherence enable) are added as separate names, never folded together."
+          "SpeculativeRegNum axis (n1/n8/n32) no longer exists. Future axes (ROB depth, cache " +
+          "geometry, coherence enable) are added as separate names, never folded together."
       )
       .build()
   }

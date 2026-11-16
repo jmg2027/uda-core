@@ -2,101 +2,259 @@ package verif.harness
 
 import chisel3._
 import chisel3.simulator.CachedSimulator._
+import udacore.common.tilelink.TLBundle
 import udacore.core.design.shared.CoreParams
 import udacore.core.design.top.CoreTop
 import scala.collection.mutable
 
-/** Result of running the DUT on a program. Field semantics are identical to the main-line
- *  harness so every consumer (Suite, RunSpec, Gate, Diagnose) ports unchanged. */
+/** A program's final memory image and architectural retirement observations. */
 case class RunResult(
-  stores:   mutable.Map[Long, Long], // final memory image (program + data stores)
-  pcStream: Seq[Long],               // committed-pc stream from the retire interface
-  done:     Boolean,                 // store to MemModel.DONE observed
-  cycles:   Int,
-  derailed: Boolean                  // committed a pc below PROG_BASE (ran off into a trap vector etc.)
+    stores: mutable.Map[Long, Long],
+    pcStream: Seq[Long],
+    done: Boolean,
+    cycles: Int,
+    derailed: Boolean
 ) {
-  def result(off: Long): Int = (stores.getOrElse(MemModel.RESULT_BASE + off, MemModel.SENTINEL) & 0xFFFFFFFFL).toInt
-  def resultStored(off: Long): Boolean = stores.contains(MemModel.RESULT_BASE + off)
+  def result(off: Long): Int           = (stores.getOrElse(
+    MemModel.RESULT_BASE + off,
+    MemModel.SENTINEL
+  ) & 0xffffffffL).toInt
+  def resultStored(off: Long): Boolean =
+    stores.contains(MemModel.RESULT_BASE + off)
 }
 
-/** Raised by every DUT-facing entrypoint while CoreTop is still a spec shell. The ai layer
- *  turns this into a structured error instead of a stack trace, so `scn.sh run` stays useful
- *  as a status probe during the RTL fill-in. */
 class HarnessNotReady(msg: String) extends RuntimeException(msg)
 
-/** The one DUT driver: instantiates CoreTop, serves its external program/data memory
- *  interfaces from a [[MemModel]], and captures stores plus the committed-pc stream.
- *
- *  Port status. The engine around this object (Scenario/Suite/ai) is fully ported from main
- *  and compiles against this API. The per-cycle DUT binding itself cannot exist yet: CoreTop's
- *  io bundle and every vertex are spec shells (`???`), and the committed-pc stream depends on
- *  the ADR-010 retire interface (`bndRetireToken` / `intfRetireStreamOut`, gated by
- *  `paramUsingRvvi`), whose design port is to be built together with the CommitUnit RTL - not
- *  bolted on here. Until then [[run]]/[[runBatch]]/[[runServer]] raise [[HarnessNotReady]].
- *
- *  Binding contract for the CommitUnit session (mirrors the main-line runScenario):
- *   - drive static inputs each cycle: bootAddrIn = MemModel.PROG_BASE, hartEnIn on,
- *     interruptIn/debugReqIn idle (overridden by scheduled IrqPulse windows);
- *   - serve externalProgramMemoryReqOut -> externalProgramMemoryRespIn from MemModel.load
- *     with an iLat-deep in-order delay queue (ready/valid, not the main line's req/ack pins);
- *   - serve externalDataMemoryReqOut -> externalDataMemoryRespIn with a dLat-deep queue;
- *     stores apply byte masks via MemModel.storeStrb; a store to MemModel.DONE ends the run;
- *   - sample the retire stream every cycle into pcStream; derail = any committed pc below
- *     MemModel.PROG_BASE;
- *   - reset between scenarios inside one compiled DUT (runBatch/runServer) - programs must
- *     stay self-contained, the physical register file is not reset.
- */
+/** Drives a CoreTop against two independent TileLink memory links. */
 object CoreHarness {
-
-  /** A scheduled interrupt pulse: hold line `kind` high during cycles [at, at+dur). Kinds
-   *  follow the main-line convention ('t' timer / 'e' external / 's' software); the rebuild
-   *  interruptIn bundle decides how they map when its fields land. */
   case class IrqPulse(kind: Char, at: Int, dur: Int)
+  case class Scenario(
+      name: String,
+      m: MemModel,
+      maxCycles: Int = 600,
+      verbose: Boolean = false,
+      irq: Seq[IrqPulse] = Nil
+  )
 
-  /** One scenario for [[runBatch]] (all scenarios in a batch share one CoreParams config). */
-  case class Scenario(name: String, m: MemModel, maxCycles: Int = 600, verbose: Boolean = false,
-                      irq: Seq[IrqPulse] = Nil)
+  private case class DBeat(
+      due: Int,
+      opcode: Int,
+      size: Int,
+      source: Int,
+      data: Long,
+      completesProgram: Boolean
+  )
+  private case class PutState(address: Long, size: Int, count: Int)
 
-  val notReadyMessage: String =
-    "CoreTop is a spec shell (io and vertices are unimplemented); the harness DUT binding " +
-    "activates with the CommitUnit RTL and the ADR-010 retire stream. Engine, scn grammar, " +
-    "gates and the synthesis flow are ready - see verif/README.md."
+  /** One ordered response queue per physical link. A PutLine repeats its line
+    * address on A.
+    */
+  private class Bus(
+      val port: TLBundle,
+      val mem: MemModel,
+      val instruction: Boolean
+  ) {
+    private val responses = mutable.Queue[DBeat]()
+    private val puts      = mutable.Map[Int, PutState]()
+    private val beatBytes = port.params.maskBits
+    var wroteDone         = false
 
-  /** Elaborate-or-explain: turns the spec shell's NotImplementedError into the actionable
-   *  harness status. Once CoreTop elaborates, this is where the per-cycle binding loop from
-   *  the contract above replaces the failure path. */
-  private def withDut[A](p: CoreParams)(body: CoreTop => A): A = {
-    var out: Option[A] = None
-    try
-      simulate(new CoreTop(p)) { dut => out = Some(body(dut)) }
-    catch {
-      case _: NotImplementedError => throw new HarnessNotReady(notReadyMessage)
+    private def queue(
+        cycle: Int,
+        latency: Int,
+        opcode: Int,
+        size: Int,
+        source: Int,
+        data: Seq[Long],
+        completesProgram: Boolean = false
+    ): Unit = {
+      val first = math.max(
+        cycle + math.max(1, latency),
+        responses.lastOption.map(_.due + 1).getOrElse(0)
+      )
+      data.zipWithIndex.foreach { case (word, i) =>
+        responses.enqueue(
+          DBeat(first + i, opcode, size, source, word, completesProgram)
+        )
+      }
     }
+
+    def drive(cycle: Int): Unit = {
+      port.a.ready.poke(true.B)
+      val head = responses.headOption.filter(_.due <= cycle)
+      port.d.valid.poke(head.nonEmpty.B)
+      val b    = port.d.bits
+      b.opcode.poke(head.map(_.opcode).getOrElse(0).U)
+      b.param.poke(0.U)
+      b.size.poke(head.map(_.size).getOrElse(0).U)
+      b.source.poke(head.map(_.source).getOrElse(0).U)
+      b.sink.poke(0.U)
+      b.data.poke(head.map(_.data).getOrElse(0L).U)
+      b.denied.poke(false.B)
+      b.corrupt.poke(false.B)
+    }
+
+    def sample(cycle: Int): Unit = {
+      val dFire = responses.headOption.exists(x =>
+        x.due <= cycle && port.d.ready.peek().litToBoolean
+      )
+      if (port.a.valid.peek().litToBoolean) {
+        val a       = port.a.bits
+        val opcode  = a.opcode.peek().litValue.toInt
+        val size    = a.size.peek().litValue.toInt
+        val source  = a.source.peek().litValue.toInt
+        val address = a.address.peek().litValue.toLong
+        val data    = a.data.peek().litValue.toLong
+        val mask    = a.mask.peek().litValue.toLong
+        val latency = if (instruction) mem.iLat else mem.dLatOf(address)
+        opcode match {
+          case 4     =>
+            val beats = math.max(1, (1 << size) / beatBytes)
+            queue(
+              cycle,
+              latency,
+              1,
+              size,
+              source,
+              (0 until beats).map(i => mem.load(address + i * beatBytes))
+            )
+          case 0     =>
+            val old   = puts.getOrElse(source, PutState(address, size, 0))
+            require(
+              old.address == address && old.size == size,
+              "PutFullData changed its line identity"
+            )
+            mem.storeStrb(address + old.count * beatBytes, data, mask)
+            val count = old.count + 1
+            if (count == math.max(1, (1 << size) / beatBytes)) {
+              puts.remove(source)
+              queue(cycle, latency, 0, size, source, Seq(0L))
+            } else puts(source) = old.copy(count = count)
+          case 1     =>
+            mem.storeStrb(address, data, mask)
+            queue(
+              cycle,
+              latency,
+              0,
+              size,
+              source,
+              Seq(0L),
+              address == MemModel.DONE
+            )
+          case other =>
+            throw new IllegalStateException(
+              s"unsupported TileLink A opcode $other"
+            )
+        }
+      }
+      if (dFire && responses.dequeue().completesProgram) wroteDone = true
+    }
+  }
+
+  private def withDut[A](p: CoreParams)(body: CoreTop => A): A = {
+    require(p.usingRvvi, "CoreHarness requires the verification retire stream")
+    var out: Option[A] = None
+    simulate(new CoreTop(p)) { dut => out = Some(body(dut)) }
     out.get
   }
 
-  private def runScenario(dut: CoreTop, s: Scenario): RunResult =
-    // Binding placeholder (documented in the object doc above): replaced together with the
-    // CommitUnit RTL. Reaching this point means CoreTop elaborated, so the shell era is over
-    // and this placeholder is the next thing to build.
-    throw new HarnessNotReady(
-      "CoreTop elaborates but the harness per-cycle binding is not written yet - " +
-      "implement CoreHarness.runScenario against the binding contract in its doc comment.")
+  private def runScenario(
+      dut: CoreTop,
+      s: Scenario,
+      stopOnDone: Boolean = true,
+      observe: Int => Unit = _ => ()
+  ): RunResult = {
+    val io       = dut.io
+    val inst     = new Bus(io.instBus, s.m, instruction = true)
+    val data     = new Bus(io.dataBus, s.m, instruction = false)
+    val pcs      = mutable.ArrayBuffer[Long]()
+    var done     = false
+    var derailed = false
+    var cycle    = 0
 
-  def run(name: String, m: MemModel, maxCycles: Int = 600, verbose: Boolean = false,
-          irq: Seq[IrqPulse] = Nil)(implicit p: CoreParams): RunResult =
-    withDut(p)(dut => runScenario(dut, Scenario(name, m, maxCycles, verbose, irq)))
+    def drive(reset: Boolean): Unit = {
+      io.bootAddrIn.poke(MemModel.PROG_BASE.U)
+      io.hartEnIn.poke((!reset).B)
+      def active(kind: Char): Boolean = !reset && s.irq.exists(p =>
+        p.kind == kind && cycle >= p.at && cycle < p.at + p.dur
+      )
+      io.interruptIn.meip.poke(active('e').B)
+      io.interruptIn.mtip.poke(active('t').B)
+      io.interruptIn.msip.poke(active('s').B)
+      Seq(io.interruptIn.seip, io.interruptIn.stip, io.interruptIn.ssip)
+        .foreach(_.poke(false.B))
+      io.debugReqIn.debugReq.poke(false.B)
+      io.retireStreamOut.get.ready.poke(true.B)
+      inst.drive(cycle)
+      data.drive(cycle)
+    }
 
-  /** Compile the DUT once, run many scenarios (reset between each). The dominant per-run cost
-   *  (FIRRTL -> SV -> Verilator elaborate + link) is paid once instead of per scenario. */
-  def runBatch(scenarios: Seq[Scenario])(implicit p: CoreParams): Seq[RunResult] =
+    dut.reset.poke(true.B)
+    (0 until 2).foreach { _ => drive(reset = true); dut.clock.step() }
+    dut.reset.poke(false.B)
+    while (cycle < s.maxCycles && (!stopOnDone || !done)) {
+      drive(reset = false)
+      observe(cycle)
+      val retire = io.retireStreamOut.get
+      if (retire.valid.peek().litToBoolean) {
+        val pc = retire.bits.pc.peek().litValue.toLong
+        pcs += pc
+        if (pc < MemModel.PROG_BASE) derailed = true
+      }
+      inst.sample(cycle)
+      data.sample(cycle)
+      if (data.wroteDone) done = true
+      dut.clock.step()
+      cycle += 1
+    }
+    RunResult(s.m.mem, pcs.toSeq, done, cycle, derailed)
+  }
+
+  /** Uses exactly the scenario memory/reset driver; observation happens before
+    * the clock edge.
+    */
+  def trace(m: MemModel, cycles: Int, irq: Seq[IrqPulse] = Nil)(implicit
+      p: CoreParams
+  ): (RunResult, Seq[Cycle]) = {
+    require(
+      p.usingRvvi,
+      "CoreHarness trace requires the verification retire stream"
+    )
+    require(cycles >= 0, "trace cycle count must be non-negative")
+    val rows                      = mutable.ArrayBuffer[Cycle]()
+    var result: Option[RunResult] = None
+    simulate(new CoreTraceTop(p)) { dut =>
+      result = Some(
+        runScenario(
+          dut,
+          Scenario("trace", m, cycles, irq = irq),
+          stopOnDone = false,
+          observe = i => rows += Probe.sample(dut, m, i)
+        )
+      )
+    }
+    (result.get, rows.toSeq)
+  }
+
+  def run(
+      name: String,
+      m: MemModel,
+      maxCycles: Int = 600,
+      verbose: Boolean = false,
+      irq: Seq[IrqPulse] = Nil
+  )(implicit p: CoreParams): RunResult =
+    withDut(p)(dut =>
+      runScenario(dut, Scenario(name, m, maxCycles, verbose, irq))
+    )
+
+  def runBatch(scenarios: Seq[Scenario])(implicit
+      p: CoreParams
+  ): Seq[RunResult] =
     withDut(p)(dut => scenarios.map(s => runScenario(dut, s)))
 
-  /** Hold one compiled DUT open and serve scenarios as they arrive (the scn daemon). `next` is
-   *  polled for work: Some(scenario) runs it (reset between, exactly as runBatch), None shuts
-   *  the server down. */
-  def runServer(next: () => Option[Scenario])(onResult: (Scenario, RunResult) => Unit)
-               (implicit p: CoreParams): Unit =
+  def runServer(
+      next: () => Option[Scenario]
+  )(onResult: (Scenario, RunResult) => Unit)(implicit p: CoreParams): Unit =
     withDut(p) { dut =>
       var live = true
       while (live) next() match {

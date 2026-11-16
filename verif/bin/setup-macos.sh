@@ -19,6 +19,7 @@ SCALA_VER="2.13.12"
 CHISEL_VER="6.2.0"
 FIRTOOL_VER="1.62.0"
 VERILATOR_VER="5.020"
+ESPRESSO_COMMIT="85265139e9598852f9388d293658a1977a829a01"
 SDK_NAME="MacOSX26.5.sdk"
 JDK_FORMULA="openjdk@17"
 RISCV_FORMULA="riscv64-elf-gcc"
@@ -27,6 +28,8 @@ FIRTOOL_URL="https://github.com/llvm/circt/releases/download/firtool-${FIRTOOL_V
 FIRTOOL_SHA256="8fe20d2308634d0c564e3fbcaa9d0cbdca0f16df0574e8ea7284e0978f517f91"
 VERILATOR_URL="https://github.com/verilator/verilator/archive/refs/tags/v${VERILATOR_VER}.tar.gz"
 VERILATOR_SHA256="41ca9abfadf8d2413efbff7f8277379733d0095957fe7769dc38f8fd1bc899a6"
+ESPRESSO_URL="https://codeload.github.com/classabbyamp/espresso-logic/tar.gz/$ESPRESSO_COMMIT"
+ESPRESSO_SHA256="67bf8bcda36558dda4ca7c0c9f5c3a6fd140e425b1da83bbc7a2557063b9083d"
 
 CACHE_ROOT="${VERIF_CACHE_ROOT:-${XDG_CACHE_HOME:-$HOME/Library/Caches}/uda-core-verif}"
 DOWNLOADS="$CACHE_ROOT/downloads"
@@ -93,6 +96,7 @@ ok "JDK $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
 # Maven is used only as a deterministic dependency resolver into the persistent cache.
 ensure_formula "maven"
 ensure_formula "ccache"
+ensure_formula "icarus-verilog"
 
 # Resolve Scala/Chisel classpaths without relying on /tmp or a user-global Ivy cache.
 POM="$DEPS/pom.xml"
@@ -166,6 +170,22 @@ fi
 [ "$(basename "$SDKROOT")" = "$SDK_NAME" ] || die "VERIF_MACOS_SDKROOT must point to $SDK_NAME (got $SDKROOT)"
 export SDKROOT
 ok "SDKROOT=$SDKROOT"
+
+# Chisel's decoder needs espresso on PATH. Without it, elaboration falls back to
+# QMC and emits a multiline PATH diagnostic that also contaminates JSON output.
+ESPRESSO_PREFIX="$TOOLS/espresso-logic-$ESPRESSO_COMMIT"
+if [ ! -x "$ESPRESSO_PREFIX/bin/espresso" ]; then
+  ESPRESSO_ARCHIVE="$DOWNLOADS/espresso-logic-$ESPRESSO_COMMIT.tar.gz"
+  fetch_checked "$ESPRESSO_URL" "$ESPRESSO_ARCHIVE" "$ESPRESSO_SHA256"
+  rm -rf "$ESPRESSO_PREFIX"
+  tar -xzf "$ESPRESSO_ARCHIVE" -C "$TOOLS"
+  make -C "$ESPRESSO_PREFIX/espresso-src" CC="$(xcrun --find clang)"
+fi
+ESPRESSO_FILE="$(file "$ESPRESSO_PREFIX/bin/espresso")"
+echo "$ESPRESSO_FILE" | grep -Eq "arm64|universal" || die "espresso is not native arm64/universal: $ESPRESSO_FILE"
+printf '.i 2\n.o 1\n.p 1\n11 1\n.e\n' | "$ESPRESSO_PREFIX/bin/espresso" >/dev/null
+export PATH="$ESPRESSO_PREFIX/bin:$PATH"
+ok "espresso commit $ESPRESSO_COMMIT (native arm64)"
 
 # firtool 1.62.0 only has the validated macOS x64 build here. Keep the real binary
 # in persistent storage and expose an explicit Rosetta wrapper to Chisel.
@@ -254,7 +274,7 @@ unset VERILATOR_ROOT
 export RISCV_TOOLCHAIN_BIN="$RISCV_BIN"
 export CCACHE_DIR="$CCACHE"
 export VERIF_SIMCACHE_KEEP=64
-export PATH="$VERILATOR_PREFIX/bin:$RISCV_BIN:$FIRTOOL_DIR:$JAVA_HOME/bin:\$PATH"
+export PATH="$VERILATOR_PREFIX/bin:$ESPRESSO_PREFIX/bin:$RISCV_BIN:$FIRTOOL_DIR:$JAVA_HOME/bin:\$PATH"
 EOF
 ok "wrote $ENVF"
 

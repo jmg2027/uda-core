@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/VLSIDA/sky130_sram_macros",
+  "commit": "965df150c754fe2b3f93a0bd1f9883eb114279b2",
+  "macro": "sky130_sram_1kbyte_1rw1r_32x256_8",
+  "words": 256,
+  "word_bits": 32,
+  "write_mask_bits": 4,
+  "corner": "TT_1p8V_25C",
+  "files": {
+    "sky130_sram_1kbyte_1rw1r_32x256_8.v": {
+      "sha256": "88eaee9f0c480065545479143bfef1e3186a5d97e4a7f79b8c57ad57637cdfeb"
+    },
+    "sky130_sram_1kbyte_1rw1r_32x256_8_TT_1p8V_25C.lib": {
+      "sha256": "f36f91f35700d936c1c82aeaffed0084b938aceed60551588ae9a02cbd706f56"
+    },
+    "sky130_sram_1kbyte_1rw1r_32x256_8.lef": {
+      "sha256": "f5389fa908c5876ef034c487b4363e755b3e13bf88ba924815c6fcea17965b92"
+    },
+    "sky130_sram_1kbyte_1rw1r_32x256_8.gds": {
+      "sha256": "f05100d51cca469d8832f6494680e30ee9df3e38baca0e086deda4fb2b8edf21"
+    },
+    "sky130_sram_1kbyte_1rw1r_32x256_8.sp": {
+      "sha256": "b9f28703cbf83dec696fecc4be95a5fc804d33853893ddb3246d0c3a245b089a"
+    },
+    "sky130_sram_1kbyte_1rw1r_32x256_8.log": {
+      "sha256": "136e0697123bfad1b8865dcacc85c76d9f23d2e2b601cddc315fb3835cdd22c2"
+    },
+    "LICENSE": {
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  }
+}

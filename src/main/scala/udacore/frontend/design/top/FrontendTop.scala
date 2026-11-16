@@ -1,38 +1,80 @@
 package udacore.frontend.design.top
 
 import chisel3._
+import chisel3.util._
 import framework.macros.LocalSpec
+import udacore.backend.design.shared.{FtqCommit, RecoveryEvent}
+import udacore.core.design.shared.{ICacheReq, ICacheResp, TranslateReq}
+import udacore.frontend.design.modules.{
+  BranchPredictor,
+  FetchBuffer,
+  FetchPcGen,
+  FetchTargetQueue,
+  FetchUnit
+}
 import udacore.frontend.design.shared._
 import udacore.frontend.spec.top.FrontendTopSpecs._
 
-/** FrontendTop vertex shell (spec: FrontendTopSpecs).
-  *
-  * ADR-019 spec phase: every member is a documented placeholder whose contract is
-  * the named spec val. Elaboration raises NotImplementedError, which the ADR-018
-  * runners report as PENDING (red by construction) until the RTL lands.
-  */
+/** FrontendTop rawTop wiring (spec: FrontendTopSpecs; ADR-019 D-19.2). */
 @LocalSpec(contFrontendTop)
 class FrontendTop(val params: FrontendParams) extends FrontendModule {
   val io = IO(new Bundle {
     @LocalSpec(intfBootAddrIn)
-    val bootAddrIn = ???
+    val bootAddrIn = Flipped(Decoupled(UInt(params.vAddrWidth.W)))
 
     @LocalSpec(intfRecoveryEventIn)
-    val recoveryEventIn = ???
+    val recoveryEventIn = Input(new RecoveryEvent(params.backend))
 
     @LocalSpec(intfFtqCommitIn)
-    val ftqCommitIn = ???
+    val ftqCommitIn = Flipped(Decoupled(new FtqCommit(params.backend)))
 
     @LocalSpec(intfICacheRespIn)
-    val iCacheRespIn = ???
+    val iCacheRespIn = Flipped(
+      Decoupled(new ICacheResp(params.fetchGenWidth, params.fetchWidth))
+    )
 
     @LocalSpec(intfFetchPacketOut)
-    val fetchPacketOut = ???
+    val fetchPacketOut = Decoupled(
+      new FetchPacket(
+        params.decodeWidth,
+        params.vAddrWidth,
+        params.ftqIdxWidth,
+        params.slotWidth
+      )
+    )
 
     @LocalSpec(intfITlbReqOut)
-    val iTlbReqOut = ???
+    val iTlbReqOut =
+      Decoupled(new TranslateReq(params.fetchGenWidth, params.vAddrWidth))
 
     @LocalSpec(intfICacheReqOut)
-    val iCacheReqOut = ???
+    val iCacheReqOut =
+      Decoupled(new ICacheReq(params.fetchGenWidth, params.vAddrWidth))
   })
+
+  val pcg       = Module(new FetchPcGen(params))
+  val predictor = Module(new BranchPredictor(params))
+  val ftq       = Module(new FetchTargetQueue(params))
+  val fetch     = Module(new FetchUnit(params))
+  val buffer    = Module(new FetchBuffer(params))
+
+  pcg.io.bootAddrIn :<>= io.bootAddrIn
+  predictor.io.predictReqIn :<>= pcg.io.predictReqOut
+  pcg.io.nextPcIn :<>= predictor.io.nextPcOut
+  ftq.io.predictionIn :<>= predictor.io.predictionOut
+  predictor.io.historyRestoreIn :<>= ftq.io.historyRestoreOut
+  predictor.io.predictorTrainIn :<>= ftq.io.predictorTrainOut
+  fetch.io.fetchRequestIn :<>= ftq.io.fetchRequestOut
+  buffer.io.fetchBlockIn :<>= fetch.io.fetchBlockOut
+  ftq.io.ftqCommitIn :<>= io.ftqCommitIn
+  fetch.io.iCacheRespIn :<>= io.iCacheRespIn
+  io.fetchPacketOut :<>= buffer.io.fetchPacketOut
+  io.iTlbReqOut :<>= fetch.io.iTlbReqOut
+  io.iCacheReqOut :<>= fetch.io.iCacheReqOut
+
+  pcg.io.recoveryEventIn       := io.recoveryEventIn
+  predictor.io.recoveryEventIn := io.recoveryEventIn
+  ftq.io.recoveryEventIn       := io.recoveryEventIn
+  fetch.io.recoveryEventIn     := io.recoveryEventIn
+  buffer.io.recoveryEventIn    := io.recoveryEventIn
 }

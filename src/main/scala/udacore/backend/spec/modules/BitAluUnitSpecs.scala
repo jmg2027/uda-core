@@ -13,7 +13,7 @@ object BitAluUnitSpecs {
     CONTRACT("BitAluUnit")
       .desc(
         "BitAluUnit is the optional bit-manipulation unit (Zba/Zbb/Zbs/Zbc contribution, ADR-017). It accepts IssuedUop tokens from DispatchUnit and emits " +
-        "FuResult tokens (value, destination, completion) to PublishMux."
+          "FuResult tokens (value, destination, completion) to PublishMux."
       )
       .has(
         intfBitAluReqIn,
@@ -38,7 +38,9 @@ object BitAluUnitSpecs {
 
   val intfBitAluResultOut = spec {
     INTERFACE("BitAluResultOut")
-      .desc("Results toward PublishMux; backpressured by the single publish lane.")
+      .desc(
+        "Results toward PublishMux; backpressured by the single publish lane."
+      )
       .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
@@ -57,9 +59,14 @@ object BitAluUnitSpecs {
     FUNCTION("IntegrateExternalBitAlu")
       .desc(
         "Drive udacore.external.bitalu.design.BitAlu from the IssuedUop operands and operation, and emit " +
-        "one FuResult carrying the uop's robTag and prd when the core produces its result."
+          "one FuResult carrying the uop's robTag and prd when the core produces its result."
       )
-      .uses(intfBitAluReqIn, intfBitAluResultOut, intfRecoveryEventIn, funcRecoveryKills)
+      .uses(
+        intfBitAluReqIn,
+        intfBitAluResultOut,
+        intfRecoveryEventIn,
+        funcRecoveryKills
+      )
       .build()
   }
 }

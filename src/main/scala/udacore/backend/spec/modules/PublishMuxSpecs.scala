@@ -13,8 +13,8 @@ object PublishMuxSpecs {
     CONTRACT("PublishMux")
       .desc(
         "Arbitrates the execution-unit results and LSQ memory completions onto one publish " +
-        "lane per cycle. A published result writes the PRF (when it has a destination), " +
-        "broadcasts the wakeup of its prd, and completes its ROB entry, all in one transfer."
+          "lane per cycle. A published result writes the PRF (when it has a destination), " +
+          "broadcasts the wakeup of its prd, and completes its ROB entry, all in one transfer."
       )
       .has(
         intfAluResultIn,
@@ -34,13 +34,13 @@ object PublishMuxSpecs {
       .uses(paramPublishWidth, funcRobOlder)
       .note(
         "Recovery stance: PublishMux holds no tokens. Every candidate is held on its producer's " +
-        "edge, and the producer drops it when funcRecoveryKills selects it, so a killed uop " +
-        "never writes the PRF, wakes a consumer, or completes a ROB entry."
+          "edge, and the producer drops it when funcRecoveryKills selects it, so a killed uop " +
+          "never writes the PRF, wakes a consumer, or completes a ROB entry."
       )
       .note(
         "ADR-019C E-7: the RecoveryEvent stays combinational; PublishMux grants the oldest " +
-        "candidate still live in the event cycle. A branch's result survives its own " +
-        "BranchResolution's event, while younger same-cycle results are gone."
+          "candidate still live in the event cycle. A branch's result survives its own " +
+          "BranchResolution's event, while younger same-cycle results are gone."
       )
       .build()
   }
@@ -87,8 +87,12 @@ object PublishMuxSpecs {
 
   val intfCsrResultIn = spec {
     INTERFACE("CsrResultIn")
-      .desc("CsrController results (old CSR value, or illegal-access exception).")
-      .note("ADR-019D E-1: a FuResult that joins the oldest-live arbitration like every other result input.")
+      .desc(
+        "CsrController results (old CSR value, or illegal-access exception)."
+      )
+      .note(
+        "ADR-019D E-1: a FuResult that joins the oldest-live arbitration like every other result input."
+      )
       .uses(bndFuResult)
       .is(rawReadyValidIntf)
       .build()
@@ -96,7 +100,9 @@ object PublishMuxSpecs {
 
   val intfMemResultIn = spec {
     INTERFACE("MemResultIn")
-      .desc("LoadStoreQueue completions (load values, store resolutions, memory exceptions).")
+      .desc(
+        "LoadStoreQueue completions (load values, store resolutions, memory exceptions)."
+      )
       .uses(bndMemResult)
       .is(rawReadyValidIntf)
       .build()
@@ -112,7 +118,9 @@ object PublishMuxSpecs {
 
   val intfWakeupBroadcastOut = spec {
     INTERFACE("WakeupBroadcastOut")
-      .desc("Wakeup of the published prd to the ReservationStation and RenameUnit.")
+      .desc(
+        "Wakeup of the published prd to the ReservationStation and RenameUnit."
+      )
       .uses(bndWakeupBroadcast)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 5.")
@@ -131,8 +139,8 @@ object PublishMuxSpecs {
     FUNCTION("PublishArbitrate")
       .desc(
         "Each cycle grant the oldest valid candidate by funcRobOlder; losers stay valid on " +
-        "their edges (backpressure, never drop). Oldest-first guarantees the ROB head's result " +
-        "is never starved."
+          "their edges (backpressure, never drop). Oldest-first guarantees the ROB head's result " +
+          "is never starved."
       )
       .uses(funcRobOlder)
       .build()
@@ -142,16 +150,22 @@ object PublishMuxSpecs {
     FUNCTION("PublishFanout")
       .desc(
         "The granted result fires PhysicalRegWriteOut (if wen), WakeupBroadcastOut (if wen), " +
-        "and RobCompletionOut in the same cycle; the grant is withheld while a needed " +
-        "ready/valid output is not ready."
+          "and RobCompletionOut in the same cycle; the grant is withheld while a needed " +
+          "ready/valid output is not ready."
       )
-      .uses(intfPhysicalRegWriteOut, intfWakeupBroadcastOut, intfRobCompletionOut)
+      .uses(
+        intfPhysicalRegWriteOut,
+        intfWakeupBroadcastOut,
+        intfRobCompletionOut
+      )
       .build()
   }
 
   val propSingleDrain = spec {
     PROPERTY("SingleDrain")
-      .desc("At most one PRF write, one wakeup broadcast, and one ROB completion occur per cycle, always for the same uop.")
+      .desc(
+        "At most one PRF write, one wakeup broadcast, and one ROB completion occur per cycle, always for the same uop."
+      )
       .uses(paramPublishWidth)
       .note("ADR-014 D-14.1 single lane, retained for v0. Simulation assert.")
       .build()

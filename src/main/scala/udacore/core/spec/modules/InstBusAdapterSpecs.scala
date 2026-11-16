@@ -15,8 +15,8 @@ object InstBusAdapterSpecs {
     CONTRACT("InstBusAdapter")
       .desc(
         "Translates InstructionCache line fills and uncached fetches into TileLink channel-A " +
-        "Get requests on the instBus link and returns channel-D AccessAckData beats. It is the " +
-        "only agent on the instruction link."
+          "Get requests on the instBus link and returns channel-D AccessAckData beats. It is the " +
+          "only agent on the instruction link."
       )
       .has(
         intfInstMemReqIn,
@@ -26,7 +26,9 @@ object InstBusAdapterSpecs {
         propInstBusGetOnly
       )
       .uses(contTileLink, paramTLLinkDerivation)
-      .note("Recovery stance: every accepted request is an uncancelable bus transaction and completes (propGenerationTagScope).")
+      .note(
+        "Recovery stance: every accepted request is an uncancelable bus transaction and completes (propGenerationTagScope)."
+      )
       .build()
   }
 
@@ -48,7 +50,9 @@ object InstBusAdapterSpecs {
 
   val intfInstBus = spec {
     INTERFACE("InstBusAdapterSpecs.intfInstBus")
-      .desc("TileLink master link (channels A and D; TL-UH bursts for line fills).")
+      .desc(
+        "TileLink master link (channels A and D; TL-UH bursts for line fills)."
+      )
       .uses(contTileLink)
       .is(rawReadyValidIntf)
       .build()
@@ -58,8 +62,8 @@ object InstBusAdapterSpecs {
     FUNCTION("InstBusGet")
       .desc(
         "Each request becomes one Get{address = paddr, size} with a single source id; the " +
-        "AccessAckData beats return in order with last on the final beat; denied or corrupt " +
-        "sets the response's denied flag (instruction access fault)."
+          "AccessAckData beats return in order with last on the final beat; denied or corrupt " +
+          "sets the response's denied flag (instruction access fault)."
       )
       .uses(intfInstMemReqIn, intfInstMemRespOut, intfInstBus)
       .build()
@@ -67,7 +71,9 @@ object InstBusAdapterSpecs {
 
   val propInstBusGetOnly = spec {
     PROPERTY("InstBusGetOnly")
-      .desc("Channel A carries only Get; the instruction link never elaborates B/C/E (hasBCE = false).")
+      .desc(
+        "Channel A carries only Get; the instruction link never elaborates B/C/E (hasBCE = false)."
+      )
       .uses(intfInstBus)
       .build()
   }

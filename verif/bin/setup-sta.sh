@@ -1,11 +1,29 @@
 #!/usr/bin/env bash
 # ONE-TIME per container: provision the gate-level STA toolchain (yosys + sky130 HD liberty +
-# CUDD + OpenSTA). Heavy (OpenSTA is a source build, needs network) - NOT in the SessionStart
+# CUDD + OpenSTA). CoreTop additionally needs sv2v for SystemVerilog array conversion.
+# Heavy (OpenSTA is a source build, needs network) - NOT in the SessionStart
 # hook on purpose; run it only when you want real placement-free timing. See verif/bin/sta.sh.
 set -u
-STA=/tmp/verif-sta
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ "$(uname -s)" = "Darwin" ] && [ -f "$HERE/../.toolchain.env" ]; then
+  source "$HERE/../.toolchain.env"
+fi
+REPO="$(cd "$HERE/../.." && pwd)"
+STA="${VERIF_STA_HOME:-$REPO/../.uda-toolchain/sta}"
 mkdir -p "$STA"
 log(){ echo "[setup-sta] $*"; }
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  if command -v yosys >/dev/null 2>&1 && [ -x "$STA/OpenSTA/build/sta" ] &&
+      [ -s "$STA/sky130_fd_sc_hd__tt_025C_1v80.lib" ]; then
+    log "ready: Yosys, OpenSTA and sky130 HD liberty in $STA"
+    command -v sv2v >/dev/null 2>&1 || log "CoreTop also needs sv2v (brew install sv2v)"
+    bash "$HERE/setup-sram.sh" || exit 1
+    exit 0
+  fi
+  log "INCOMPLETE: install Yosys and provide OpenSTA plus sky130 HD liberty in $STA"
+  exit 1
+fi
 
 # 1. yosys (synthesis) - apt has 0.33
 # apt update may fail on an unrelated third-party repo (exit != 0 with usable lists), so do not
@@ -37,3 +55,4 @@ if [ ! -x "$STA/OpenSTA/build/sta" ]; then
 fi
 
 [ -x "$STA/OpenSTA/build/sta" ] && [ -s "$LIB" ] && echo "[setup-sta] ready: OpenSTA + liberty in $STA" || echo "[setup-sta] INCOMPLETE - check network/root (see messages above)"
+bash "$HERE/setup-sram.sh" || exit 1

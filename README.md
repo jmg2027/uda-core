@@ -12,12 +12,25 @@ The v0 architectural point is RV32IM_Zicsr_Zifencei + Svade with M/S/U privilege
 
 ## Status
 
-RTL implementation is in progress against the ADR-019 spec DSL contracts. The backend,
-BranchPredictor, FetchTargetQueue, FetchPcGen, FetchBuffer, InstructionCache,
-InstBusAdapter, InstructionTlb, DataTlb, and PageTableWalker have RTL and L1 tests.
-FetchUnit, DataCache, DataBusAdapter, FrontendTop, and CoreTop remain unfinished;
-whole-core scenario verification is not active yet. See [HANDOFF](document/HANDOFF.md)
-for validation results, integration boundaries, and implementation order.
+The implemented RTL executes whole-core assembly programs. The backend,
+BranchPredictor, FetchTargetQueue, FetchPcGen, FetchUnit, FetchBuffer, InstructionCache,
+InstBusAdapter, DataBusAdapter, DataCache, InstructionTlb, DataTlb, and PageTableWalker have RTL and L1 tests.
+FrontendTop and CoreTop wire these vertices, and the CoreHarness runs whole-core
+scenarios through both TileLink links and the retire stream. The latest recorded
+regression is 376 passing L1 tests and all 23 whole-core scenarios passing.
+A directed Trace also demonstrates younger independent ALU work completing during
+an older DIV, followed by ordered retirement. See
+[HANDOFF](document/HANDOFF.md) for current validation results and remaining gaps.
+The per-cycle Trace command observes the implemented pipeline through a simulation-only
+wrapper. Whole-core synthesis and STA use the product CoreTop without that instrumentation.
+Bulk I-cache and D-cache data use clocked, byte-masked SRAM banks under
+[ADR-020](document/adr/ADR-020-cache-sram-storage.md). The reference point instantiates
+32 pinned OpenRAM sky130 macros; tags and control metadata remain registers.
+
+This is a functional RTL development and education platform. Broad ISA-model
+differential coverage and representative-workload performance remain unmeasured.
+The latest whole-core SRAM STA completes, but setup WNS is -99.384 ns at a
+modeled 10 ns clock; this is not timing closure or a physical frequency result.
 
 ## v0 Reference Machine
 
@@ -29,7 +42,7 @@ for validation results, integration boundaries, and implementation order.
 | Execution | out-of-order issue and completion, in-order commit, one publish lane |
 | Recovery | execute-time selective branch recovery through one RecoveryEvent broadcast; older work survives |
 | Memory | LQ8 + SQ8, physical-address ordering, conservative unknown-store disambiguation, committed StoreBuffer |
-| Caches | VIPT 16 KiB 4-way 64-byte-line I-cache and D-cache; D-cache 2 MSHRs, hit-under-miss |
+| Caches | VIPT 16 KiB 4-way 64-byte-line I-cache and D-cache; SRAM data banks, D-cache 2 MSHRs, hit-under-miss |
 | MMU | 16-entry ITLB and DTLB, shared Sv32 PTW, SFENCE.VMA full flush |
 | Boundary | TileLink instBus (TL-UH) and dataBus (TL-UH; coherence is a separate option) |
 
@@ -54,19 +67,37 @@ for validation results, integration boundaries, and implementation order.
 Verification runs locally. GitHub Actions CI workflows are intentionally absent
 to avoid hosted-runner usage for this personal project.
 
+Provision the toolchain for the host first:
+
 ```bash
-bash verif/bin/setup.sh                        # Linux toolchain
-bash verif/bin/setup-macos.sh                  # Apple Silicon toolchain (use instead of setup.sh)
+bash verif/bin/setup.sh                        # Linux
+bash verif/bin/setup-macos.sh                  # Apple Silicon macOS
+```
+
+Then run the active verification flow:
+
+```bash
 bash verif/bin/build.sh                        # compile gate: 0 errors
 python3 tools/spec-check.py                    # spec gate (ADR-015/018): 0 errors
 verif/bin/run.sh verif.spectest.RunSpecTests   # L1 SpecTests
-verif/bin/scn.sh run verif/scn/<name>.scn      # L2 scenario (harness-not-ready until CoreTop has RTL)
+verif/bin/scn.sh run verif/scn/<name>.scn      # L2 whole-core scenario
+verif/bin/scn.sh trace verif/scn/add.scn --cycles=140 --json
+bash verif/bin/setup-sram.sh                  # pinned macro timing/physical views for STA
+bash verif/bin/test-sram-model.sh             # 4-state current-model/vendor comparison
+verif/bin/sta.sh core default                 # SRAM + standard-cell OOC timing model
 ```
+
+SRAM/STA tools default to the persistent sibling `../.uda-toolchain/sta`.
+Set `VERIF_STA_HOME` or `VERIF_SRAM_HOME` to select another tool or macro location.
 
 The build uses the sibling `../spec-framework` checkout (override with
 `SPEC_FRAMEWORK_HOME`) and exports real spec/tag indexes and `SPEC.md` to
 `verif/out/spec-report/`. See [framework setup](docs/tooling/spec-framework.md)
 for toolchain settings, sbt usage, and coverage interpretation.
+
+Run `sbt scalafmtCheckAll test` before committing. The protected historical
+`src/test` suites currently have parser/API incompatibilities; the live handoff
+records the exact failures separately from the active L1 and scenario results.
 
 ## Documentation
 
@@ -75,4 +106,4 @@ for toolchain settings, sbt usage, and coverage interpretation.
 3. [AGENTS.md](AGENTS.md) - spec DSL and mandatory rules
 4. [document/HANDOFF.md](document/HANDOFF.md) - live state and next steps
 5. [verif/README.md](verif/README.md) - the instruments
-6. [docs/](docs/) - UDA methodology background
+6. [docs/](docs/) - UDA methodology background and toolchain notes

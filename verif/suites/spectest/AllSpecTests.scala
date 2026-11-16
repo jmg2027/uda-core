@@ -2,7 +2,7 @@ package verif.spectest
 
 /** The L1 SpecTest registry + runner entrypoint (ADR-018).
   *
-  *   verif/bin/run.sh verif.spectest.RunSpecTests [nameFilter] [--json]
+  * verif/bin/run.sh verif.spectest.RunSpecTests [nameFilter] [--json]
   *
   * Registration is explicit: add new tests to `registry`. The runner exits 1 on
   * any FAIL; PENDING (spec-shell DUT) is reported but does not fail the run.
@@ -16,12 +16,13 @@ object RunSpecTests {
       StoreBufferSpecTests.all ++ DecodeUnitSpecTests.all ++ BackendTopSpecTests.all ++
       CsrTrapSeamSpecTests.all ++
       PhysicalRegisterFileSpecTests.all ++ BranchPredictorSpecTests.all ++ FetchTargetQueueSpecTests.all ++ FetchTargetQueueMergeSpecTests.all ++ FetchUnitSpecTests.all ++
-      FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++
-      InstBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++
-      ICacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
+      FetchPcGenSpecTests.all ++ PredictLoopSpecTests.all ++ FetchBufferSpecTests.all ++ FrontendTopSpecTests.all ++
+      InstBusAdapterSpecTests.all ++ DataBusAdapterSpecTests.all ++ InstructionCacheSpecTests.all ++ DataCacheSpecTests.all ++
+      ICacheBusSpecTests.all ++ DCacheBusSpecTests.all ++ PmaSpecTests.all ++ InstructionTlbSpecTests.all ++
       ItlbICacheSpecTests.all ++
       DataTlbSpecTests.all ++ LsqDtlbSpecTests.all ++
-      PageTableWalkerSpecTests.all ++ MmuSpecTests.all
+      PageTableWalkerSpecTests.all ++ MmuSpecTests.all ++ MmuDataBusSpecTests.all ++ MemoryPathSpecTests.all ++
+      CoreTopSpecTests.all ++ TraceSpecTests.all ++ CacheLineSramSpecTests.all
 
   def main(args: Array[String]): Unit = SpecTestRunner.run(registry, args)
 }

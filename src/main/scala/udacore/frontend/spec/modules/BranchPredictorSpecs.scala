@@ -19,11 +19,11 @@ object BranchPredictorSpecs {
     CONTRACT("BranchPredictor")
       .desc(
         "Predicts, from the fetch PC alone, whether the fetch block contains a taken " +
-        "control-flow instruction, where it is, and where it goes. The BTB owns control-flow " +
-        "presence, type, and target; TAGE owns conditional-branch direction only; the RAS " +
-        "owns return targets. Each prediction is emitted twice in one transfer: the full " +
-        "Prediction (with metadata and the pre-update history checkpoint) to the " +
-        "FetchTargetQueue, and the nextPc to FetchPcGen."
+          "control-flow instruction, where it is, and where it goes. The BTB owns control-flow " +
+          "presence, type, and target; TAGE owns conditional-branch direction only; the RAS " +
+          "owns return targets. Each prediction is emitted twice in one transfer: the full " +
+          "Prediction (with metadata and the pre-update history checkpoint) to the " +
+          "FetchTargetQueue, and the nextPc to FetchPcGen."
       )
       .has(
         intfPredictReqIn,
@@ -47,12 +47,18 @@ object BranchPredictorSpecs {
         rawTageSubcore,
         rawRasSubcore
       )
-      .uses(paramBtbGeometry, paramTageGeometry, paramGhrLength, paramRasDepth, paramFetchWidth)
+      .uses(
+        paramBtbGeometry,
+        paramTageGeometry,
+        paramGhrLength,
+        paramRasDepth,
+        paramFetchWidth
+      )
       .is(rawSpeculativeHolder)
       .note(
         "Speculative-holder stance: the speculative GHR and RAS are the only speculative state. " +
-        "They are not ordered per entry; they are repaired only by HistoryRestore from the FTQ " +
-        "after a RecoveryEvent. BTB/TAGE tables are microarchitectural and are never rolled back."
+          "They are not ordered per entry; they are repaired only by HistoryRestore from the FTQ " +
+          "after a RecoveryEvent. BTB/TAGE tables are microarchitectural and are never rolled back."
       )
       .build()
   }
@@ -61,8 +67,8 @@ object BranchPredictorSpecs {
     INTERFACE("PredictReqIn")
       .desc(
         "Fetch PC from FetchPcGen. Ready is low in a RecoveryEvent cycle and while any " +
-        "RecoveryEvent observed so far lacks its accepted HistoryRestore (ADR-019H E-5); the " +
-        "outstanding count is bounded by BranchCheckpointCount + 1 (ADR-019H E-4)."
+          "RecoveryEvent observed so far lacks its accepted HistoryRestore (ADR-019H E-5); the " +
+          "outstanding count is bounded by BranchCheckpointCount + 1 (ADR-019H E-4)."
       )
       .uses(bndPredictReq)
       .is(rawReadyValidIntf)
@@ -71,7 +77,9 @@ object BranchPredictorSpecs {
 
   val intfPredictionOut = spec {
     INTERFACE("PredictionOut")
-      .desc("Prediction with metadata and checkpoint into the FetchTargetQueue. FTQ-full backpressures prediction.")
+      .desc(
+        "Prediction with metadata and checkpoint into the FetchTargetQueue. FTQ-full backpressures prediction."
+      )
       .uses(bndPrediction)
       .is(rawReadyValidIntf)
       .build()
@@ -79,7 +87,9 @@ object BranchPredictorSpecs {
 
   val intfNextPcOut = spec {
     INTERFACE("NextPcOut")
-      .desc("nextPc of the same prediction to FetchPcGen; fires in the same cycle as PredictionOut (atomic fork).")
+      .desc(
+        "nextPc of the same prediction to FetchPcGen; fires in the same cycle as PredictionOut (atomic fork)."
+      )
       .uses(bndPredictReq)
       .is(rawReadyValidIntf)
       .build()
@@ -87,7 +97,9 @@ object BranchPredictorSpecs {
 
   val intfHistoryRestoreIn = spec {
     INTERFACE("HistoryRestoreIn")
-      .desc("Checkpoint plus resolved outcome from the FTQ after a RecoveryEvent.")
+      .desc(
+        "Checkpoint plus resolved outcome from the FTQ after a RecoveryEvent."
+      )
       .uses(bndHistoryRestore)
       .is(rawReadyValidIntf)
       .build()
@@ -114,12 +126,12 @@ object BranchPredictorSpecs {
     FUNCTION("BtbLookup")
       .desc(
         "Index and tag the BTB with blockBase = alignDown(fetchPc, FetchBytes). Each entry " +
-        "keeps an absolute block slot; among hitting ways, consider only entries whose slot is " +
-        ">= startSlot = (fetchPc - blockBase) / 4 (an entry for an earlier slot is ignored, " +
-        "ADR-019G E-3); the lowest such slot is the " +
-        "block's tracked control-flow instruction, with its type (Branch/Jal/Jalr/Call/Ret/CallRet) " +
-        "and last-seen target. A JALR that is not a return is predicted to its BTB target; " +
-        "v0 has no indirect-target predictor (ITTAGE is a later extension)."
+          "keeps an absolute block slot; among hitting ways, consider only entries whose slot is " +
+          ">= startSlot = (fetchPc - blockBase) / 4 (an entry for an earlier slot is ignored, " +
+          "ADR-019G E-3); the lowest such slot is the " +
+          "block's tracked control-flow instruction, with its type (Branch/Jal/Jalr/Call/Ret/CallRet) " +
+          "and last-seen target. A JALR that is not a return is predicted to its BTB target; " +
+          "v0 has no indirect-target predictor (ITTAGE is a later extension)."
       )
       .uses(intfPredictReqIn, paramBtbGeometry)
       .build()
@@ -129,11 +141,11 @@ object BranchPredictorSpecs {
     FUNCTION("TageDirection")
       .desc(
         "For a tracked Branch, compute each tagged table's index and tag from blockBase " +
-        "(ADR-019G E-3) and a folded prefix of the speculative GHR of that table's history length. " +
-        "The provider is the longest-history matching table; the alternate is the next-longest " +
-        "matching table or the bimodal base. The direction is the provider's counter sign, " +
-        "except that a weak provider whose useful counter is zero uses the alternate. TAGE " +
-        "never decides presence, type, or target."
+          "(ADR-019G E-3) and a folded prefix of the speculative GHR of that table's history length. " +
+          "The provider is the longest-history matching table; the alternate is the next-longest " +
+          "matching table or the bimodal base. The direction is the provider's counter sign, " +
+          "except that a weak provider whose useful counter is zero uses the alternate. TAGE " +
+          "never decides presence, type, or target."
       )
       .uses(paramTageGeometry, paramGhrLength)
       .build()
@@ -143,12 +155,12 @@ object BranchPredictorSpecs {
     FUNCTION("RasPredict")
       .desc(
         "A predicted-taken Call pushes cfiPc + 4 onto the speculative RAS, where cfiPc = " +
-        "blockBase + 4 * cfiSlot (ADR-019G E-5, never requestedFetchPc + 4 * slot); a " +
-        "predicted Ret pops and uses the popped value as the target; a predicted CallRet " +
-        "(coroutine hint) uses the current top as its target, pops it, then pushes cfiPc + 4 - " +
-        "exactly pop-then-push, net-zero top movement that replaces the top entry (ADR-019H " +
-        "E-3). Call/Ret/CallRet classification follows the RISC-V link-register hints (rd or " +
-        "rs1 in {x1, x5}; ADR-019H E-2)."
+          "blockBase + 4 * cfiSlot (ADR-019G E-5, never requestedFetchPc + 4 * slot); a " +
+          "predicted Ret pops and uses the popped value as the target; a predicted CallRet " +
+          "(coroutine hint) uses the current top as its target, pops it, then pushes cfiPc + 4 - " +
+          "exactly pop-then-push, net-zero top movement that replaces the top entry (ADR-019H " +
+          "E-3). Call/Ret/CallRet classification follows the RISC-V link-register hints (rd or " +
+          "rs1 in {x1, x5}; ADR-019H E-2)."
       )
       .uses(paramRasDepth)
       .build()
@@ -158,9 +170,9 @@ object BranchPredictorSpecs {
     FUNCTION("BlockExitSelect")
       .desc(
         "The block exit is the tracked CFI if it is predicted taken (Jal/Jalr/Call/Ret/CallRet always, " +
-        "Branch per TAGE); nextPc = its target. Otherwise nextPc = blockBase + FetchBytes " +
-        "(the next block boundary, not fetchPc + FetchBytes; ADR-019G E-4) and the block is " +
-        "predicted to fall through all remaining slots."
+          "Branch per TAGE); nextPc = its target. Otherwise nextPc = blockBase + FetchBytes " +
+          "(the next block boundary, not fetchPc + FetchBytes; ADR-019G E-4) and the block is " +
+          "predicted to fall through all remaining slots."
       )
       .uses(intfPredictionOut, intfNextPcOut)
       .build()
@@ -170,9 +182,9 @@ object BranchPredictorSpecs {
     FUNCTION("SpeculativeHistoryUpdate")
       .desc(
         "After capturing the checkpoint {ghr, rasTop, rasEntries} into the Prediction, update " +
-        "speculatively: the GHR shifts in exactly one bit, the predicted direction, iff the " +
-        "block's tracked CFI is a Branch; otherwise (Jal/Jalr/Call/Ret/CallRet or no CFI) it is " +
-        "unchanged. The RAS updates per funcRasPredict."
+          "speculatively: the GHR shifts in exactly one bit, the predicted direction, iff the " +
+          "block's tracked CFI is a Branch; otherwise (Jal/Jalr/Call/Ret/CallRet or no CFI) it is " +
+          "unchanged. The RAS updates per funcRasPredict."
       )
       .uses(paramGhrLength)
       .build()
@@ -182,12 +194,12 @@ object BranchPredictorSpecs {
     FUNCTION("BranchPredictorSpecs.funcHistoryRestore")
       .desc(
         "On a RecoveryEvent, discard any in-flight lookup and hold PredictReqIn until the " +
-        "HistoryRestore of every RecoveryEvent observed so far has been accepted (one per " +
-        "event, in event order; ADR-019H E-5). Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
-        "outcome with the same rules as the speculative update: shift in the resolved " +
-        "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret; pop then push " +
-        "pc+4, exactly once, for a CallRet (ADR-019H E-3). pc is " +
-        "HistoryRestore.pc = blockBase + 4 * outcome.slot (ADR-019G E-5)."
+          "HistoryRestore of every RecoveryEvent observed so far has been accepted (one per " +
+          "event, in event order; ADR-019H E-5). Restore GHR, rasTop, and every RAS entry from the checkpoint; then, if applyOutcome, apply the recovering instruction's resolved " +
+          "outcome with the same rules as the speculative update: shift in the resolved " +
+          "direction iff it is a Branch; push pc+4 for a Call; pop for a Ret; pop then push " +
+          "pc+4, exactly once, for a CallRet (ADR-019H E-3). pc is " +
+          "HistoryRestore.pc = blockBase + 4 * outcome.slot (ADR-019G E-5)."
       )
       .uses(intfHistoryRestoreIn, intfRecoveryEventIn)
       .build()
@@ -197,20 +209,20 @@ object BranchPredictorSpecs {
     FUNCTION("PredictorTraining")
       .desc(
         "The single deterministic training point is block commit (a PredictorTrain token, in " +
-        "program order), indexed and tagged by PredictorTrain.fetchPc = blockBase (ADR-019G " +
-        "E-7). BTB: allocate or update the entry for the committed taken exit " +
-        "(slot, type, target; a CallRet may be recorded, its target unused); a committed " +
-        "fall-through leaves the BTB unchanged. TAGE " +
-        "(a committed taken Branch exit, or a tracked Branch that committed not-taken) trains " +
-        "the prediction-time identity PredictorTrain.meta, never a provider found by a new " +
-        "lookup (ADR-019H E-1): the provider is meta.provider, its index and expected tag are " +
-        "recomputed from PredictorTrain {fetchPc, ghr}; provider 0 updates the prediction-time " +
-        "bimodal entry; a tagged provider entry is updated toward the outcome only if it is " +
-        "still valid with the expected tag (else that update is skipped); the useful counter " +
-        "changes when meta.providerCtr's direction and meta.altPred disagree; on a " +
-        "misprediction allocate one entry in a table longer than meta.provider (prediction-time " +
-        "index and tag) whose useful counter is zero, decaying those tables' useful counters " +
-        "otherwise. Training never touches speculative GHR/RAS."
+          "program order), indexed and tagged by PredictorTrain.fetchPc = blockBase (ADR-019G " +
+          "E-7). BTB: allocate or update the entry for the committed taken exit " +
+          "(slot, type, target; a CallRet may be recorded, its target unused); a committed " +
+          "fall-through leaves the BTB unchanged. TAGE " +
+          "(a committed taken Branch exit, or a tracked Branch that committed not-taken) trains " +
+          "the prediction-time identity PredictorTrain.meta, never a provider found by a new " +
+          "lookup (ADR-019H E-1): the provider is meta.provider, its index and expected tag are " +
+          "recomputed from PredictorTrain {fetchPc, ghr}; provider 0 updates the prediction-time " +
+          "bimodal entry; a tagged provider entry is updated toward the outcome only if it is " +
+          "still valid with the expected tag (else that update is skipped); the useful counter " +
+          "changes when meta.providerCtr's direction and meta.altPred disagree; on a " +
+          "misprediction allocate one entry in a table longer than meta.provider (prediction-time " +
+          "index and tag) whose useful counter is zero, decaying those tables' useful counters " +
+          "otherwise. Training never touches speculative GHR/RAS."
       )
       .uses(intfPredictorTrainIn)
       .note("ADR-019 D-19.11: resolution-time training is not used in v0.")
@@ -221,9 +233,11 @@ object BranchPredictorSpecs {
     PROPERTY("PredictFromPcOnly")
       .desc(
         "A Prediction depends only on the fetch PC, the BTB/TAGE tables, and the speculative " +
-        "GHR/RAS; no instruction bits of the same fetch block reach the prediction logic."
+          "GHR/RAS; no instruction bits of the same fetch block reach the prediction logic."
       )
-      .note("Structural (no instruction-data input exists on this vertex) plus a simulation assert.")
+      .note(
+        "Structural (no instruction-data input exists on this vertex) plus a simulation assert."
+      )
       .build()
   }
 
@@ -231,7 +245,7 @@ object BranchPredictorSpecs {
     PROPERTY("OneTakenCfiPerBlock")
       .desc(
         "v0 limitation made explicit: each Prediction names at most one control-flow " +
-        "instruction, and every slot after a predicted-taken exit is invalid in the fetch block."
+          "instruction, and every slot after a predicted-taken exit is invalid in the fetch block."
       )
       .uses(intfPredictionOut)
       .build()
@@ -241,8 +255,8 @@ object BranchPredictorSpecs {
     PROPERTY("HistoryRestoreExact")
       .desc(
         "After a HistoryRestore, the GHR, the RAS top pointer, and every RAS entry equal the " +
-        "recovering block's checkpoint updated by exactly the recovering instruction's " +
-        "resolved outcome, independent of any wrong-path push, pop, or wrap made in between."
+          "recovering block's checkpoint updated by exactly the recovering instruction's " +
+          "resolved outcome, independent of any wrong-path push, pop, or wrap made in between."
       )
       .uses(intfHistoryRestoreIn)
       .build()
@@ -252,34 +266,42 @@ object BranchPredictorSpecs {
     PROPERTY("PredictorStateMicroarchitectural")
       .desc(
         "No predictor state (BTB, TAGE, GHR, RAS) can change an architectural result: for any " +
-        "program the retire stream is identical for every predictor configuration and " +
-        "training history; only timing differs."
+          "program the retire stream is identical for every predictor configuration and " +
+          "training history; only timing differs."
       )
       .uses(propIsaRetireEquivalence)
-      .note("L3 acceptance: retire-stream equivalence with the predictor forced to always-not-taken.")
+      .note(
+        "L3 acceptance: retire-stream equivalence with the predictor forced to always-not-taken."
+      )
       .build()
   }
 
   val rawBtbSubcore = spec {
     RAW("Btb", "subcore")
-      .desc("Set-associative, fetch-block-indexed branch target buffer with per-entry {tag, slot, cfiType, target}; true-LRU replacement per set.")
+      .desc(
+        "Set-associative, fetch-block-indexed branch target buffer with per-entry {tag, slot, cfiType, target}; true-LRU replacement per set."
+      )
       .build()
   }
 
   val rawTageSubcore = spec {
     RAW("Tage", "subcore")
-      .desc("Bimodal base plus tagged tables with geometric history lengths; entries {tag, ctr, useful}; folded-history index/tag hashing.")
+      .desc(
+        "Bimodal base plus tagged tables with geometric history lengths; entries {tag, ctr, useful}; folded-history index/tag hashing."
+      )
       .build()
   }
 
   val rawRasSubcore = spec {
     RAW("Ras", "subcore")
-      .desc("Circular return address stack with a top pointer; overflow overwrites the oldest entry, underflow returns the stale entry (a misprediction, never an error).")
+      .desc(
+        "Circular return address stack with a top pointer; overflow overwrites the oldest entry, underflow returns the stale entry (a misprediction, never an error)."
+      )
       .note(
         "v0 recovery is by full-contents snapshot per FTQ entry (bndHistoryCheckpoint; " +
-        "FtqDepth x RasDepth x vAddrWidth bits). A speculative write log or linked RAS with a " +
-        "persistent stack pointer is the later area optimization and must keep " +
-        "propHistoryRestoreExact."
+          "FtqDepth x RasDepth x vAddrWidth bits). A speculative write log or linked RAS with a " +
+          "persistent stack pointer is the later area optimization and must keep " +
+          "propHistoryRestoreExact."
       )
       .build()
   }

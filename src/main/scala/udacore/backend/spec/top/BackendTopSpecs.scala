@@ -206,37 +206,39 @@ object BackendTopSpecs {
       )
       .note(
         "Edge reconciliation (propGraphConsistency) by child INTERFACE: DecodeUnit." +
-        "DecodedPacketOut -> RenameUnit.DecodedPacketIn; RenameUnit.{RobAllocOut, RsAllocOut, " +
-        "LsqAllocOut} -> {ReorderBuffer.RobAllocIn, ReservationStation.RsAllocIn, " +
-        "LoadStoreQueue.LsqAllocIn}; RS.RegisterFileReadReqOut <-> PRF.RegisterFileRead*; " +
-        "RS.IssuedUopOut -> DispatchUnit.IssuedUopIn; DispatchUnit.FuAvailabilityOut -> " +
-        "RS.FuAvailabilityIn (rawNoDecoupled class 7, ADR-019C); DispatchUnit.*ReqOut -> each unit's " +
-        "*ReqIn; AGU.MemAddressOut -> LSQ.MemAddressIn; unit *ResultOut and LSQ.MemResultOut -> " +
-        "PublishMux.*ResultIn/MemResultIn; PublishMux.{PhysicalRegWriteOut, " +
-        "WakeupBroadcastOut, RobCompletionOut} -> PRF/RS+Rename/ROB; ROB.RobHeadOut -> " +
-        "CommitUnit.RobHeadIn; ROB.RobStatusOut -> Rename/LSQ.RobStatusIn; CommitUnit." +
-        "{RenameCommitOut, StoreCommitOut, StoreBufferDrainReqOut, CommitGrantOut} -> " +
-        "Rename.RenameCommitIn, LSQ.StoreCommitIn, StoreBuffer.StoreBufferDrainReqIn, Csr.CommitGrantIn; " +
-        "StoreBuffer.StoreBufferDrainRespOut -> CommitUnit.StoreBufferDrainRespIn; LSQ.{CommittedStoreOut, " +
-        "StoreForwardQueryOut} -> StoreBuffer; StoreBuffer.StoreForwardDataOut -> LSQ; " +
-        "CommitUnit.ExceptionOut -> Trap.ExceptionIn; Csr.CSRTrapReadOut -> Trap; " +
-        "Csr.DecodePrivViewOut -> DecodeUnit.DecodePrivViewIn (rawNoDecoupled class 4, ADR-019E); " +
-        "CommitUnit.CommitPrfReadReqOut -> PRF.CommitPrfReadReqIn and PRF.CommitPrfReadRespOut -> " +
-        "CommitUnit.CommitPrfReadRespIn (usingRvvi only, ADR-019B E-3); " +
-        "Trap.CSRTrapWriteOut -> Csr; Trap.ArchRedirectOut and BranchUnit." +
-        "BranchResolutionOut -> RecoveryController; RecoveryController.RecoveryEventOut -> " +
-        "every *RecoveryEventIn and the boundary."
+          "DecodedPacketOut -> RenameUnit.DecodedPacketIn; RenameUnit.{RobAllocOut, RsAllocOut, " +
+          "LsqAllocOut} -> {ReorderBuffer.RobAllocIn, ReservationStation.RsAllocIn, " +
+          "LoadStoreQueue.LsqAllocIn}; RS.RegisterFileReadReqOut <-> PRF.RegisterFileRead*; " +
+          "RS.IssuedUopOut -> DispatchUnit.IssuedUopIn; DispatchUnit.FuAvailabilityOut -> " +
+          "RS.FuAvailabilityIn (rawNoDecoupled class 7, ADR-019C); DispatchUnit.*ReqOut -> each unit's " +
+          "*ReqIn; AGU.MemAddressOut -> LSQ.MemAddressIn; unit *ResultOut and LSQ.MemResultOut -> " +
+          "PublishMux.*ResultIn/MemResultIn; PublishMux.{PhysicalRegWriteOut, " +
+          "WakeupBroadcastOut, RobCompletionOut} -> PRF/RS+Rename/ROB; ROB.RobHeadOut -> " +
+          "CommitUnit.RobHeadIn; ROB.RobStatusOut -> Rename/LSQ.RobStatusIn; CommitUnit." +
+          "{RenameCommitOut, StoreCommitOut, StoreBufferDrainReqOut, CommitGrantOut} -> " +
+          "Rename.RenameCommitIn, LSQ.StoreCommitIn, StoreBuffer.StoreBufferDrainReqIn, Csr.CommitGrantIn; " +
+          "StoreBuffer.StoreBufferDrainRespOut -> CommitUnit.StoreBufferDrainRespIn; LSQ.{CommittedStoreOut, " +
+          "StoreForwardQueryOut} -> StoreBuffer; StoreBuffer.StoreForwardDataOut -> LSQ; " +
+          "CommitUnit.ExceptionOut -> Trap.ExceptionIn; Csr.CSRTrapReadOut -> Trap; " +
+          "Csr.DecodePrivViewOut -> DecodeUnit.DecodePrivViewIn (rawNoDecoupled class 4, ADR-019E); " +
+          "CommitUnit.CommitPrfReadReqOut -> PRF.CommitPrfReadReqIn and PRF.CommitPrfReadRespOut -> " +
+          "CommitUnit.CommitPrfReadRespIn (usingRvvi only, ADR-019B E-3); " +
+          "Trap.CSRTrapWriteOut -> Csr; Trap.ArchRedirectOut and BranchUnit." +
+          "BranchResolutionOut -> RecoveryController; RecoveryController.RecoveryEventOut -> " +
+          "every *RecoveryEventIn and the boundary."
       )
       .note(
         "BitAluUnit and its edges elaborate only when the bit-manipulation extension is " +
-        "enabled (ADR-017); the v0 reference configuration omits them."
+          "enabled (ADR-017); the v0 reference configuration omits them."
       )
       .build()
   }
 
   val intfFetchPacketIn = spec {
     INTERFACE("BackendTopSpecs.intfFetchPacketIn")
-      .desc("Instruction packets from the frontend FetchBuffer, wired to DecodeUnit.")
+      .desc(
+        "Instruction packets from the frontend FetchBuffer, wired to DecodeUnit."
+      )
       .uses(bndFetchPacket)
       .is(rawReadyValidIntf)
       .build()
@@ -253,7 +255,9 @@ object BackendTopSpecs {
 
   val intfDebugReqIn = spec {
     INTERFACE("BackendTopSpecs.intfDebugReqIn")
-      .desc("Debug request line, wired to the CommitUnit (sampled at a precise retire boundary).")
+      .desc(
+        "Debug request line, wired to the CommitUnit (sampled at a precise retire boundary)."
+      )
       .uses(bndDebugReq)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 2.")
@@ -294,7 +298,9 @@ object BackendTopSpecs {
 
   val intfUncachedLoadReqOut = spec {
     INTERFACE("BackendTopSpecs.intfUncachedLoadReqOut")
-      .desc("Granted uncacheable loads from the LSQ to the DataCache uncached port.")
+      .desc(
+        "Granted uncacheable loads from the LSQ to the DataCache uncached port."
+      )
       .uses(bndUncachedLoadReq)
       .is(rawReadyValidIntf)
       .build()
@@ -310,7 +316,9 @@ object BackendTopSpecs {
 
   val intfUncachedStoreReqOut = spec {
     INTERFACE("BackendTopSpecs.intfUncachedStoreReqOut")
-      .desc("Granted uncacheable stores from the LSQ to the DataCache uncached port.")
+      .desc(
+        "Granted uncacheable stores from the LSQ to the DataCache uncached port."
+      )
       .uses(bndUncachedStoreReq)
       .is(rawReadyValidIntf)
       .build()
@@ -375,7 +383,9 @@ object BackendTopSpecs {
 
   val intfTranslationContextOut = spec {
     INTERFACE("BackendTopSpecs.intfTranslationContextOut")
-      .desc("Committed translation context from the CsrController to the ITLB, DTLB, and PTW.")
+      .desc(
+        "Committed translation context from the CsrController to the ITLB, DTLB, and PTW."
+      )
       .uses(bndTranslationContext)
       .is(rawNoDecoupled)
       .note("rawNoDecoupled class 4.")
@@ -392,7 +402,9 @@ object BackendTopSpecs {
 
   val intfICacheInvalidateOut = spec {
     INTERFACE("BackendTopSpecs.intfICacheInvalidateOut")
-      .desc("FENCE.I invalidate tokens from the CommitUnit to the InstructionCache.")
+      .desc(
+        "FENCE.I invalidate tokens from the CommitUnit to the InstructionCache."
+      )
       .uses(bndCacheMaintenance)
       .is(rawReadyValidIntf)
       .build()
@@ -400,10 +412,14 @@ object BackendTopSpecs {
 
   val intfRetireStreamOut = spec {
     INTERFACE("BackendTopSpecs.intfRetireStreamOut")
-      .desc("Verification retire stream from the CommitUnit (ADR-010), elaborated only when usingRvvi.")
+      .desc(
+        "Verification retire stream from the CommitUnit (ADR-010), elaborated only when usingRvvi."
+      )
       .uses(bndRetireToken)
       .is(rawReadyValidIntf)
-      .note("Observation-only: the harness ties ready high (propRetireNonBlocking).")
+      .note(
+        "Observation-only: the harness ties ready high (propRetireNonBlocking)."
+      )
       .build()
   }
 

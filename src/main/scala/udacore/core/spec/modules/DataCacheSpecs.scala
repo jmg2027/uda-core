@@ -14,12 +14,12 @@ object DataCacheSpecs {
     CONTRACT("DataCache")
       .desc(
         "A virtually indexed, physically tagged, write-back, write-allocate L1 data cache " +
-        "(16 KiB, 4 ways, 64-byte lines, 64 sets, 2 MSHRs with 2 load targets each, v0). It " +
-        "serves three request streams: speculative loads from the LSQ (paired with DTLB " +
-        "answers), committed store drains from the StoreBuffer (physical), and PTE reads from " +
-        "the PageTableWalker (physical). Misses are non-blocking: hits are served under " +
-        "outstanding misses and load answers return out of order, tagged for reassociation. " +
-        "The v0 data link is non-coherent TL-UH."
+          "(16 KiB, 4 ways, 64-byte lines, 64 sets, 2 MSHRs with 2 load targets each, v0). It " +
+          "serves three request streams: speculative loads from the LSQ (paired with DTLB " +
+          "answers), committed store drains from the StoreBuffer (physical), and PTE reads from " +
+          "the PageTableWalker (physical). Misses are non-blocking: hits are served under " +
+          "outstanding misses and load answers return out of order, tagged for reassociation. " +
+          "The v0 data link is non-coherent TL-UH."
       )
       .has(
         intfDCacheLoadReqIn,
@@ -45,6 +45,7 @@ object DataCacheSpecs {
         funcDCacheUncached,
         funcDCacheCleanAll,
         funcDCachePortArbitrate,
+        funcDCacheSramStorage,
         propDCacheCommittedStoresOnly,
         propDCacheLoadAnswerExactlyOnce,
         propDCacheFunctionTransparent,
@@ -53,24 +54,26 @@ object DataCacheSpecs {
       .uses(paramDCacheGeometry, paramDataCoherence, propViptGeometryLegal)
       .note(
         "State classes: lines, dirty bits, replacement state, and MSHRs are microarchitectural " +
-        "or committed state - only committed stores ever write the array, and a wrong-path " +
-        "load may allocate an MSHR and install its line (ADR-019 D-19.12). Load requests are " +
-        "never canceled here; answers for killed or reallocated LQ entries are dropped by the " +
-        "LSQ generation. Addresses: load requests are virtual (index only) plus a physical " +
-        "translation; store drains and PTE reads are physical. Faults: translation faults pass " +
-        "through; a denied fill answers an access fault and installs nothing."
+          "or committed state - only committed stores ever write the array, and a wrong-path " +
+          "load may allocate an MSHR and install its line (ADR-019 D-19.12). Load requests are " +
+          "never canceled here; answers for killed or reallocated LQ entries are dropped by the " +
+          "LSQ generation. Addresses: load requests are virtual (index only) plus a physical " +
+          "translation; store drains and PTE reads are physical. Faults: translation faults pass " +
+          "through; a denied fill answers an access fault and installs nothing."
       )
       .note(
         "Coherence (D-19.13): DataCoherence = false in v0, so the link is TL-UH (Get and " +
-        "PutFullData bursts). A later TL-C option adds Acquire/Probe/Release service behind the " +
-        "same core-facing interfaces; cache presence alone never enables it."
+          "PutFullData bursts). A later TL-C option adds Acquire/Probe/Release service behind the " +
+          "same core-facing interfaces; cache presence alone never enables it."
       )
       .build()
   }
 
   val intfDCacheLoadReqIn = spec {
     INTERFACE("DCacheLoadReqIn")
-      .desc("Load lookups from the LoadStoreQueue, paired in order with DCacheTranslationIn.")
+      .desc(
+        "Load lookups from the LoadStoreQueue, paired in order with DCacheTranslationIn."
+      )
       .uses(bndDCacheLoadReq)
       .is(rawReadyValidIntf)
       .build()
@@ -166,7 +169,9 @@ object DataCacheSpecs {
 
   val intfUncachedStoreRespOut = spec {
     INTERFACE("UncachedStoreRespOut")
-      .desc("Bus acknowledgement of each uncached store, to the LoadStoreQueue.")
+      .desc(
+        "Bus acknowledgement of each uncached store, to the LoadStoreQueue."
+      )
       .uses(bndUncachedStoreResp)
       .is(rawReadyValidIntf)
       .build()
@@ -174,7 +179,9 @@ object DataCacheSpecs {
 
   val intfDataMemReqOut = spec {
     INTERFACE("DataMemReqOut")
-      .desc("Fills, writebacks, and uncached accesses to the DataBusAdapter (physical).")
+      .desc(
+        "Fills, writebacks, and uncached accesses to the DataBusAdapter (physical)."
+      )
       .uses(bndDataMemReq)
       .is(rawReadyValidIntf)
       .build()
@@ -191,12 +198,23 @@ object DataCacheSpecs {
   val funcDCacheViptLookup = spec {
     FUNCTION("DCacheViptLookup")
       .desc(
-        "Read all ways of set va[11:6] for a load while the DTLB translates it; when the " +
-        "paired translation is Hit and cacheable, compare tags with pa[33:12]. Hit: answer " +
-        "Data with paddr. Translation Miss: answer TlbMiss. Translation fault: answer the " +
-        "fault. Hit but not cacheable: answer Uncacheable with paddr and touch nothing (the LSQ performs the load later through UncachedLoadReq after its HeadMemGrant)."
+        "Read all tag/valid metadata ways at the virtual set index inside the page offset " +
+          "(va[11:6] in v0) while the DTLB translates a load. When the paired translation is " +
+          "Hit and cacheable, compare all physical address bits above the set and line offset " +
+          "(pa[33:12] in v0). A matching way selects row way * sets + set of the clocked data " +
+          "SRAM; retain lqIdx/lqGen, paddr and word identity until its read response arrives, " +
+          "then answer Data with paddr. Translation Miss: answer TlbMiss. Translation fault: answer the " +
+          "fault. Hit but not cacheable: answer Uncacheable with paddr and touch nothing (the LSQ performs the load later through UncachedLoadReq after its HeadMemGrant)."
       )
-      .uses(intfDCacheLoadReqIn, intfDCacheTranslationIn, intfDCacheLoadRespOut, propViptGeometryLegal)
+      .uses(
+        intfDCacheLoadReqIn,
+        intfDCacheTranslationIn,
+        intfDCacheLoadRespOut,
+        propViptGeometryLegal
+      )
+      .note(
+        "Tags are compared from metadata registers; selected line data is returned by a synchronous SRAM read, not an asynchronous register-array mux."
+      )
       .build()
   }
 
@@ -204,13 +222,16 @@ object DataCacheSpecs {
     FUNCTION("DCacheMshr")
       .desc(
         "A cacheable load miss allocates a free MSHR (or joins the MSHR already fetching its " +
-        "line) as one of at most two load targets and issues a line fill; hits and other " +
-        "misses continue meanwhile (hit-under-miss, miss-under-miss up to two lines). When " +
-        "the line arrives it is installed and every target is answered Data, each tagged with " +
-        "its lqIdx/lqGen, in any order relative to other answers. A load that finds no free " +
-        "MSHR or target slot is answered Replay."
+          "line) as one of at most two load targets and issues a line fill; hits and other " +
+          "misses continue meanwhile (hit-under-miss, miss-under-miss up to two lines). When " +
+          "the line arrives it is installed and every target is answered Data, each tagged with " +
+          "its lqIdx/lqGen, in any order relative to other answers. A load that finds no free " +
+          "MSHR or target slot is answered Replay."
       )
       .uses(intfDataMemReqOut, intfDataMemRespIn, paramDCacheGeometry)
+      .note(
+        "Fill sources are 0 through mshrs-1; source mshrs is shared by writebacks, and source mshrs+1 by uncached accesses. Each remains owned until its final bus response transfers."
+      )
       .build()
   }
 
@@ -218,24 +239,29 @@ object DataCacheSpecs {
     FUNCTION("DCacheStoreWrite")
       .desc(
         "A cacheable committed store that hits writes its bytes and sets the line dirty, then " +
-        "answers the StoreBuffer. A miss allocates an MSHR, fills the line (write-allocate), " +
-        "then writes and answers. Store drains are served in arrival order."
+          "answers the StoreBuffer. A miss allocates an MSHR, fills the line (write-allocate), " +
+          "then writes and answers. Store drains are served in arrival order."
       )
       .uses(intfStoreDrainReqIn, intfStoreDrainRespOut)
       .note(
         "ADR-019F E-2/E-3: StoreDrainResp is the committed-store visibility linearization " +
-        "point (propDrainResponseMakesStoreVisible). When StoreDrainResp and an overlapping " +
-        "load answer occur in the same cycle no stronger ordering is required: either the " +
-        "answer already contains the store, or the store is still in the StoreBuffer and takes " +
-        "part in that cycle's forwarding lookup. After that cycle boundary the D-cache alone " +
-        "owns the store's visibility."
+          "point (propDrainResponseMakesStoreVisible). When StoreDrainResp and an overlapping " +
+          "load answer occur in the same cycle no stronger ordering is required: either the " +
+          "answer already contains the store, or the store is still in the StoreBuffer and takes " +
+          "part in that cycle's forwarding lookup. After that cycle boundary the D-cache alone " +
+          "owns the store's visibility."
+      )
+      .note(
+        "A completed MSHR line copy remains a response source until every load/PTE target is answered. Later committed stores must repair that copy as well as SRAM and held load responses."
       )
       .build()
   }
 
   val funcDCacheWriteback = spec {
     FUNCTION("DCacheWriteback")
-      .desc("Replacing a dirty victim writes the whole line back as a PutLine burst before the fill that replaces it may install.")
+      .desc(
+        "Replacing a dirty victim writes the whole line back as a PutLine burst before the fill that replaces it may install."
+      )
       .uses(intfDataMemReqOut)
       .build()
   }
@@ -244,14 +270,14 @@ object DataCacheSpecs {
     FUNCTION("DCachePhysicalRead")
       .desc(
         "A PTE read (PtwMemReq{paddr}) is never translated and never consults a TLB. Its " +
-        "physical address is first checked with funcPmaCheck. Unmapped or not readable: answer " +
-        "accessFault = 1 with no array or bus access. Readable and cacheable: the normal " +
-        "physical lookup (index pa[11:6], tag pa[33:12]); a hit answers at once, a miss may " +
-        "allocate or join an MSHR and installs the line like a load. Readable and not " +
-        "cacheable: one exact uncached 4-byte physical read that installs nothing; a denied or " +
-        "corrupt bus answer is accessFault = 1. This internal PTW read needs no HeadMemGrant " +
-        "(that gate is for architectural LSQ uncacheable accesses); it may share the uncached " +
-        "bus transaction resource or source id, but PTW and LSQ answers keep their identity."
+          "physical address is first checked with funcPmaCheck. Unmapped or not readable: answer " +
+          "accessFault = 1 with no array or bus access. Readable and cacheable: the normal " +
+          "physical lookup (index pa[11:6], tag pa[33:12] in v0); a hit answers after the SRAM read, a miss may " +
+          "allocate or join an MSHR and installs the line like a load. Readable and not " +
+          "cacheable: one exact uncached 4-byte physical read that installs nothing; a denied or " +
+          "corrupt bus answer is accessFault = 1. This internal PTW read needs no HeadMemGrant " +
+          "(that gate is for architectural LSQ uncacheable accesses); it may share the uncached " +
+          "bus transaction resource or source id, but PTW and LSQ answers keep their identity."
       )
       .uses(intfPtwMemReqIn, intfPtwMemRespOut)
       .build()
@@ -261,21 +287,30 @@ object DataCacheSpecs {
     FUNCTION("DCacheUncached")
       .desc(
         "An UncachedLoadReq or UncachedStoreReq (physical; issued by the LSQ only after the " +
-        "uop's HeadMemGrant) bypasses the array and the TLB as a single GetUncached/PutUncached " +
-        "bus access; nothing is installed. Each " +
-        "is answered only after the bus acknowledgement, with the access fault = denied, so the " +
-        "head uop can trap precisely."
+          "uop's HeadMemGrant) bypasses the array and the TLB as a single GetUncached/PutUncached " +
+          "bus access; nothing is installed. Each " +
+          "is answered only after the bus acknowledgement, with the access fault = denied, so the " +
+          "head uop can trap precisely."
       )
-      .uses(intfDataMemReqOut, intfUncachedLoadReqIn, intfUncachedLoadRespOut,
-            intfUncachedStoreReqIn, intfUncachedStoreRespOut)
+      .uses(
+        intfDataMemReqOut,
+        intfUncachedLoadReqIn,
+        intfUncachedLoadRespOut,
+        intfUncachedStoreReqIn,
+        intfUncachedStoreRespOut
+      )
       .build()
   }
 
   val funcDCacheCleanAll = spec {
     FUNCTION("DCacheCleanAll")
-      .desc("On a clean request, write back every dirty line (lines stay valid and become clean), then answer the completion.")
+      .desc(
+        "On a clean request, write back every dirty line (lines stay valid and become clean), then answer the completion."
+      )
       .uses(intfDCacheCleanReqIn, intfDCacheCleanRespOut)
-      .note("FENCE.I support: instruction fetch is not coherent with the D-cache in v0.")
+      .note(
+        "FENCE.I support: instruction fetch is not coherent with the D-cache in v0."
+      )
       .build()
   }
 
@@ -283,9 +318,36 @@ object DataCacheSpecs {
     FUNCTION("DCachePortArbitrate")
       .desc(
         "When requests compete for the array: PTE reads first, then store drains, then loads. " +
-        "A lower-priority request waits by backpressure; each stream is served in its own order."
+          "A lower-priority request waits by backpressure; each stream is served in its own order."
       )
       .uses(intfPtwMemReqIn, intfStoreDrainReqIn, intfDCacheLoadReqIn)
+      .build()
+  }
+
+  val funcDCacheSramStorage = spec {
+    FUNCTION("DCacheSramStorage")
+      .desc(
+        "Line data resides in CacheLineSram, using one synchronous read port and one byte-masked " +
+          "write port. The row identity is way * sets + set. Tags, valid/dirty bits, replacement " +
+          "state, MSHR fill/overlay buffers and in-flight response metadata remain registers. " +
+          "A cached load hit, PTE hit, dirty-victim snapshot and clean-all writeback obtain their " +
+          "data only from that SRAM read response. The selected reader retains its operation " +
+          "identity until the response transfers; backpressure cannot relabel or overwrite it. " +
+          "A fill installs a full line; a hit store writes only its byte mask and does not read " +
+          "or rewrite untouched bytes. Same-row read/write collisions are serialized with write " +
+          "priority. StoreDrainResp visibility and held-load byte repair remain unchanged."
+      )
+      .uses(
+        funcDCacheViptLookup,
+        funcDCachePhysicalRead,
+        funcDCacheWriteback,
+        funcDCacheCleanAll,
+        funcDCacheStoreWrite,
+        CacheLineSramSpecs.contCacheLineSram
+      )
+      .note(
+        "ADR-020. The default 64-set, 4-way, 16-word line data array uses sixteen 256x32 SRAM banks; small legal geometries may leave macro rows unused."
+      )
       .build()
   }
 
@@ -293,16 +355,20 @@ object DataCacheSpecs {
     PROPERTY("DCacheCommittedStoresOnly")
       .desc(
         "Array data and dirty bits change only through StoreDrainReqIn (committed stores) and " +
-        "line fills; no load, PTE read, or wrong-path access ever modifies a byte of cached data."
+          "line fills; no load, PTE read, or wrong-path access ever modifies a byte of cached data."
       )
       .uses(intfStoreDrainReqIn)
-      .note("ADR-019 D-19.12: speculative stores never reach the cache (propNoWrongPathStoreVisible upstream).")
+      .note(
+        "ADR-019 D-19.12: speculative stores never reach the cache (propNoWrongPathStoreVisible upstream)."
+      )
       .build()
   }
 
   val propDCacheLoadAnswerExactlyOnce = spec {
     PROPERTY("DCacheLoadAnswerExactlyOnce")
-      .desc("Every accepted load request is answered exactly once with its own lqIdx/lqGen, regardless of hits, misses, or replays in between.")
+      .desc(
+        "Every accepted load request is answered exactly once with its own lqIdx/lqGen, regardless of hits, misses, or replays in between."
+      )
       .uses(intfDCacheLoadRespOut)
       .build()
   }
@@ -310,24 +376,34 @@ object DataCacheSpecs {
   val propDrainResponseMakesStoreVisible = spec {
     PROPERTY("DrainResponseMakesStoreVisible")
       .desc(
-        "If StoreDrainResp for committed store S fires before load answer L is produced, S " +
-        "overlaps L, and no later committed store overwrote those bytes, then L's cache data " +
-        "includes S's bytes (per byte of S's mask). This holds whether S hit, needed write " +
-        "allocation, waited behind an outstanding miss, or met an MSHR already filling its " +
-        "line (a load target of that MSHR answered after StoreDrainResp observes S)."
+        "If StoreDrainResp for committed store S fires before load answer L transfers to the " +
+          "LSQ, S " +
+          "overlaps L, and no later committed store overwrote those bytes, then L's cache data " +
+          "includes S's bytes (per byte of S's mask). This holds whether S hit, needed write " +
+          "allocation, waited behind an outstanding miss, or met an MSHR already filling its " +
+          "line (a load target of that MSHR answered after StoreDrainResp observes S)."
       )
-      .uses(funcDCacheStoreWrite, funcDCacheMshr, intfStoreDrainRespOut, intfDCacheLoadRespOut)
+      .uses(
+        funcDCacheStoreWrite,
+        funcDCacheMshr,
+        intfStoreDrainRespOut,
+        intfDCacheLoadRespOut
+      )
       .note(
         "ADR-019F E-2. Directed race: load miss outstanding; an older committed store drains " +
-        "to the same line; StoreDrainResp fires; the fill and load answer return later and " +
-        "observe the store; repeated with partial-byte masks."
+          "to the same line; StoreDrainResp fires; the fill and load answer return later and " +
+          "observe the store; repeated with partial-byte masks. A response held under output " +
+          "backpressure must also include a later drain before it transfers, or the drain " +
+          "response must wait until the load response transfers."
       )
       .build()
   }
 
   val propDCacheFunctionTransparent = spec {
     PROPERTY("DCacheFunctionTransparent")
-      .desc("For any legal D-cache geometry and MSHR count the retire stream of any program is identical; the cache changes only timing.")
+      .desc(
+        "For any legal D-cache geometry and MSHR count the retire stream of any program is identical; the cache changes only timing."
+      )
       .uses(propIsaRetireEquivalence)
       .build()
   }

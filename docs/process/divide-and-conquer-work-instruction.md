@@ -13,26 +13,26 @@ process rather than status minutiae.
   into partially independent components that integrate into a cohesive whole.
 
 ## 2. Preparation checklist
-1. **Reconfirm objectives** – capture the desired outcomes, constraints, and
+1. **Reconfirm objectives** - capture the desired outcomes, constraints, and
    completion definition before breaking down the work.
-2. **Audit references** – read through the governing guidelines, style manuals,
+2. **Audit references** - read through the governing guidelines, style manuals,
    and existing specifications so each sub-task respects upstream expectations.
-3. **Establish ownership** – assign accountable leads for orchestration, and
+3. **Establish ownership** - assign accountable leads for orchestration, and
    identify subject matter contacts for each anticipated workstream.
 
 ## 3. Iterative workflow
-1. **Decompose deliberately** – map the system into well-bounded components.
+1. **Decompose deliberately** - map the system into well-bounded components.
    Prefer boundaries that minimise cross-team dependencies and allow parallel
    execution.
-2. **Plan integration points** – define how the components reconnect, including
+2. **Plan integration points** - define how the components reconnect, including
    interface contracts, data flows, and milestones for alignment reviews.
-3. **Execute focused sprints** – complete one component at a time (or in small
+3. **Execute focused sprints** - complete one component at a time (or in small
    parallel batches). Keep local design notes and test artefacts scoped to the
    component under construction.
-4. **Integrate continuously** – fold finished components back into the shared
+4. **Integrate continuously** - fold finished components back into the shared
    baseline quickly. Address conflicts or contract gaps immediately rather than
    deferring them to the end.
-5. **Review and iterate** – after each integration round, validate outcomes
+5. **Review and iterate** - after each integration round, validate outcomes
    against the original objectives and refine the remaining backlog based on the
    latest findings.
 
@@ -45,10 +45,10 @@ process rather than status minutiae.
   workflow keeps moving.
 
 ## 5. Quality and validation
-- Align verification activities with each component’s definition of done.
+- Align verification activities with each component's definition of done.
 - Automate repeatable checks (formatters, unit tests, simulations, or process
   audits) and run them prior to declaring a component complete.
-- Record validation artefacts and attach them to the component’s tracker entry
+- Record validation artefacts and attach them to the component's tracker entry
   for easy reference during integration reviews.
 
 ## 6. Reporting artefacts

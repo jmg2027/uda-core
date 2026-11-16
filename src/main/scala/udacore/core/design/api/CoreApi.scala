@@ -1,9 +1,6 @@
 package udacore.core.design.api
 
-import udacore.core.design.shared.{
-  CoreParams,
-  CoreContractParams
-}
+import udacore.core.design.shared.{CoreParams, CoreContractParams}
 
 /** Core domain API exports for parent integrators.
   *
@@ -46,9 +43,9 @@ trait CoreDomainApi {
   def params: CoreApiParams
 
   // Interface width calculations
-  def addrWidth: Int  = params.vAddrWidth
-  def dataWidth: Int  = params.dataWidth
-  def hartId: Int = params.hartId
+  def addrWidth: Int = params.vAddrWidth
+  def dataWidth: Int = params.dataWidth
+  def hartId: Int    = params.hartId
 
   // Derived parameters for interface sizing
   def maxAddrValue: Long = (1L << addrWidth) - 1
