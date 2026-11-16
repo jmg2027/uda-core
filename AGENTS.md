@@ -226,6 +226,15 @@ APIs. The verification Gate discipline (latency, skew, differential verdicts) ma
 be extended but never weakened. The former `csr/CSR.scala` protection was waived
 by the owner for the ADR-019 migration (OQ-E).
 
+Owner waiver dated 2026-11-16: the full sbt gate migration may replace/remove the
+six superseded cluster/harness test sources and repair the protected assembler
+implementation/tests needed for that migration. Chisel must be version 6 or newer;
+the reproducible toolchain remains pinned to 6.2.0. The replacement ScalaTest
+bridges register the full active L1 registry and whole-core scenario corpus;
+the 11 assembler tests are retained with exact output/encoding checks. The waiver
+does not authorize test exclusions, weaker verdicts, or unrelated future changes
+to protected files. All other protection above remains in force.
+
 ### Interface Implementation Rules
 
 **No stubs or placeholders:**
@@ -377,7 +386,9 @@ architecture.
 
 The primary gate compiles the sibling `../spec-framework` sources, UDA specs,
 RTL, and verification suites. Override its location with `SPEC_FRAMEWORK_HOME`.
-Both build paths use Scala 2.13.12 and Chisel 6.2.0. See
+Both build paths use Scala 2.13.12 and pin Chisel 6.2.0 with its matching compiler
+plugin. The owner's minimum is Chisel 6; upgrades must preserve the shared build
+and simulator toolchain. See
 `docs/tooling/spec-framework.md` for setup and report interpretation.
 
 ```bash
@@ -394,9 +405,19 @@ Spec IDs must be globally unique. Metadata exports contain real spec relations
 and source tags; design-shell annotations alone do not prove implementation or
 formal coverage. Existing coverage gaps remain visible in the reports.
 
-Run `sbt scalafmtCheckAll test` before committing. `src/test` contains protected
-historical cluster/assembler tests;
-report incompatibilities or unavailable dependencies without weakening the gates.
+Run `sbt scalafmtCheckAll test` before committing. After provisioning, sbt's native
+simulator tests fork with JDK 17 and the same resolved tool environment as
+`verif/bin/run.sh`; test execution is serial. The ScalaTest bridges expose every
+active L1 case (minimum 376) and every discovered `.scn` (minimum 23), alongside
+the 11 assembler tests. Pending or non-PASS L1 verdicts fail the gate.
+
+The formatter owns this repository: all main Scala sources (including specs and
+assembler), verification engine/suites, and every Test source are checked. Only
+formatter task aggregation is disabled for the external framework projects;
+their compilation and the existing compile/test dependency graph remain intact.
+Report the combined gate's measured outcome in HANDOFF. The 2026-11-16
+migration passed 410 tests: 376 L1, 23 scenarios, and 11 assembler tests,
+with no failures, cancellations, ignored tests, or pending tests.
 
 Additional instruments:
 

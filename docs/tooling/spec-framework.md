@@ -18,6 +18,9 @@ work/
 
 The consumer pins Scala 2.13.12, Chisel 6.2.0 and Chisel's uPickle 3.1.0.
 Both build paths compile the framework sources against that dependency set.
+The owner's 2026-11-16 requirement is Chisel 6 or newer; 6.2.0 remains the exact
+reproducible version, including its matching compiler plugin. That requirement
+does not imply that an arbitrary newer release is validated with this toolchain.
 No local Ivy publication or sbt compiler plugin for spec-framework is required;
 `spec-plugin` is an sbt AutoPlugin, not a Scala compiler plugin.
 
@@ -90,8 +93,40 @@ sbt specCheck
 Use it for a complete metadata refresh after any edit or deletion. Raw macro files
 have unique names, so repeated incremental compilation alone is not an authoritative
 snapshot. `exportSpecIndex` exports the current compilation and rejects duplicates.
-The historical `src/test` cluster tests target older architecture; the active OoO
-verification suites are under `verif/suites`.
+
+## sbt verification and formatter ownership
+
+```bash
+sbt scalafmtCheckAll test
+```
+
+Provision the host tools first. `build.sbt` reads the resolved verification
+environment through `verif/bin/env.sh` and passes its selected tool/cache variables
+to the forked Test JVM. That JVM uses the provisioned JDK 17 `JAVA_HOME`; native
+simulator tests therefore share the firtool, Verilator, SDK, Espresso, and cache
+setup used by `verif/bin/run.sh`. Tests execute serially.
+
+The owner authorized a limited migration on 2026-11-16: six superseded
+cluster/harness test files were replaced by ScalaTest bridges to the current
+`verif/suites` L1 registry and the complete `verif/scn` corpus. The bridges register
+at least 376 L1 cases and 23 whole-core scenarios, require strict PASS verdicts,
+and discover additions rather than selecting a reduced subset. All 11 assembler
+tests remain, with exact output/encoding assertions and the necessary assembler
+repairs. This waiver does not remove the standing protected-file rules in
+[AGENTS.md](../../AGENTS.md).
+
+`scalafmtCheckAll` checks this repository's sources: all `src/main/scala`
+(including specs, design, and assembler), `verif/src/scala`, `verif/suites`, and
+the complete Test source set. The formatter-specific source inventory is separate
+from compiler sources, and only formatter task aggregation is disabled. The root
+still aggregates and depends on framework core/macros and UDA specs for compilation
+and testing. External framework formatting belongs to its owning build; this gate
+does not claim that dependency's formatting debt is resolved.
+
+The migrated combined gate passed 410 tests: 376 L1, 23 scenarios, and
+11 assembler tests. Failures, cancellations, ignored tests, and pending tests
+were all zero. Earlier parser/formatting failures describe the pre-migration
+tree; see [the live handoff](../../document/HANDOFF.md) for the evidence.
 
 ## Authoring and interpreting results
 
