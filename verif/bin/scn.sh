@@ -12,8 +12,8 @@
 # a .scn in seconds instead of a fresh multi-minute compile per invocation. One daemon per config
 # name (default: "default"). --daemon output is always JSON.
 #
-# Rebuild-line status: DUT-facing commands answer {"error":"harness-not-ready", ...} (exit 3)
-# while CoreTop is a spec shell; describe/parse-level behavior works today.
+# Whole-core run, batch, gate and daemon commands use the implemented CoreTop harness.
+# Trace uses a simulation-only observation wrapper and the same memory/reset driver.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERIF="$(cd "$HERE/.." && pwd)"

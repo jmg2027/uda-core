@@ -59,8 +59,12 @@ object DataBusAdapterSpecs {
     FUNCTION("DataBusTransaction")
       .desc(
         "Map each DataMemReq op to its TileLink message with a.source = the request's source " +
-        "id (MSHR, writeback, or uncached), forward D beats back with the same source, and " +
-        "convert denied/corrupt to the denied flag. Responses of different sources may interleave."
+        "id (MSHR, writeback, or uncached). GetLine/GetUncached map to one A Get; PutLine " +
+        "maps contiguous DataMemReq beats to one A PutFullData burst; PutUncached maps to " +
+        "one A PutPartialData. The requested size is the total transfer size on every A beat. " +
+        "A source remains occupied until its final D beat transfers. Forward D beats with " +
+        "the same source, derive last from the tracked transfer size, and convert denied or " +
+        "corrupt to the denied flag. Responses of different sources may interleave."
       )
       .uses(intfDataMemReqIn, intfDataMemRespOut, intfDataBus)
       .build()

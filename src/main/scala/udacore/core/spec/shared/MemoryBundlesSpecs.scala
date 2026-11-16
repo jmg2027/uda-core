@@ -206,7 +206,7 @@ object MemoryBundlesSpecs {
           List("lqIdx, lqGen", "UInt", "Echo."),
           List("status", "LoadStatus", "Data | TlbMiss | Replay (no MSHR/target free) | PageFault | AccessFault | Uncacheable (must retry at head)."),
           List("paddr", "UInt(pAddrWidth)", "Translated physical address (every status after a TLB hit)."),
-          List("data", "UInt(XLen)", "Loaded bytes (Data).")
+          List("data", "UInt(XLen)", "Naturally aligned word containing the access, with byte lanes unchanged (Data); the LSQ extracts and extends the requested bytes.")
         )
       )
       .uses(paramPAddrWidth)
@@ -328,14 +328,23 @@ object MemoryBundlesSpecs {
 
   val bndDataMemReq = spec {
     BUNDLE("DataMemReq")
-      .desc("D-cache to DataBusAdapter: line fill, dirty-line writeback, or uncached access. Physical address.")
+      .desc(
+        "D-cache to DataBusAdapter: physical line fill, dirty-line writeback, or uncached " +
+        "access. GetLine, GetUncached, and PutUncached use one request token. PutLine uses " +
+        "one token per line beat with the same source, line address, and total transfer size; " +
+        "last marks only its final beat. PutLine tokens are contiguous on this edge. A source " +
+        "cannot be reused until its final response beat transfers."
+      )
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
           List("op", "DataMemOp", "GetLine | PutLine | GetUncached | PutUncached"),
-          List("source", "UInt", "MSHR id, writeback id, or uncached id."),
-          List("paddr", "UInt(pAddrWidth)", "Address."),
-          List("data, mask, last", "", "Put beats.")
+          List("source", "UInt(dataBus.sourceBits)", "MSHR id, writeback id, or uncached id."),
+          List("paddr", "UInt(pAddrWidth)", "Physical address; line base for GetLine/PutLine."),
+          List("size", "UInt(dataBus.sizeBits)", "Log2 total transfer bytes; line size for line operations, access size for uncached operations."),
+          List("data", "UInt(dataWidth)", "Put beat; zero for Get."),
+          List("mask", "UInt(dataWidth/8)", "Byte lanes for PutUncached; full beat for PutLine."),
+          List("last", "Bool", "Final PutLine beat; true on each single-token operation.")
         )
       )
       .build()
@@ -343,12 +352,12 @@ object MemoryBundlesSpecs {
 
   val bndDataMemResp = spec {
     BUNDLE("DataMemResp")
-      .desc("DataBusAdapter to D-cache: AccessAck/AccessAckData beats reassociated by source.")
+      .desc("DataBusAdapter to D-cache: AccessAck/AccessAckData beats reassociated by source. For a GetLine, last marks the final D beat; for each other operation its only D beat is last.")
       .markdownTable(
         List("Name", "Type", "Description"),
         List(
-          List("source", "UInt", "Echo."),
-          List("data, last", "UInt(XLen), Bool", "Beat."),
+          List("source", "UInt(dataBus.sourceBits)", "Echo of the request source."),
+          List("data, last", "UInt(dataWidth), Bool", "Response beat and final-beat indicator."),
           List("denied", "Bool", "Access fault.")
         )
       )

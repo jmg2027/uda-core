@@ -4,10 +4,8 @@ import udacore.core.design.shared.CoreParams
 import verif.{CheckResult, Scenario, Suite}
 import verif.config.CoreConfigs
 
-/** The first suite to run when CoreTop starts elaborating: a handful of RV32I scenarios that
- *  prove fetch, decode, the ALU path, memory stores and the DONE sentinel end to end. Ported as
- *  a template from the main-line AluSuite shape; it compiles today and raises harness-not-ready
- *  until the CoreHarness DUT binding lands. */
+/** Whole-core RV32I smoke scenarios for fetch, decode, ALU, memory stores and completion.
+ *  Both programs run through CoreHarness against the real CoreTop. */
 object SmokeSuite {
   def scenarios: Seq[Scenario] = Seq(
     Scenario("addi-chain",

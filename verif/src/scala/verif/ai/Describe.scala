@@ -5,18 +5,17 @@ import verif.harness.{MemModel, Probe}
 
 /** Capability card as JSON. A fresh-context AI calls this first to learn the API without reading
  *  source: commands, the .scn grammar, conventions, reference ops, tappable signals, and - on
- *  this rebuild line - the harness readiness state. */
+ *  this rebuild line - the harness capability state. */
 object Describe {
   def card: Js = Js.of(
     "framework" -> Js.S("udacore rebuild verif AI harness (ported from main)"),
-    "core" -> Js.S("UDACore: unified-dataflow, XLEN-parametric RISC-V (RV32 verif today), " +
-      "TileLink boundary (ADR-016), spec-first; CoreTop RTL is a " +
-      "spec shell, so DUT runs raise harness-not-ready until the CommitUnit RTL and the " +
-      "ADR-010 retire stream land"),
+    "core" -> Js.S("UDACore: conventional out-of-order RV32IM core with Sv32, " +
+      "two TileLink masters and a verification retire stream (ADR-019)"),
     "status" -> Js.of(
       "engine" -> Js.S("ready (scn parse, assemble, gates, JSON, daemon protocol)"),
-      "dut_binding" -> Js.S("pending CoreTop RTL - see verif/src/scala/verif/harness/CoreHarness.scala"),
-      "synthesis" -> Js.S("ready (EmitUnit works today on Alu/Multiplier/Divider/BitAlu; EmitCore once CoreTop elaborates)")
+      "dut_binding" -> Js.S("ready (run, batch, gate and serve use the real CoreTop)"),
+      "trace" -> Js.S("ready (all fetch lanes, retire tokens, RecoveryEvent, divider busy and ALU publication)"),
+      "synthesis" -> Js.S("product CoreTop and unit OOC flow: sky130 HD mapping and OpenSTA; artifacts in verif/out/sta")
     ),
     "configs" -> Js.Arr(CoreConfigs.names.map(Js.S)),
     "commands" -> Js.Arr(Seq(

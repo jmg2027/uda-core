@@ -28,6 +28,7 @@ object InstructionCacheSpecs {
         funcICacheMissFill,
         funcICacheUncachedFetch,
         funcICacheInvalidate,
+        funcICacheSramStorage,
         propICacheReadOnly,
         propICacheResponseOrder,
         propICacheFunctionTransparent
@@ -94,11 +95,17 @@ object InstructionCacheSpecs {
   val funcICacheViptLookup = spec {
     FUNCTION("ICacheViptLookup")
       .desc(
-        "Read all ways of set va[11:6]; when the paired translation is Hit, compare each valid " +
-        "way's tag with pa[33:12]. A hit answers the 16-byte block at va[5:4]. A translation " +
+        "Read all tag ways of set va[11:6]; when the paired translation is Hit, compare each valid " +
+        "way's tag with pa[33:12]. A hit reads the selected data row synchronously and answers the 16-byte block at va[5:4]. A translation " +
         "fault answers that fault without a memory access."
       )
       .uses(intfICacheReqIn, intfICacheTranslationIn, intfICacheRespOut, propViptGeometryLegal)
+      .build()
+  }
+
+  val funcICacheSramStorage = spec {
+    FUNCTION("ICacheSramStorage")
+      .desc("ADR-020: store bulk line data in CacheLineSram, addressed by way * sets + set. Preserve reqId, block index and response-order identity until the clocked SRAM read completes. Keep tags, valid and replacement metadata in registers. Fill installation is a full-line masked SRAM write. A held response and an in-flight SRAM read must never overwrite each other under backpressure.")
       .build()
   }
 

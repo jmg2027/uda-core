@@ -15,7 +15,8 @@ import udacore.core.spec.modules.InstructionCacheSpecs._
   *
   * Request / translation pairing: an ICacheReq is held in a one-entry pairing register until its
   * Translation (in request order, possibly cycles later) arrives; the next ICacheReq is accepted in
-  * the cycle the held one is consumed, so hits sustain one lookup per cycle. A lookup needs the
+  * the cycle the held one is consumed, so hits sustain one lookup per cycle. Data hits use a
+  * clocked CacheLineSram read and retain the request identity until the line returns. A lookup needs the
   * answer holder to be free (or draining this cycle), no miss in progress and no invalidate token
   * this cycle.
   *
@@ -64,23 +65,24 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
   private val idxBits   = log2Ceil(sets)                  // 6
   private val blkBits   = log2Ceil(params.fetch.fetchBytes) // 4
   private val pageBits  = 12                               // Sv32 page offset
-  private val tagBits   = params.pAddrWidth - pageBits     // pa[33:12]
+  private val tagBits   = params.pAddrWidth - offBits - idxBits
   private val genW      = params.fetch.fetchGenWidth
   require(offBits + idxBits <= pageBits, "VIPT index must lie inside the page offset (propViptGeometryLegal)")
   require(ways == 4, "v0 tree pseudo-LRU is 4-way")
   private val lineSize  = offBits.U   // InstMemReq.size of a line fill
   private val blockSize = blkBits.U   // InstMemReq.size of an uncached block
 
-  private def setOf(va: UInt): UInt   = va(offBits + idxBits - 1, offBits)
-  private def tagOf(pa: UInt): UInt   = pa(params.pAddrWidth - 1, pageBits)
-  private def blockOf(va: UInt): UInt = va(offBits - 1, blkBits)
+  private def setOf(va: UInt): UInt   = if (sets == 1) 0.U(1.W) else va(offBits + idxBits - 1, offBits)
+  private def tagOf(pa: UInt): UInt   = pa(params.pAddrWidth - 1, offBits + idxBits)
+  private def blockOf(va: UInt): UInt = if (offBits == blkBits) 0.U(1.W) else va(offBits - 1, blkBits)
+  private def rowOf(set: UInt, way: UInt): UInt = if (sets == 1) way else Cat(way, set)
   private def blockWords(line: Vec[UInt], blk: UInt): Vec[UInt] =
     VecInit((0 until fw).map(i => line(Cat(blk, i.U(log2Ceil(fw).W)))))
 
   // ---- State ------------------------------------------------------------------------------------
   val valid = RegInit(VecInit(Seq.fill(sets)(VecInit(Seq.fill(ways)(false.B)))))
   val tags  = Mem(sets, Vec(ways, UInt(tagBits.W)))
-  val data  = Mem(sets, Vec(ways, Vec(lineWords, UInt(32.W))))
+  val data  = Module(new CacheLineSram(sets * ways, lineWords, params.dataWidth))
   /** Tree pseudo-LRU per set: bit0 picks the pair (0: ways 0/1, 1: ways 2/3), bit1 / bit2 the way. */
   val plru  = RegInit(VecInit(Seq.fill(sets)(0.U(3.W))))
   private def plruVictim(b: UInt): UInt = Mux(b(0), Mux(b(2), 3.U, 2.U), Mux(b(1), 1.U, 0.U))
@@ -107,6 +109,16 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
   val beatIdx    = RegInit(0.U(log2Ceil(lineWords + 1).W))
   val deniedAcc  = RegInit(false.B)
   val fillPoison = RegInit(false.B)
+  val readPending = RegInit(false.B)
+  val readReqId = Reg(UInt(genW.W))
+  val readBlock = Reg(UInt(math.max(1, offBits - blkBits).W))
+  private val seqWidth = 3
+  val acceptSq = RegInit(0.U(seqWidth.W))
+  val answerSq = RegInit(0.U(seqWidth.W))
+  val pendSq = Reg(UInt(seqWidth.W))
+  val missSq = Reg(UInt(seqWidth.W))
+  val readSq = Reg(UInt(seqWidth.W))
+  val holdSq = Reg(UInt(seqWidth.W))
 
   private val req   = io.iCacheReqIn
   private val tr    = io.iCacheTranslationIn
@@ -122,15 +134,37 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
   private val holdNext  = Wire(new ICacheResp(genW, fw)); holdNext := hold
 
   // ---- funcICacheViptLookup ---------------------------------------------------------------------
-  tr.ready  := pendValid && state === sIdle && !inv.valid && holderFree
-  req.ready := !pendValid || tr.fire
-  private val consume = tr.fire
   private val lSet    = setOf(pendVaddr)
   private val lTags   = tags(lSet)
   private val lHits   = VecInit((0 until ways).map(w => valid(lSet)(w) && lTags(w) === tagOf(tr.bits.paddr)))
   private val lHitWay = OHToUInt(lHits)
   private val isHit   = tr.bits.status === TranslationStatus.Hit
   private val lHit    = isHit && tr.bits.cacheable && lHits.asUInt.orR
+  private val lookupOpen = pendValid && state === sIdle && !inv.valid && holderFree &&
+    (!readPending || (data.io.readResp.fire && lHit))
+  tr.ready := lookupOpen && (!lHit || data.io.readReq.ready)
+  req.ready := !pendValid || tr.fire
+  private val consume = tr.fire
+
+  @LocalSpec(funcICacheSramStorage)
+  val iCacheSramStorage: Unit = {
+    data.io.readReq.valid := lookupOpen && tr.valid && lHit
+    data.io.readReq.bits := rowOf(lSet, lHitWay)
+    data.io.readResp.ready := holderFree
+    when(data.io.readReq.fire) {
+      readPending := true.B
+      readReqId := tr.bits.reqId
+      readBlock := blockOf(pendVaddr)
+      readSq := pendSq
+    }.elsewhen(data.io.readResp.fire) { readPending := false.B }
+    when(data.io.readResp.fire) {
+      assert(readPending, "ICacheSramStorage: SRAM response without a lookup owner")
+      holdWrite := true.B
+      holdNext.reqId := readReqId
+      holdNext.data := blockWords(data.io.readResp.bits, readBlock)
+      holdNext.fault := FetchFault.None
+    }
+  }
 
   @LocalSpec(funcICacheViptLookup)
   val iCacheViptLookup: Unit = {
@@ -140,16 +174,16 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
       assert(tr.bits.reqId === pendReqId, "ICacheTranslation: the Translation reqId differs from the paired request")
       assert(tr.bits.status =/= TranslationStatus.Miss, "ICacheTranslation: status Miss on the InstructionTlb edge")
       assert(PopCount(lHits) <= 1.U, "ICacheLookup: more than one way hits")
-      holdNext.reqId := tr.bits.reqId
-      holdNext.data  := VecInit(Seq.fill(fw)(0.U(32.W)))
-      holdNext.fault := FetchFault.None
+      when(!lHit) {
+        holdNext.reqId := tr.bits.reqId
+        holdNext.data  := VecInit(Seq.fill(fw)(0.U(32.W)))
+        holdNext.fault := FetchFault.None
+      }
       when(tr.bits.status === TranslationStatus.PageFault) {
         holdWrite := true.B; holdNext.fault := FetchFault.InstPageFault
       }.elsewhen(tr.bits.status === TranslationStatus.AccessFault) {
         holdWrite := true.B; holdNext.fault := FetchFault.InstAccessFault
       }.elsewhen(lHit) {
-        holdWrite := true.B
-        holdNext.data := blockWords(data(lSet)(lHitWay), blockOf(pendVaddr))
         plru(lSet) := plruTouch(plru(lSet), lHitWay)
       }.otherwise { // cacheable miss or uncached fetch: open the miss context
         state := sReq; mReqId := tr.bits.reqId; mVaddr := pendVaddr; mPaddr := tr.bits.paddr
@@ -169,6 +203,13 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
 
   @LocalSpec(funcICacheMissFill)
   val iCacheMissFill: Unit = {
+    data.io.writeReq.valid := lastIn && mCacheable && !(deniedAcc || beatDen) && !fillPoison && !invFire
+    data.io.writeReq.bits.row := rowOf(mSet, victim)
+    data.io.writeReq.bits.data := lineNow
+    data.io.writeReq.bits.mask := VecInit(Seq.fill(lineWords)(Fill(beatBytes, 1.U(1.W))))
+    when(data.io.writeReq.valid) {
+      assert(data.io.writeReq.ready, "ICacheSramStorage: the fill write port was not available")
+    }
     mreq.valid := state === sReq
     when(mreq.fire) { state := sCollect }
 
@@ -184,7 +225,6 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
       when(mCacheable && !denied && !fillPoison && !invFire) {
         val oh = UIntToOH(victim, ways).asBools
         tags.write(mSet, VecInit(Seq.fill(ways)(tagOf(mPaddr))), oh)
-        data.write(mSet, VecInit(Seq.fill(ways)(lineNow)), oh)
         valid(mSet)(victim) := true.B
         plru(mSet) := plruTouch(plru(mSet), victim)
       }
@@ -238,19 +278,14 @@ class InstructionCache(val params: CoreParams) extends CoreModule {
   val iCacheResponseOrder: Unit = {
     // Sequence numbers independent of reqId (a fetch generation, not unique): every accepted request
     // is numbered, the number travels with it, and answers must leave with consecutive numbers.
-    val w        = 3
-    val acceptSq = RegInit(0.U(w.W))
-    val answerSq = RegInit(0.U(w.W))
-    val pendSq   = Reg(UInt(w.W))
-    val missSq   = Reg(UInt(w.W))
-    val holdSq   = Reg(UInt(w.W))
     when(req.fire) { pendSq := acceptSq; acceptSq := acceptSq + 1.U }
     when(consume && !lHit && isHit) { missSq := pendSq }
-    when(holdWrite) { holdSq := Mux(state === sResp, missSq, pendSq) }
+    when(holdWrite) { holdSq := Mux(state === sResp, missSq,
+      Mux(data.io.readResp.fire, readSq, pendSq)) }
     when(resp.fire) {
       assert(holdSq === answerSq, "ICacheResponseOrder: an answer left out of request order")
       answerSq := answerSq + 1.U
     }
-    assert((acceptSq - answerSq) <= 3.U, "ICacheResponseOrder: more requests in flight than pairing + miss + holder")
+    assert((acceptSq - answerSq) <= 3.U, "ICacheResponseOrder: more requests in flight than pairing + miss/read + holder")
   }
 }

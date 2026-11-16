@@ -38,11 +38,12 @@ object FetchUnitSpecs {
       .uses(paramFetchBytes, paramFetchWidth)
       .is(rawSpeculativeHolder)
       .note(
-        "Speculative-holder stance: in-flight fetch requests are ordered FIFO. They cannot be " +
-        "canceled in the ITLB/I-cache, so every request carries the local fetch generation " +
-        "(propGenerationTagScope class 1); a RecoveryEvent advances the generation and every " +
-        "older-generation response is dropped. Nothing is reclaimed from the caches: wrong-path " +
-        "fills and ITLB refills are allowed to complete and install (ADR-019 D-19.12)."
+        "Speculative-holder stance: v0 permits one outstanding fetch lookup. It cannot be " +
+        "canceled in the ITLB/I-cache, so a RecoveryEvent marks it stale and its answer is " +
+        "drained before another lookup is accepted. Each request also carries the local fetch " +
+        "generation (propGenerationTagScope class 1). The drain rule prevents a generation " +
+        "wrap from mistaking an old answer for a new one. Nothing is reclaimed from the " +
+        "caches: wrong-path fills and ITLB refills may complete and install (ADR-019 D-19.12)."
       )
       .build()
   }
@@ -104,7 +105,8 @@ object FetchUnitSpecs {
         "fire both in the same cycle " +
         "(atomic fork); either not ready holds the request. The I-cache set index comes from " +
         "untranslated address bits; the physical tag compare waits for the ITLB answer inside " +
-        "the I-cache."
+        "the I-cache. v0 accepts the next FetchRequest only after the prior response has been " +
+        "delivered or discarded."
       )
       .uses(intfFetchRequestIn, intfITlbReqOut, intfICacheReqOut)
       .build()
@@ -114,9 +116,11 @@ object FetchUnitSpecs {
     FUNCTION("FetchGeneration")
       .desc(
         "A local fetch generation counter increments on every RecoveryEvent; each request " +
-        "carries the current generation as reqId, and an ICacheResp whose reqId differs from " +
-        "the current generation is consumed and dropped without producing a FetchBlock. " +
-        "Requests not yet sent are discarded on the event."
+        "carries the current generation as reqId. A RecoveryEvent marks any outstanding " +
+        "request stale, suppresses a held FetchBlock in the event cycle, and discards a " +
+        "not-yet-sent request. The stale ICacheResp is consumed and dropped even if its reqId " +
+        "equals the counter after wrap. No new lookup is accepted until that response drains. " +
+        "A live response must echo the issued reqId."
       )
       .uses(intfRecoveryEventIn, intfICacheRespIn)
       .note("Local transaction bookkeeping only (ADR-019 D-19.10); it never orders program uops.")
@@ -130,7 +134,9 @@ object FetchUnitSpecs {
         "valid from startSlot = fetchPc[log2(FetchBytes)-1:2] through lastSlot. A response " +
         "with a fetch fault produces a block whose only valid slot is startSlot (not " +
         "necessarily slot 0), carrying the fault (instruction page fault or instruction access " +
-        "fault) to be raised precisely at commit (ADR-019G E-6)."
+        "fault) to be raised precisely at commit (ADR-019G E-6). A fault suppresses the " +
+        "predicted exit because the only delivered slot is the faulting slot. Hold the " +
+        "assembled block stable under FetchBlockOut backpressure."
       )
       .uses(intfFetchBlockOut)
       .build()

@@ -4,7 +4,7 @@ import scala.collection.mutable
 
 /** One configurable in-order memory model - the unification of the old CoreScn / CoreScnF / CEnv.
  *
- *  - shift-register request latency (`iLat` for fetch, `dLat` for data),
+ *  - request latency (`iLat` for fetch, `dLat` for data),
  *  - byte-masked stores (ported from the repo's ClusterTestMem),
  *  - unified instruction+data backing so rodata/data loads resolve against the program image,
  *  - `done` sentinel: a store to [[MemModel.DONE]] ends the run.
@@ -17,7 +17,7 @@ class MemModel(val mem: mutable.Map[Long, Long], val iLat: Int = 2, val dLat: In
 
   /** Data-access latency for an address: the first matching region's `lat`, else the default
    *  `dLat`. Used by CoreHarness to model a per-region (TCM / bufferable / device) bus when
-   *  `regions` is non-empty; with no regions the harness keeps the flat-`dLat` shift register. */
+   *  `regions` is non-empty; with no regions the harness uses flat `dLat`. */
   def dLatOf(addr: Long): Int = {
     val a = addr & ~3L
     var i = 0

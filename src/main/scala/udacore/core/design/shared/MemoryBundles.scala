@@ -236,3 +236,31 @@ class ICacheResp(reqIdWidth: Int, fetchWidth: Int) extends Bundle {
   val data  = Vec(fetchWidth, UInt(32.W))
   val fault = UInt(2.W)
 }
+
+/** bndDataMemReq.op codes for the v0 non-coherent data link. */
+object DataMemOp {
+  val width       = 2
+  val GetLine     = 0.U(width.W)
+  val PutLine     = 1.U(width.W)
+  val GetUncached = 2.U(width.W)
+  val PutUncached = 3.U(width.W)
+}
+
+@LocalSpec(bndDataMemReq)
+class DataMemReq(pAddrWidth: Int, dataWidth: Int, sourceBits: Int, sizeBits: Int) extends Bundle {
+  val op     = UInt(DataMemOp.width.W)
+  val source = UInt(sourceBits.W)
+  val paddr  = UInt(pAddrWidth.W)
+  val size   = UInt(sizeBits.W)
+  val data   = UInt(dataWidth.W)
+  val mask   = UInt((dataWidth / 8).W)
+  val last   = Bool()
+}
+
+@LocalSpec(bndDataMemResp)
+class DataMemResp(dataWidth: Int, sourceBits: Int) extends Bundle {
+  val source = UInt(sourceBits.W)
+  val data   = UInt(dataWidth.W)
+  val last   = Bool()
+  val denied = Bool()
+}

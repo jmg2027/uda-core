@@ -402,6 +402,14 @@ object InstructionCacheSpecTests {
       }
   }
 
+  val sramStructure = new SpecTest("ic.sramStructure", Seq("funcICacheSramStorage")) {
+    def run(): Seq[TCheck] = {
+      val fir = circt.stage.ChiselStage.emitCHIRRTL(new InstructionCache(cp))
+      Seq(TCheck(fir.contains("inst data of CacheLineSram"),
+        "bulk I-cache data uses the clocked SRAM vertex instead of an asynchronous line Mem"))
+    }
+  }
+
   val all: Seq[SpecTest] = Seq(coldMiss, fourBlocks, vipt, plru, faults, uncached, denied, pairing, steadyHits,
-    respBackpressure, invalidate, invalidateDuringFill, invalidateLastBeat, wrongPath, random, negative)
+    respBackpressure, invalidate, invalidateDuringFill, invalidateLastBeat, wrongPath, random, negative, sramStructure)
 }

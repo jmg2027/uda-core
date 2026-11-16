@@ -45,6 +45,7 @@ object DataCacheSpecs {
         funcDCacheUncached,
         funcDCacheCleanAll,
         funcDCachePortArbitrate,
+        funcDCacheSramStorage,
         propDCacheCommittedStoresOnly,
         propDCacheLoadAnswerExactlyOnce,
         propDCacheFunctionTransparent,
@@ -191,12 +192,16 @@ object DataCacheSpecs {
   val funcDCacheViptLookup = spec {
     FUNCTION("DCacheViptLookup")
       .desc(
-        "Read all ways of set va[11:6] for a load while the DTLB translates it; when the " +
-        "paired translation is Hit and cacheable, compare tags with pa[33:12]. Hit: answer " +
-        "Data with paddr. Translation Miss: answer TlbMiss. Translation fault: answer the " +
+        "Read all tag/valid metadata ways at the virtual set index inside the page offset " +
+        "(va[11:6] in v0) while the DTLB translates a load. When the paired translation is " +
+        "Hit and cacheable, compare all physical address bits above the set and line offset " +
+        "(pa[33:12] in v0). A matching way selects row way * sets + set of the clocked data " +
+        "SRAM; retain lqIdx/lqGen, paddr and word identity until its read response arrives, " +
+        "then answer Data with paddr. Translation Miss: answer TlbMiss. Translation fault: answer the " +
         "fault. Hit but not cacheable: answer Uncacheable with paddr and touch nothing (the LSQ performs the load later through UncachedLoadReq after its HeadMemGrant)."
       )
       .uses(intfDCacheLoadReqIn, intfDCacheTranslationIn, intfDCacheLoadRespOut, propViptGeometryLegal)
+      .note("Tags are compared from metadata registers; selected line data is returned by a synchronous SRAM read, not an asynchronous register-array mux.")
       .build()
   }
 
@@ -211,6 +216,7 @@ object DataCacheSpecs {
         "MSHR or target slot is answered Replay."
       )
       .uses(intfDataMemReqOut, intfDataMemRespIn, paramDCacheGeometry)
+      .note("Fill sources are 0 through mshrs-1; source mshrs is shared by writebacks, and source mshrs+1 by uncached accesses. Each remains owned until its final bus response transfers.")
       .build()
   }
 
@@ -230,6 +236,7 @@ object DataCacheSpecs {
         "part in that cycle's forwarding lookup. After that cycle boundary the D-cache alone " +
         "owns the store's visibility."
       )
+      .note("A completed MSHR line copy remains a response source until every load/PTE target is answered. Later committed stores must repair that copy as well as SRAM and held load responses.")
       .build()
   }
 
@@ -246,7 +253,7 @@ object DataCacheSpecs {
         "A PTE read (PtwMemReq{paddr}) is never translated and never consults a TLB. Its " +
         "physical address is first checked with funcPmaCheck. Unmapped or not readable: answer " +
         "accessFault = 1 with no array or bus access. Readable and cacheable: the normal " +
-        "physical lookup (index pa[11:6], tag pa[33:12]); a hit answers at once, a miss may " +
+        "physical lookup (index pa[11:6], tag pa[33:12] in v0); a hit answers after the SRAM read, a miss may " +
         "allocate or join an MSHR and installs the line like a load. Readable and not " +
         "cacheable: one exact uncached 4-byte physical read that installs nothing; a denied or " +
         "corrupt bus answer is accessFault = 1. This internal PTW read needs no HeadMemGrant " +
@@ -289,6 +296,25 @@ object DataCacheSpecs {
       .build()
   }
 
+  val funcDCacheSramStorage = spec {
+    FUNCTION("DCacheSramStorage")
+      .desc(
+        "Line data resides in CacheLineSram, using one synchronous read port and one byte-masked " +
+        "write port. The row identity is way * sets + set. Tags, valid/dirty bits, replacement " +
+        "state, MSHR fill/overlay buffers and in-flight response metadata remain registers. " +
+        "A cached load hit, PTE hit, dirty-victim snapshot and clean-all writeback obtain their " +
+        "data only from that SRAM read response. The selected reader retains its operation " +
+        "identity until the response transfers; backpressure cannot relabel or overwrite it. " +
+        "A fill installs a full line; a hit store writes only its byte mask and does not read " +
+        "or rewrite untouched bytes. Same-row read/write collisions are serialized with write " +
+        "priority. StoreDrainResp visibility and held-load byte repair remain unchanged."
+      )
+      .uses(funcDCacheViptLookup, funcDCachePhysicalRead, funcDCacheWriteback,
+        funcDCacheCleanAll, funcDCacheStoreWrite, CacheLineSramSpecs.contCacheLineSram)
+      .note("ADR-020. The default 64-set, 4-way, 16-word line data array uses sixteen 256x32 SRAM banks; small legal geometries may leave macro rows unused.")
+      .build()
+  }
+
   val propDCacheCommittedStoresOnly = spec {
     PROPERTY("DCacheCommittedStoresOnly")
       .desc(
@@ -310,7 +336,8 @@ object DataCacheSpecs {
   val propDrainResponseMakesStoreVisible = spec {
     PROPERTY("DrainResponseMakesStoreVisible")
       .desc(
-        "If StoreDrainResp for committed store S fires before load answer L is produced, S " +
+        "If StoreDrainResp for committed store S fires before load answer L transfers to the " +
+        "LSQ, S " +
         "overlaps L, and no later committed store overwrote those bytes, then L's cache data " +
         "includes S's bytes (per byte of S's mask). This holds whether S hit, needed write " +
         "allocation, waited behind an outstanding miss, or met an MSHR already filling its " +
@@ -320,7 +347,9 @@ object DataCacheSpecs {
       .note(
         "ADR-019F E-2. Directed race: load miss outstanding; an older committed store drains " +
         "to the same line; StoreDrainResp fires; the fill and load answer return later and " +
-        "observe the store; repeated with partial-byte masks."
+        "observe the store; repeated with partial-byte masks. A response held under output " +
+        "backpressure must also include a later drain before it transfers, or the drain " +
+        "response must wait until the load response transfers."
       )
       .build()
   }

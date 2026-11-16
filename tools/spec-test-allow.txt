@@ -37,15 +37,10 @@ propCounterBound
 propKillBehavior
 propSingleCycleValid
 
-# WP-7 bus adapters: L1 TileLink monitor SpecTest
-propDataBusCoherenceSeparate
-
 # WP-7 D-cache: needs an uncacheable PMA region in the harness or the L3 geometry sweep
-funcDCacheUncached
 propDCacheFunctionTransparent
 
 # ADR-019F E-2: the directed store-drain / load-miss race (with partial-byte masks) lands with the DataCache L1 SpecTest
-propDrainResponseMakesStoreVisible
 
 # WP-7 I-cache: needs an uncacheable/executable PMA region in the harness, an L1 SpecTest, or the L3 geometry sweep
 propICacheFunctionTransparent

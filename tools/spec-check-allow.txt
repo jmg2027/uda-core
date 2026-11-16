@@ -25,17 +25,12 @@ propRobTagUniqueness
 propWakeupSelectBudget
 
 # WP-2/3 frontend vertices (FetchPcGen/BranchPredictor/FTQ/FetchUnit/FetchBuffer asserts)
-propFetchInOrder
-propNoStaleFetchBlock
 propPredictorStateMicroarchitectural
 
 # WP-4 ROB/rename/RS/branch/recovery/commit/trap/CSR asserts
 propCheckpointRestoreExact
 propPreciseCommit
 propRobTagConsecutive
-
-# WP-7 bus adapter asserts
-propDataBusCoherenceSeparate
 
 # WP-7 cache asserts
 propDCacheCommittedStoresOnly

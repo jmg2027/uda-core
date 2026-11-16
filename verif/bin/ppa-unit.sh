@@ -13,14 +13,15 @@
 #   verif/bin/ppa-unit.sh mul_csa16 mul_csa32    # a subset
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"; VERIF="$(cd "$HERE/.." && pwd)"; REPO="$(cd "$VERIF/.." && pwd)"
-STA=/tmp/verif-sta
+source "$HERE/env.sh"
+STA="${VERIF_STA_HOME:-/tmp/verif-sta}"
 LIB="$STA/sky130_fd_sc_hd__tt_025C_1v80.lib"
 OPENSTA="$STA/OpenSTA/build/sta"
 [ -x "$OPENSTA" ] || { echo "OpenSTA missing - run verif/bin/setup-sta.sh first"; exit 1; }
 
 CFGS=("$@")
 if [ ${#CFGS[@]} -eq 0 ]; then
-  mapfile -t CFGS < <(bash "$HERE/run.sh" verif.suites.EmitUnit list | awk '{print $1}')
+  while IFS= read -r cfg; do CFGS+=("$cfg"); done < <(bash "$HERE/run.sh" verif.suites.EmitUnit list | awk '{print $1}')
 fi
 CLK_NS=10.0
 ACTIVITY=0.2   # uniform toggle probability for the default-activity power estimate
